@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>sat-golf</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <header id="hole-info" class="panel"></header>
+    <aside id="scoreboard" class="panel"></aside>
+
+    <footer id="hud" class="panel" hidden>
+      <div class="hud-row">
+        <div id="turn"></div>
+        <div class="club">
+          <button id="club-prev" title="Previous club ( [ )">‹</button>
+          <div id="club-name"></div>
+          <button id="club-next" title="Next club ( ] )">›</button>
+        </div>
+        <div id="stats"></div>
+      </div>
+      <div class="hud-row">
+        <div id="meter"><div id="meter-fill"></div><div id="meter-target"></div></div>
+        <button id="swing">Hold to swing <kbd>Space</kbd></button>
+        <button id="view-toggle" title="Toggle view (V)"></button>
+      </div>
+      <div class="help">Click to aim · ←/→ fine aim · [ / ] club · right-drag pan · scroll zoom · F re-frame · V view</div>
+    </footer>
+
+    <div id="toast" hidden></div>
+    <div id="status"></div>
+    <div id="attribution"></div>
+
+    <div id="setup" class="modal">
+      <div class="card">
+        <h1>sat-golf</h1>
+        <p id="setup-hole"></p>
+        <label>Players
+          <select id="player-count">
+            <option>1</option><option selected>2</option><option>3</option><option>4</option>
+          </select>
+        </label>
+        <div id="player-names"></div>
+        <button id="start" class="primary">Tee off</button>
+      </div>
+    </div>
+
+    <div id="results" class="modal" hidden>
+      <div class="card">
+        <h1>Hole complete</h1>
+        <table id="results-table"></table>
+        <button id="again" class="primary">Play again</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
