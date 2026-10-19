@@ -4,7 +4,7 @@ import { LocalFrame, pointInRings, type Vec2 } from '../src/course/geo';
 import type { CourseFile, CourseHole, Rings } from '../src/course/types';
 import { CLUBS, PUTTER, suggestClub } from '../src/game/clubs';
 import { HoleGame, scoreName } from '../src/game/game';
-import { mulberry32, simulateShot, type World } from '../src/game/physics';
+import { mulberry32, simulateShot, type ShotResult, type World } from '../src/game/physics';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
 
@@ -124,13 +124,15 @@ describe('simulateShot', () => {
   });
 });
 
+const shot = (r: ShotResult) => r;
+
 describe('HoleGame', () => {
   it('uses the away rule and counts penalties', () => {
     const g = new HoleGame(testHole(), ['A', 'B']);
     expect(g.player.name).toBe('A');
-    g.applyShot({ samples: [], rest: [0, -100], restSurface: 'fairway', holed: false, penalty: 0, events: [] });
+    g.applyShot(shot({ samples: [], rest: [0, -100], restSurface: 'fairway', holed: false, penalty: 0, events: [] }));
     expect(g.player.name).toBe('B'); // B still on the tee, farther away
-    g.applyShot({ samples: [], rest: [0, -150], restSurface: 'fairway', holed: false, penalty: 1, events: ['water'] });
+    g.applyShot(shot({ samples: [], rest: [0, -150], restSurface: 'fairway', holed: false, penalty: 1, events: ['water'] }));
     expect(g.players[1].strokes).toBe(2);
     expect(g.player.name).toBe('B'); // B (150 m) is still away from A (100 m)
   });

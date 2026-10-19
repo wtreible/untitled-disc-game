@@ -20,16 +20,19 @@
           <div id="club-name"></div>
           <button id="club-next" title="Next club ( ] )">›</button>
         </div>
+        <button id="release" title="Release angle (Q / E)"></button>
         <div id="stats"></div>
       </div>
       <div class="hud-row">
         <div id="meter"><div id="meter-fill"></div><div id="meter-target"></div></div>
         <button id="swing">Hold to swing <kbd>Space</kbd></button>
+        <button id="fp-toggle" title="First person / top-down (C)" hidden></button>
         <button id="view-toggle" title="Toggle view (V)"></button>
       </div>
-      <div class="help">Click to aim · ←/→ fine aim · [ / ] club · right-drag pan · scroll zoom · F re-frame · V view</div>
+      <div class="help" id="help">Click to aim · ←/→ fine aim · [ / ] club · right-drag pan · scroll zoom · F re-frame · V view</div>
     </footer>
 
+    <div id="reticle" hidden></div>
     <div id="toast" hidden></div>
     <div id="status"></div>
     <div id="attribution"></div>
@@ -37,6 +40,15 @@
     <div id="setup" class="modal">
       <div class="card">
         <h1>sat-golf</h1>
+        <label>Game
+          <select id="mode">
+            <option value="disc" selected>Disc golf: Tali, Helsinki</option>
+            <option value="golf">Golf: The Country Club #17</option>
+          </select>
+        </label>
+        <label id="holes-row">Holes
+          <select id="holes"></select>
+        </label>
         <p id="setup-hole"></p>
         <label>Players
           <select id="player-count">
@@ -50,8 +62,9 @@
 
     <div id="results" class="modal" hidden>
       <div class="card">
-        <h1>Hole complete</h1>
-        <table id="results-table"></table>
+        <h1 id="results-title">Hole complete</h1>
+        <div class="table-wrap"><table id="results-table"></table></div>
+        <button id="next" class="primary" hidden>Next hole</button>
         <button id="again" class="primary">Play again</button>
       </div>
     </div>

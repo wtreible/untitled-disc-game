@@ -1,4 +1,6 @@
-# Level editor and disc golf (future)
+# Level editor and disc golf
+
+> The disc golf variant is now implemented; see [10-disc-golf](10-disc-golf.md). The level editor and park → course flow below are still future work.
 
 ## Level editor (D14)
 

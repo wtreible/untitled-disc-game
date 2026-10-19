@@ -78,3 +78,21 @@ kbd { font-size: 11px; opacity: 0.7; border: 1px solid currentColor; border-radi
 .card input, .card select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid #3b4a35; background: #121a10; color: var(--text); }
 #player-names { display: flex; flex-direction: column; gap: 8px; }
 #results-table td { padding: 4px 10px; }
+
+/* disc golf */
+#release { font-size: 13px; padding: 4px 10px; }
+.nums { color: var(--muted); font-size: 12px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+#scoreboard .topar { min-width: 26px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+#reticle {
+  position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none;
+  border: 2px solid rgba(255, 255, 255, 0.85); border-radius: 50%; box-shadow: 0 0 3px #000;
+}
+#reticle::after { content: ''; position: absolute; left: 8px; top: 8px; width: 2px; height: 2px; background: #fff; }
+.table-wrap { overflow-x: auto; max-width: calc(100vw - 80px); }
+#results-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#results-table th, #results-table td { padding: 4px 7px; text-align: center; }
+#results-table td:first-child { text-align: left; white-space: nowrap; }
+#results-table tr.par td { color: var(--muted); }
+#results-table td.under { color: #8fdc6a; font-weight: 700; }
+#results-table td.over { color: #ff9a7a; }
+.panel:empty { display: none; }

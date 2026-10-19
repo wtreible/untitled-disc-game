@@ -6,6 +6,7 @@
 | Esri World Imagery | Display only, streamed live | ~0.3 m in most US metros | Worldwide | Esri terms; attribution required | **v1** |
 | USDA NAIP | Derivation / segmentation | 0.6 m (some years 1 m), 4-band RGB+NIR | Continental US | Public domain | Future |
 | USGS 3DEP lidar | Elevation | ~1 m DEM (QL2) | Most of US | Public domain | Future |
+| HSY land cover 2024 | Tree canopy by height class (disc golf trees) | Vector, from lidar + aerial | Helsinki region | Open WFS; likely CC BY 4.0 (see docs/10) | **In use** |
 | Sentinel-2 | — | 10 m | Worldwide | Free / open | Evaluated, rejected |
 
 ## OpenStreetMap

@@ -13,6 +13,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [07-elevation-lidar](07-elevation-lidar.md) | Lidar / DEM terrain (future) |
 | [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) | Park-to-course editor, disc golf variant (future) |
 | [09-glossary](09-glossary.md) | Terms used across these docs |
+| [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
 
 ## Decision log
 
@@ -37,8 +38,16 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D17 | Hosting: localhost only for now (`npm run dev`). | 2026-10-19 |
 | D18 | No wind in v1. | 2026-10-19 |
 | D19 | Out of bounds: casual drop near where the ball left the course, +1 stroke (not stroke and distance). | 2026-10-19 |
+| D20 | **Disc golf is the default mode**; golf stays selectable. Course: Tali, Helsinki (best-mapped famous course with open tree data). | 2026-10-19 |
+| D21 | Trees for disc golf: individual trees planted inside HSY 2024 canopy polygons, trunk-free fairway lanes; trunk + crown + basket collisions. | 2026-10-19 |
+| D22 | First-person 3D putting inside 20 m; C toggles first person anywhere. | 2026-10-19 |
+| D23 | Disc golf plays full rounds (18 / front 9 / back 9 / single hole) with a scorecard and honors. | 2026-10-19 |
 
 ## Open questions
+
+- **Tali pars:** not in OSM; estimated from length. Real pars would need the course's own card (or tagging OSM).
+- **HSY license:** HSY datasets on HRI are CC BY 4.0; this dataset's own page wasn't found. Attributed regardless.
+- **Synthetic trunks:** canopy is real, trunk positions aren't. A lidar canopy height model would fix that.
 
 - **Sentinel-2:** proposed as a derivation source, but at 10 m/px it can't resolve hole-scale features. Currently recorded as *evaluated, rejected*. Reopen if there's a use for it (e.g., coarse park-scale tree/water masks).
 - **Famous-hole identity:** OSM's Main #17 uses the member routing. Championship (composite) routings at TCC renumber holes, so "the famous 17th" should be checked against the club's own routing before we label it that way.

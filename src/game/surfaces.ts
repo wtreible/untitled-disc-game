@@ -2,6 +2,8 @@
 import type { Vec2 } from '../course/geo';
 import { SURFACE_CLASSES, surfacePriority, type CourseHole, type Rings, type SurfaceClass } from '../course/types';
 
+export type SurfaceSource = Pick<CourseHole, 'bounds' | 'boundary' | 'trees' | 'features'> & { ob?: Rings[] };
+
 export class SurfaceGrid {
   readonly cols: number;
   readonly rows: number;
@@ -17,7 +19,8 @@ export class SurfaceGrid {
     this.canopy = new Float32Array(this.cols * this.rows);
   }
 
-  static fromHole(hole: CourseHole, cell = 0.25): SurfaceGrid {
+  /** Works for a golf hole or a whole disc course; `ob` polygons are forced out of bounds last. */
+  static fromHole(hole: SurfaceSource, cell = 0.25): SurfaceGrid {
     const g = new SurfaceGrid(hole.bounds[0], hole.bounds[1], cell);
     const rough = surfacePriority('rough');
     for (const b of hole.boundary) g.fill(b, (i) => { g.cls[i] = rough; });
@@ -36,6 +39,7 @@ export class SurfaceGrid {
       // Water and bunkers outside the boundary polygon still count as themselves.
       g.fill(f.rings, (i) => { if (p >= g.cls[i]) g.cls[i] = p; });
     }
+    for (const rings of hole.ob ?? []) g.fill(rings, (i) => { g.cls[i] = 0; });
     return g;
   }
 

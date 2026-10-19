@@ -1,6 +1,6 @@
 // Local hot-seat stroke play on one hole (D12, D16).
 import { dist, type Vec2 } from '../course/geo';
-import type { CourseHole, SurfaceClass } from '../course/types';
+import type { SurfaceClass } from '../course/types';
 import type { ShotResult } from './physics';
 
 export const PLAYER_COLORS = ['#ffffff', '#ffd23f', '#3fc1ff', '#ff6b9a'];
@@ -29,16 +29,27 @@ export function scoreName(strokes: number, par: number): string {
   return names[d] ?? `+${d}`;
 }
 
+/** What the turn/score rules need from a hole, golf or disc. */
+export interface HoleLike {
+  tee: Vec2;
+  pin: Vec2;
+  par: number;
+}
+
 export class HoleGame {
   readonly players: Player[];
   current: number;
+  /** Tee order (honors); breaks ties in the away rule. */
+  private readonly rank: number[];
 
-  constructor(readonly hole: CourseHole, names: string[]) {
+  constructor(readonly hole: HoleLike, names: string[], order?: number[]) {
     this.players = names.map((name, i) => ({
       name, color: PLAYER_COLORS[i % PLAYER_COLORS.length],
       ball: [...hole.tee] as Vec2, lie: 'tee', strokes: 0, holed: false, pickedUp: false,
     }));
-    this.current = 0;
+    const o = order ?? names.map((_, i) => i);
+    this.rank = names.map((_, i) => o.indexOf(i));
+    this.current = o[0];
   }
 
   get player(): Player {
@@ -54,7 +65,7 @@ export class HoleGame {
   }
 
   /** Record a completed shot for the current player and advance the turn. */
-  applyShot(r: ShotResult): void {
+  applyShot(r: Pick<ShotResult, 'rest' | 'restSurface' | 'holed' | 'penalty'>): void {
     const p = this.player;
     p.lastFrom = p.ball;
     p.strokes += 1 + r.penalty;
@@ -68,14 +79,14 @@ export class HoleGame {
     this.advance();
   }
 
-  /** Golf's "away" rule: the farthest active player plays next; ties go to player order. */
+  /** "Away" rule (golf and disc golf): the farthest active player plays next; ties go to tee order. */
   private advance(): void {
     let best = -1;
     let bestD = -1;
     this.players.forEach((p, i) => {
       if (p.holed || p.pickedUp) return;
       const d = this.distanceToPin(p);
-      if (d > bestD + 1e-6) { best = i; bestD = d; }
+      if (d > bestD + 1e-6 || (Math.abs(d - bestD) <= 1e-6 && this.rank[i] < this.rank[best])) { best = i; bestD = d; }
     });
     if (best >= 0) this.current = best;
   }

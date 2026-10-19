@@ -1,0 +1,56 @@
+# Disc golf (default mode)
+
+Implemented 2026-10-19. Golf (TCC #17) remains selectable on the setup screen.
+
+## Course: Tali, Helsinki
+
+The marquee US courses (Maple Hill, DeLaveaga, Idlewild, Winthrop Gold, Blue Ribbon Pines, Smugglers' Notch) have **no holes mapped in OSM** (checked 2026-10-19; Maple Hill is a single point). Of ~11,000 `disc_golf=hole` ways worldwide, the best-mapped famous-ish candidates were Tali (Helsinki), Toronto Island and Mercer County Park. Tali won because it's fully mapped *and* has open tree data (HSY canopy), which tree collisions need.
+
+| Item | Value |
+|---|---|
+| OSM course | `way/40254405` "Talin frisbeegolfpuisto" |
+| Holes | 18 `disc_golf=hole` lines, 58–218 m; every hole has a mapped tee and basket at its ends (the two that seemed missing were just outside an earlier, too-small query box) |
+| Par | **Not tagged in OSM.** Estimated from length: < 150 m → 3, < 240 m → 4, else 5. Shown as "(est.)" in the HUD |
+| OB | Roads (buffered by class), buildings, parking, the neighboring golf course, water; outside the course polygon + 35 m hole corridors |
+
+## Trees
+
+Source: **HSY land cover 2024** (Helsingin seudun ympäristöpalvelut), WFS layers `maanpeite_puusto_{2_10m,10_15m,15_20m,yli20m}_2024`: canopy polygons by height class, derived from lidar and aerial imagery. Open, no key. Every HSY dataset found on the HRI catalog is CC BY 4.0; the license page for this specific dataset wasn't found, so that's **likely but unconfirmed**. Attributed on screen either way.
+
+HSY gives *where canopy of a given height is*, not trunk positions. The pipeline (`plantTrees` in `src/course/disc-build.ts`):
+
+1. Rasterizes canopy polygons at 1 m, taller classes winning.
+2. Dart-throws blue-noise trunk positions inside canopy, spacing by class (3 / 4 / 5 / 6 m).
+3. Height uniform within the class; crown radius 0.55 × spacing; trunk radius 0.06 + 0.012·h.
+4. Crown base: young (2–10 m class) trees bushy from 0.3–1.5 m; taller trees 25–55% of height.
+5. **Fairway lanes:** no trunks within 3 m of any hole line; crowns overhanging a lane are limbed up to ≥ 3.5 m. Without this, canopy that overhangs real fairways became trunks in the fairway.
+6. No trunks within 3 m of a tee or 2 m of a basket.
+
+Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and clearings line up) but individual trunks are synthetic. Upgrade path: individual tree detection from a lidar CHM (docs/07).
+
+## Flight model (`src/disc/flight.ts`)
+
+- Point mass + bank angle φ. Lift and drag from angle of attack (Hummel 2003 / Potts & Crowther form: CL = CL0 + CLα·α, CD = CD0 + CDα·(α−α0)², a = ½ρA/m·v²·C). The disc's nose angle stays fixed, so as the path drops the angle of attack rises and the disc glides.
+- Lift tilts with bank, which is what makes discs curve. Flight numbers drive the bank: **turn** rolls toward anhyzer while speed > 60% of release; **fade** rolls back toward hyzer as it slows. Underpowered throws never turn and fade early, as real ones do.
+- Release angle (hyzer/anhyzer, Q/E) sets the initial bank; forehand (T) mirrors the curve.
+- Power meter maps to release speed through the measured distance-vs-speed curve, so meter fill ≈ fraction of max distance (distance grows ~v^3.7 otherwise).
+- Tuned by grid search to typical amateur full-power ranges: distance driver ~103 m, fairway ~84 m, midrange ~71 m, putter ~59 m (thrown), ~25 m (putt style).
+
+## Collisions
+
+| Obstacle | Model |
+|---|---|
+| Trunk | Cylinder; reflect horizontal velocity, keep ~half the speed, disc "dies" (lift ×0.2, extra drag) |
+| Crown | Ellipsoid matching the 3D crown; branch-hit probability per meter traveled inside it, denser toward the middle; a hit kicks the disc in a random direction at 20–40% speed |
+| Basket chains | Entering the chain zone: catch probability from how centered the line is (perpendicular offset from the pole) and speed. Misses near the edge **cut through**; others **spit out** backward |
+| Top band / lid, tray (cage), pole | Bounce off with heavy speed loss |
+| Water / OB | +1, play from where the disc last crossed in (casual, D19) |
+| Tap-in | Putts from < 1 m drop in |
+
+## First-person putting
+
+Inside 20 m (circle 2), after the tee throw, the camera switches to the thrower's eyes (1.65 m) with a putter selected. Drag/arrows aim; up/down sets launch angle (launch = view pitch + 7°). The power tick shows the power whose flight crosses the basket at mid-chain height. C toggles first person anywhere; the ghost arc shows the zero-error flight path in 3D.
+
+## Rules
+
+Stroke play, local hot-seat, away rule within a hole, **honors** on the next tee (lowest score on the previous hole first). Max 2 × par + 2 then pick up. Scorecard after each hole.
