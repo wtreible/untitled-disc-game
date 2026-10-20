@@ -15,6 +15,7 @@ import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
+import { treeShape } from '../disc/treeShapes';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen } from '../units';
@@ -128,6 +129,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
    */
   let gameClock = 0;
   const worldCache = new Map<number, { v: number; w: DiscWorld }>();
+  // Course trees are branched models (trunk + leaf clumps); themed courses' model trees keep theirs.
+  const propTrees = new Set((course.props ?? []).filter((p) => p.tree !== undefined).map((p) => trees[p.tree!]));
+  const shapeOf = (t: Tree) => (propTrees.has(t) ? null : treeShape(t));
   /** The course as player i plays it: their trees, their ponds, their basket. */
   const worldFor = (i: number): DiscWorld => {
     const c = worldCache.get(i);
@@ -136,7 +140,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const w: DiscWorld = {
       grid, terrain: new FlatTerrain(), basket: pin, branchDensity: course.branch_density,
       trees: new TreeIndex(treesFor(trees, removed, changes, i)), hazards: pondsFor(changes, i),
-      props: propColliders, clock0: gameClock,
+      props: propColliders, clock0: gameClock, treeShape: shapeOf,
     };
     worldCache.set(i, { v: courseVersion, w });
     return w;

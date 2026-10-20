@@ -9,7 +9,7 @@ import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
 import type { Vec3 } from '../game/terrain';
 import { classCanvas } from './classTexture';
-import { basketModel, discMesh, setTreesVisible, treeMeshes } from './disc3d';
+import { basketModel, discMesh, setTreesVisible, treeMeshes, updateTreeLod } from './disc3d';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
@@ -625,6 +625,11 @@ export class CourseScene {
   }
 
   render(): void {
+    if (this.fp) {
+      // Big forests draw tree models only near the eye and in view.
+      const p = this.persp.position, d = this.persp.getWorldDirection(new THREE.Vector3());
+      for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) updateTreeLod(g, p.x, p.y, d.x, d.y);
+    }
     const rot = Math.atan2(this.up[1], this.up[0]) - Math.PI / 2;
     const scalePixels = (ppm: number) => {
       const k = 1 / ppm;

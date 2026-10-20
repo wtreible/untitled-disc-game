@@ -19,6 +19,7 @@ import { DISC_RADIUS, type Disc } from './discs';
 import type { TreeIndex } from './trees';
 import { NEUTRAL, type Mods } from './mods';
 import { collideProps, type Collider } from './props';
+import { GREEN_DENSITY_BOOST, type TreeShape } from './treeShapes';
 
 const G = 9.81;
 /** Putts from closer than this are dropped in. */
@@ -121,6 +122,11 @@ export interface DiscWorld {
   props?: Collider[];
   /** Absolute time (s) at release; moving props (windmill blades) are evaluated at clock0 + t. */
   clock0?: number;
+  /**
+   * Trees drawn as branched models: their trunk slices and leaf clumps (src/disc/treeShapes.ts).
+   * Trees without a shape (and worlds without this) use the trunk + crown ellipsoid.
+   */
+  treeShape?: (t: Tree) => TreeShape | null;
 }
 
 /** Surface under (x, y) for this world's thrower: the course grid, plus any personal hazards. */
@@ -448,13 +454,22 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
   const ds = Math.hypot(p[0] - prev[0], p[1] - prev[1], p[2] - prev[2]);
   for (const t of world.trees.near(p[0], p[1], near)) {
     const g = world.terrain.heightAt(t.x, t.y);
-    const zc = g + (t.b + t.h) / 2;
-    const hz = Math.max(0.3, (t.h - t.b) / 2);
-    const dx = p[0] - t.x, dy = p[1] - t.y, dz = p[2] - zc;
-    const k = (dx * dx + dy * dy) / ((t.r + DISC_RADIUS) ** 2) + (dz * dz) / (hz * hz);
-    if (k >= 1) continue;
-    // Denser toward the crown's middle.
-    const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * m.branch * (1.4 - k);
+    const shape = world.treeShape?.(t);
+    let density: number;
+    if (shape) {
+      // Branched model: branches only in the leaf clumps, at the crown's average density (0.8 of
+      // the base, as the ellipsoid's 1.4 − k averages), stepped up for the smaller volume.
+      if (!shape.green(p[0], p[1], p[2] - g)) continue;
+      density = 0.8 * GREEN_DENSITY_BOOST;
+    } else {
+      const zc = g + (t.b + t.h) / 2;
+      const hz = Math.max(0.3, (t.h - t.b) / 2);
+      const dx = p[0] - t.x, dy = p[1] - t.y, dz = p[2] - zc;
+      const k = (dx * dx + dy * dy) / ((t.r + DISC_RADIUS) ** 2) + (dz * dz) / (hz * hz);
+      if (k >= 1) continue;
+      density = 1.4 - k; // denser toward the crown's middle
+    }
+    const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * m.branch * density;
     if (rng() < 1 - Math.exp(-lambda * ds)) {
       if (phases(t, c)) continue;
       if (m.branchPass > 0 && rng() < m.branchPass) continue;
@@ -476,10 +491,18 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
 
 function trunkCollide(p: Vec3, v: Vec3, world: DiscWorld, near: Tree[], c: TreeCtx, restitution: number): boolean {
   for (const t of world.trees.near(p[0], p[1], near)) {
-    const dx = p[0] - t.x, dy = p[1] - t.y;
+    // The trunk here: a slice of a branched model's (bent) trunk, or the plain trunk cylinder.
+    let cx = t.x, cy = t.y, R = t.t + DISC_RADIUS;
+    const zg = p[2] - world.terrain.heightAt(t.x, t.y);
+    const shape = world.treeShape?.(t);
+    if (shape) {
+      const s = shape.trunk.find((q) => zg >= q.z0 - DISC_RADIUS && zg < q.z1 + DISC_RADIUS) ?? (zg < 0 ? shape.trunk[0] : undefined);
+      if (!s) continue;
+      cx = s.x; cy = s.y; R = s.r + DISC_RADIUS;
+    } else if (zg > t.h * 0.9) continue;
+    const dx = p[0] - cx, dy = p[1] - cy;
     const d = Math.hypot(dx, dy);
-    const R = t.t + DISC_RADIUS;
-    if (d >= R || p[2] > world.terrain.heightAt(t.x, t.y) + t.h * 0.9) continue;
+    if (d >= R) continue;
     if (phases(t, c)) continue;
     const nx = dx / (d || 1), ny = dy / (d || 1);
     const vn = v[0] * nx + v[1] * ny;
@@ -489,8 +512,8 @@ function trunkCollide(p: Vec3, v: Vec3, world: DiscWorld, near: Tree[], c: TreeC
       v[1] -= (1 + restitution) * vn * ny;
       v[0] *= keep; v[1] *= keep; v[2] *= keep;
     }
-    p[0] = t.x + nx * R;
-    p[1] = t.y + ny * R;
+    p[0] = cx + nx * R;
+    p[1] = cy + ny * R;
     c.events.push('trunk');
     if (!c.hits.includes(t)) c.hits.push(t);
     return true;

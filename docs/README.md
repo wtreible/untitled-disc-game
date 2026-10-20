@@ -68,6 +68,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D43 | Two new arcade courses: **Fantasy Fairways** (medieval; knight, castle-courtyard basket, dragon on 9) and **Rainbow Runs** (rainbow road in space, off the road is OB; parody nods only). Models: Kenney Castle/Fantasy Town/Space kits, KayKit Adventurers, Quaternius Animated Monsters, all CC0. | 2026-10-20 |
 | D44 | Main menu groups courses into **Real** (mapped: Tali, Tali Forest) and **Arcade** (themed: Mini Golf Madness, Fantasy Fairways, Rainbow Runs). | 2026-10-20 |
 | D45 | Box colliders push the disc out through a face that isn't inside another collider (touching boxes trapped ~1 in 2,000 throws in mid-air). | 2026-10-20 |
+| D46 | Course trees are branched CC0 models (Quaternius Stylized Nature MegaKit). Branch hits happen only inside their leaf clumps (×1.3 density, since the clumps are ~38% of the old crown volume); trunks follow the model. Big forests draw models near the eye only. | 2026-10-20 |
 
 ## Open questions
 

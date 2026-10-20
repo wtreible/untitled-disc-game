@@ -61,6 +61,7 @@ npm run dev        # http://localhost:5173
 | `npm run silly-course` | Rebuild `public/courses/silly.json` (Mini Golf Madness) |
 | `npm run fantasy-course` | Rebuild `public/courses/fantasy.json` (Fantasy Fairways) |
 | `npm run rainbow-course` | Rebuild `public/courses/rainbow.json` (Rainbow Runs) |
+| `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes into `src/disc/treeShapes.data.ts` |
 | `npm run course` | Rebuild `public/courses/tcc-main-17.json` from cached OSM data (`data/raw/`). Add `-- --refresh` to re-query Overpass. Other holes: `-- --course <way id> --hole <ref> --links <name> --out <file>` |
 | `npm test` | Unit tests (geo, surfaces, shot physics, rules, the built course file) |
 | `npm run typecheck` | TypeScript |
@@ -79,4 +80,4 @@ src/modes/                    golf.ts / disc.ts controllers (input, HUD, loop)
 src/main.ts                   setup screen → mode
 ```
 
-Attribution: imagery © Esri and its partners (streamed live, not stored); course data © OpenStreetMap contributors (ODbL); tree canopy © HSY land cover 2024; 3D models (all CC0) by Kenney (kenney.nl), Kay Lousberg (KayKit Adventurers) and Quaternius (Animated Monsters).
+Attribution: imagery © Esri and its partners (streamed live, not stored); course data © OpenStreetMap contributors (ODbL); tree canopy © HSY land cover 2024; 3D models (all CC0) by Kenney (kenney.nl), Kay Lousberg (KayKit Adventurers) and Quaternius (Animated Monsters, Stylized Nature MegaKit trees).

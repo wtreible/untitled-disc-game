@@ -63,8 +63,17 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 
 | Obstacle | Model |
 |---|---|
-| Trunk | Cylinder; reflect horizontal velocity, keep ~half the speed, disc "dies" (lift ×0.2, extra drag) |
-| Crown | Ellipsoid matching the 3D crown; branch-hit probability per meter traveled inside it, denser toward the middle; a hit kicks the disc in a random direction at 20–40% speed |
+| Trunk | The model's trunk as stacked slices (it bends on some trees) up to where it forks; reflect horizontal velocity, keep ~half the speed, disc "dies" (lift ×0.2, extra drag) |
+| Leaves | Branch-hit probability per meter traveled **inside the model's leaf clumps** only; a hit kicks the disc in a random direction at 20–40% speed. Bare branches and the gaps between clumps don't collide |
+
+### Tree models (2026-10-20)
+
+Course trees are branched models from Quaternius' [Stylized Nature MegaKit](https://opengameart.org/content/stylized-nature-megakit) (CC0, free Standard version): five broadleaf (`CommonTree_1–5`) and five pines (`Pine_1–5`) in `public/models/qtrees/`. Bark textures are downscaled to 512 px.
+
+- **Which model:** picked from a hash of the tree's position (low-crowned trees are 65% pines, others 25%), with a hashed turn. Scaled so the model's height is the tree's `h` and its farthest leaf is at the tree's crown radius `r`. `src/disc/treeShapes.ts` does this for both physics and rendering.
+- **Shapes** (`npm run tree-shapes`, `scripts/build-tree-shapes.ts`): leaf triangles are rasterized into a 0.3 m voxel grid, gaps between leaf cards closed, clump interiors filled, then opened back. The trunk is traced in 0.4 m slices from the base until it forks. Every rendered leaf vertex falls inside (or within one voxel of) the leaf volume.
+- **Density:** the leaf clumps hold 38% of the volume of the ellipsoid crowns they replace (22–56% by model), so branch density inside them is ×1.3 (0.8 × base, the old crown's average, × 1.3). A disc still meets fewer branches. Same 3,240-throw sweep, old crown → models: Tali branch hits 4.2% → 1.9% of throws, trunk 3.6% → 3.7%; Tali Forest branch 25% → 17%, trunk 38% → 41%.
+- **Rendering:** instanced per model and part (bark, leaves). Courses with more than 1,500 trees (Tali Forest) draw models only for the nearest 300 trees within 90 m in view of the first-person eye, re-placed every 10 m or 20° turn; the rest keep the simple trunk + ellipsoid stand-ins. Themed courses' own model trees (Kenney etc.) keep their trunk + ellipsoid collision.
 | Basket chains | Entering the chain zone: catch probability from how centered the line is (perpendicular offset from the pole) and speed. Misses near the edge **cut through**; other misses usually **rattle in** (65%, less for firm putts over 8 m/s) and only otherwise **spit out** backward. Spit-outs are ~2% of putts (were ~10%, 2026-10-20) |
 | Top band / lid, tray (cage), pole | Bounce off with heavy speed loss. The disc is pushed back outside the surface it hit (without that it stuck to the cage and slid down it) |
 | Tray from above | A disc coming down inside the tray's footprint (a spit-out or band hit falling back) lands in the tray and counts, as in the PDGA rules |
