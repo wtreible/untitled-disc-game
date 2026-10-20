@@ -14,7 +14,10 @@ import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
 
-const OVERLAY_Z = 30; // above the tallest crowns, so top-down overlays aren't hidden by trees
+const OVERLAY_Z = 30;
+/** Default replay chase offset: 2.5 m back and 1.2 m up, as distance + elevation. */
+const CHASE_DIST = Math.hypot(2.5, 1.2);
+const CHASE_ELEV = Math.atan2(1.2, 2.5); // above the tallest crowns, so top-down overlays aren't hidden by trees
 const EYE = 1.65;
 
 export class CourseScene {
@@ -358,11 +361,23 @@ export class CourseScene {
    * Replay chase camera: behind and above the disc, looking at it. `heading` is the direction of
    * travel. Eased so bounces and tree kicks don't whip the camera around.
    */
+  /**
+   * Player orbit around the disc during replays: yaw offset from "behind the disc", elevation
+   * angle, and distance. Drag/scroll change it; it carries over between replays (R resets).
+   */
+  readonly orbit = { yaw: 0, elev: CHASE_ELEV, dist: CHASE_DIST };
+
+  resetOrbit(): void {
+    Object.assign(this.orbit, { yaw: 0, elev: CHASE_ELEV, dist: CHASE_DIST });
+  }
+
   chase(p: Vec3, heading: number, reset = false, dt = 1 / 60): void {
-    // Eased follow, frame-rate independent. `back` is the target offset; the easing lag adds
-    // ~2 m on a fast disc, so the camera rides ~4–5 m behind.
-    const back = 2.5, up = 1.2;
-    const want = new THREE.Vector3(p[0] - Math.cos(heading) * back, p[1] - Math.sin(heading) * back, Math.max(1.0, p[2] + up));
+    // Eased follow, frame-rate independent. The default offset is 2.5 m back, 1.2 m up; the
+    // easing lag adds ~2 m on a fast disc, so the camera rides ~4–5 m behind.
+    const { yaw, elev, dist } = this.orbit;
+    const h = heading + yaw;
+    const flat = dist * Math.cos(elev);
+    const want = new THREE.Vector3(p[0] - Math.cos(h) * flat, p[1] - Math.sin(h) * flat, Math.max(0.5, p[2] + dist * Math.sin(elev)));
     if (reset) {
       // The replay has its own lens; the player's scroll zoom is restored by endChase().
       this.savedFov = this.persp.fov;

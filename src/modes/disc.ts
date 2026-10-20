@@ -582,7 +582,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   // ---------- input ----------
   const canvas = scene.renderer.domElement;
-  let drag: { x: number; y: number; mode: 'aim' | 'pan' | 'look' } | null = null;
+  let drag: { x: number; y: number; mode: 'aim' | 'pan' | 'look' | 'orbit' } | null = null;
 
   function setAimTarget(t: Vec2): void {
     aimTarget = t;
@@ -595,7 +595,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
-    if (phase === 'replay') { endReplay(); return; }
+    // Replay: drag orbits the camera around the disc (clicking doesn't skip; Space does).
+    if (phase === 'replay') { drag = { x: e.clientX, y: e.clientY, mode: 'orbit' }; return; }
     if (phase === 'placing') {
       if (e.button === 0) placeAt(scene.screenToWorld(e.clientX, e.clientY));
       else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
@@ -609,6 +610,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!drag) return;
     if (drag.mode === 'aim' && phase === 'aim') setAimTarget(scene.screenToWorld(e.clientX, e.clientY));
     else if (drag.mode === 'pan') scene.panPixels(e.clientX - drag.x, e.clientY - drag.y);
+    else if (drag.mode === 'orbit') {
+      const o = scene.orbit;
+      o.yaw -= (e.clientX - drag.x) * 0.006;
+      o.elev = Math.min(1.45, Math.max(-0.1, o.elev + (e.clientY - drag.y) * 0.005));
+    }
     else if (drag.mode === 'look' && (phase === 'aim' || phase === 'charging')) {
       look((-(e.clientX - drag.x) * 0.0025), (-(e.clientY - drag.y) * 0.0025));
     }
@@ -619,6 +625,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const f = Math.exp(-e.deltaY * 0.0015);
+    if (phase === 'replay') {
+      // Replay: scroll moves the camera closer to / farther from the disc.
+      scene.orbit.dist = Math.min(60, Math.max(1.2, scene.orbit.dist / f));
+      return;
+    }
     if (isFP()) scene.zoomFov(1 / f);
     else scene.zoomAt(e.clientX, e.clientY, f);
   }, { passive: false });
@@ -701,6 +712,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (k === 'arrowright') rotateAim(e.shiftKey ? -0.2 : -1);
     else if (k === 'arrowup' && isFP() && phase === 'aim') { look(0, (e.shiftKey ? 0.2 : 1) * Math.PI / 180); recomputeTick(); }
     else if (k === 'arrowdown' && isFP() && phase === 'aim') { look(0, -(e.shiftKey ? 0.2 : 1) * Math.PI / 180); recomputeTick(); }
+    else if (k === 'r' && phase === 'replay') scene.resetOrbit();
     else if (k === 'w' && isFP()) nudgeTargetDistance(e.shiftKey ? 5 : 1);
     else if (k === 's' && isFP()) nudgeTargetDistance(e.shiftKey ? -5 : -1);
     else if (k === 'm' && rogue) takeMulligan();

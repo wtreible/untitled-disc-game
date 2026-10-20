@@ -55,6 +55,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D33 | Settings menu (⚙ / Esc) with metric (m) / imperial (ft for disc, yd for golf). | 2026-10-20 |
 | D34 | Disc golf replays every throw from a disc-chasing camera (skip: Space/click; toggle in Settings). First-person zoom-out up to 105°. | 2026-10-20 |
 | D35 | Common augments buffed ~50% (still below the epic version of the same effect). | 2026-10-20 |
+| D36 | Replay camera is player-controlled: drag orbits, scroll zooms, R resets; only Space skips. | 2026-10-20 |
 
 ## Open questions
 

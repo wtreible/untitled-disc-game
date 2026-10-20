@@ -33,7 +33,7 @@ npm run dev        # http://localhost:5173
 | First person / top-down | C. Starts in first person; inside 20 m it's always first person unless you press C |
 | Pan / zoom / view / re-frame | Right-drag / scroll / V / F |
 | Roguelike | M: mulligan (if owned, right after a throw lands); P: arm Perfect Form; before a hole, click the map to place hexes / clear-cuts |
-| Replay | After each throw; Space or click to skip |
+| Replay | After each throw: drag to orbit around the disc, scroll to zoom, R resets the view, Space skips |
 | Settings | ⚙ button or Esc: metric / imperial units, replays on/off, quit to menu |
 
 ## Controls: golf
