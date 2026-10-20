@@ -33,8 +33,23 @@
       <div class="help" id="help">Click to aim · ←/→ fine aim · [ / ] club · right-drag pan · scroll zoom · F re-frame · V view</div>
     </footer>
 
+    <div id="place-bar" class="panel" hidden><span id="place-text"></span> <button id="place-skip">Skip</button></div>
     <div id="reticle" hidden></div>
     <div id="minimap" hidden title="Click to aim here"></div>
+    <button id="settings-btn" title="Settings (Esc)" hidden>⚙</button>
+    <div id="settings" class="modal" hidden>
+      <div class="card">
+        <h1>Settings</h1>
+        <label>Units
+          <select id="units-game">
+            <option value="metric">Metric (m)</option>
+            <option value="imperial">Imperial (ft / yd)</option>
+          </select>
+        </label>
+        <button id="settings-close" class="primary">Resume</button>
+        <button id="settings-menu">Quit to menu</button>
+      </div>
+    </div>
     <div id="toast" hidden></div>
     <div id="status"></div>
     <div id="attribution"></div>
@@ -54,6 +69,12 @@
           <select id="holes"></select>
         </label>
         <p id="setup-hole"></p>
+        <label>Units
+          <select id="units-setup">
+            <option value="metric">Metric (m)</option>
+            <option value="imperial">Imperial (ft / yd)</option>
+          </select>
+        </label>
         <label>Players
           <select id="player-count">
             <option>1</option><option selected>2</option><option>3</option><option>4</option>

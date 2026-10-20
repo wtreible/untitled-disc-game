@@ -123,3 +123,12 @@ kbd { font-size: 11px; opacity: 0.7; border: 1px solid currentColor; border-radi
 .pcard:hover { transform: translateY(-2px); background: #1f2c1a; }
 .draft-actions { display: flex; gap: 8px; }
 #draft-owned { font-size: 12px; }
+
+#settings-btn {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  font-size: 18px; padding: 4px 10px; background: var(--panel); border-radius: 8px;
+}
+#place-bar {
+  bottom: 12px; left: 50%; transform: translateX(-50%); width: min(720px, calc(100vw - 24px));
+  display: flex; align-items: center; gap: 12px; justify-content: space-between;
+}

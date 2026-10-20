@@ -44,11 +44,15 @@ export class HoleGame {
   /** Extra throws before pick-up, per player (roguelike Second Wind). */
   capBonus: number[];
 
-  constructor(readonly hole: HoleLike, names: string[], order?: number[], capBonus?: number[]) {
+  /** Per-player basket position (roguelike Short Pin); defaults to the hole's. */
+  readonly pins: Vec2[];
+
+  constructor(readonly hole: HoleLike, names: string[], order?: number[], capBonus?: number[], tees?: Vec2[], pins?: Vec2[]) {
     this.players = names.map((name, i) => ({
       name, color: PLAYER_COLORS[i % PLAYER_COLORS.length],
-      ball: [...hole.tee] as Vec2, lie: 'tee', strokes: 0, holed: false, pickedUp: false,
+      ball: [...(tees?.[i] ?? hole.tee)] as Vec2, lie: 'tee', strokes: 0, holed: false, pickedUp: false,
     }));
+    this.pins = names.map((_, i) => pins?.[i] ?? hole.pin);
     this.capBonus = capBonus ?? names.map(() => 0);
     const o = order ?? names.map((_, i) => i);
     this.rank = names.map((_, i) => o.indexOf(i));
@@ -64,7 +68,7 @@ export class HoleGame {
   }
 
   distanceToPin(p: Player = this.player): number {
-    return dist(p.ball, this.hole.pin);
+    return dist(p.ball, this.pins[this.players.indexOf(p)] ?? this.hole.pin);
   }
 
   /** Record a completed shot for the current player and advance the turn. */

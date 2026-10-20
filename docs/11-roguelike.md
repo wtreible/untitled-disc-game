@@ -1,87 +1,107 @@
 # Roguelike run (separate mode)
 
-Status: **proposal under review** (2026-10-20). The draft mechanic and every powerup below are implemented and tested, so the list can be play-tested. Expect names, numbers and membership to change.
+Status: playable; augment list still open to changes (2026-10-20). Every augment below is implemented and tested.
 
-Selected as "Disc golf: Roguelike run (Tali simple)" on the setup screen. The normal disc golf modes have no powerups.
+Selected as "Disc golf: Roguelike run (Tali simple)". **A run is always 18 holes.** The normal disc golf modes have no augments and show the full ghost line.
 
 ## Draft
 
-- After every hole except the last, each player drafts one powerup, best score on that hole first.
-- One tier is rolled per draft: common 70%, epic 25%, legendary 5%. All 3 cards come from that tier.
-- **Bump:** the center card has a 5% chance to come from the next tier up (common → epic, epic → legendary; legendary drafts can't bump). Marked "★ bumped".
-- Powerups last the whole run and stack unless marked unique; owned uniques aren't offered again. Skip is allowed.
-- Code: `src/rogue/powerups.ts` (catalog + draft), `src/disc/mods.ts` (the modifier set the flight model reads).
+- **Starter augment** before hole 1, rolled with better odds: common 40%, epic 45%, legendary 15%.
+- After every hole except the last, each player drafts one, best score on that hole first. Tier: common 70%, epic 25%, legendary 5%; all cards from that tier.
+- **Bump:** the center card has a 5% chance to be one tier up (legendary drafts can't bump). Marked "★ bumped".
+- Augments last the run and stack unless unique. Skip is allowed. **Hexes are never offered in single player.**
+- Play-testing: `?grant=0:sapling,1:the-bucket` in the URL gives augments to players (0-based) at the start of a run.
 
-## Common (20)
+## Three kinds of augment
 
-| # | Name | Effect | |
-|---|---|---|---|
-| 1 | Grip Tape | +6% distance. | stacks |
-| 2 | Steady Hands | 20% less aim wobble. | stacks |
-| 3 | Fresh Plastic | +1 glide on every disc. | stacks |
-| 4 | Chain Magnet | +8% chance the chains catch. | stacks |
-| 5 | Soft Hands | Tap-in range +0.6 m (1 m → 1.6 m). | stacks |
-| 6 | Pine Sap | Branches are 20% less likely to grab your disc. | stacks |
-| 7 | Tee Pad Grip | +10% distance on tee throws. | stacks |
-| 8 | Skip Shot | Discs slide 50% farther after landing. | stacks |
-| 9 | Shot Shaper | Hyzer and anhyzer curve 25% more. | stacks |
-| 10 | Smooth Release | The power meter moves 20% slower. | stacks |
-| 11 | Putting Practice | Putts reach 15% farther and wobble 20% less. | stacks |
-| 12 | Beat-In Plastic | −0.5 fade on every disc: straighter finishes. | stacks |
-| 13 | Flippy Plastic | −0.5 turn on every disc: more turnover. | stacks |
-| 14 | Overstable Stamp | +0.5 turn and +0.5 fade: dependable fade. | stacks |
-| 15 | Reroll Token | +1 draft reroll. | stacks |
-| 16 | Glancing Blow | Trunk hits keep 40% more speed. | stacks |
-| 17 | Wide Chains | Baskets are 6% bigger for you. | stacks |
-| 18 | Run-Up | Throws past 90% power no longer add wobble. | unique |
-| 19 | Lucky Leaves | 15% of branch hits miss you. | stacks |
-| 20 | Second Wind | +2 throws before you must pick up. | stacks |
+| Kind | Who it affects | Examples |
+|---|---|---|
+| **you** | Your own throws | Big Arm, Laser Line, Ghost Disc |
+| **your course** | The course *as you play and see it*, only for you | The Bucket (basket 100% bigger, visibly), Magnet Basket (you see the pull ring), Forward Tee, Short Pin, Clear-Cut |
+| **hex** | The course for *everyone else*, never you; you don't even see it | Sapling, Thicket, Pond Prank, Back Tees, Heckler, Shrink Ray |
 
-## Epic (15)
+Placed hexes (Sapling, Thicket, Pond Prank) and Clear-Cut are placed by their owner in a short top-down step before each hole, and last that hole. Every player's throws run against their own copy of the course: their trees, their ponds, their basket.
 
-| # | Name | Effect | |
-|---|---|---|---|
-| 1 | Laser Line | Half the aim wobble on every throw and putt. | stacks |
-| 2 | Chain Monster | +20% catch chance; half of cut-throughs get caught. | stacks |
-| 3 | Mulligan | Once per hole, take a throw back right after it lands (M). | stacks |
-| 4 | Ghost Disc | Each throw passes through the first tree it touches. | stacks |
-| 5 | Big Arm | +15% distance. | stacks |
-| 6 | Ace Hunter | +30% catch chance on throws from the tee. | stacks |
-| 7 | Lucky Kicks | Trees kick your disc toward the basket. | unique |
-| 8 | Magnet Basket | Discs stopping within 4 m of the basket slide 1.5 m closer. | unique |
-| 9 | Hover Plastic | +2 glide and −1 fade on every disc. | stacks |
-| 10 | OB Insurance | No penalty strokes for OB or water. | unique |
-| 11 | Wide Basket | Baskets are 20% bigger for you. | stacks |
-| 12 | Double Draft | Drafts show one more card. | stacks |
-| 13 | Thread the Needle | Branches are 50% less likely to grab your disc. | stacks |
-| 14 | Jump Putt | Putts reach 40% farther. | stacks |
-| 15 | Sticky Plastic | Discs stop where they land; landing within 2 m of OB or water is saved. | unique |
+## Ghost line is earned
 
-## Legendary (9)
+Roguelike players start with **no ghost line** (the aim line, target ring and power tick remain). Scout's Eye (+30%) and Flight Plan (+60%) reveal the start of the predicted flight; Oracle shows all of it plus the ±1σ wobble spread.
 
-| # | Name | Effect | |
-|---|---|---|---|
-| 1 | Phase Disc | Your disc passes through every tree. | unique |
-| 2 | Homing Chains | Discs bend toward the basket late in flight. | stacks |
-| 3 | Black Hole | Chains catch anything they touch; baskets 35% bigger. | unique |
-| 4 | Golden Arm | +30% distance and no wobble when muscling a throw. | unique |
-| 5 | Rewind | 2 mulligans per hole (M). | stacks |
-| 6 | Perfect Form | Once per hole, arm a throw (P) that flies exactly on the ghost line. | stacks |
-| 7 | Gimme Circle | Anything that stops within 5 m of the basket is in. | unique |
-| 8 | Clone Disc | Every throw is thrown twice; you play the better one. | unique |
-| 9 | Lumberjack | Trees your disc hits are cut down for the rest of the round. | unique |
+## Common (25)
+
+| # | Name | Effect | Affects | |
+|---|---|---|---|---|
+| 1 | Grip Tape | +6% distance. | you | stacks |
+| 2 | Steady Hands | 20% less aim wobble. | you | stacks |
+| 3 | Fresh Plastic | +1 glide on every disc. | you | stacks |
+| 4 | Chain Magnet | +8% chance the chains catch. | you | stacks |
+| 5 | Soft Hands | Tap-in range +0.6 m (1 m → 1.6 m). | you | stacks |
+| 6 | Pine Sap | Branches are 20% less likely to grab your disc. | you | stacks |
+| 7 | Tee Pad Grip | +10% distance on tee throws. | you | stacks |
+| 8 | Skip Shot | Discs slide 50% farther after landing. | you | stacks |
+| 9 | Shot Shaper | Hyzer and anhyzer curve 25% more. | you | stacks |
+| 10 | Smooth Release | The power meter moves 20% slower. | you | stacks |
+| 11 | Putting Practice | Putts reach 15% farther and wobble 20% less. | you | stacks |
+| 12 | Beat-In Plastic | −0.5 fade on every disc: straighter finishes. | you | stacks |
+| 13 | Flippy Plastic | −0.5 turn on every disc: more turnover. | you | stacks |
+| 14 | Overstable Stamp | +0.5 turn and +0.5 fade: dependable fade. | you | stacks |
+| 15 | Reroll Token | +1 draft reroll. | you | stacks |
+| 16 | Glancing Blow | Trunk hits keep 40% more speed. | you | stacks |
+| 17 | Wide Chains | Baskets are 6% bigger for you. | you | stacks |
+| 18 | Run-Up | Throws past 90% power no longer add wobble. | you | unique |
+| 19 | Lucky Leaves | 15% of branch hits miss you. | you | stacks |
+| 20 | Second Wind | +2 throws before you must pick up. | you | stacks |
+| 21 | Scout's Eye | See the first 30% of your ghost flight line. | you | stacks |
+| 22 | Forward Tee | Your tee is 8 m closer on every hole (only for you). | your course | stacks |
+| 23 | Sapling | Before each hole, plant a bush near the basket. Opponents see and hit it; you never do. | **hex** | stacks |
+| 24 | Heckler | Opponents' power meters run 15% faster. | **hex** | stacks |
+| 25 | Back Tees | Opponents tee off 8 m farther back. | **hex** | stacks |
+
+## Epic (20)
+
+| # | Name | Effect | Affects | |
+|---|---|---|---|---|
+| 1 | Laser Line | Half the aim wobble on every throw and putt. | you | stacks |
+| 2 | Chain Monster | +20% catch chance; half of cut-throughs get caught. | you | stacks |
+| 3 | Mulligan | Once per hole, take a throw back right after it lands (M). | you | stacks |
+| 4 | Ghost Disc | Each throw passes through the first tree it touches. | you | stacks |
+| 5 | Big Arm | +15% distance. | you | stacks |
+| 6 | Ace Hunter | +30% catch chance on throws from the tee. | you | stacks |
+| 7 | Lucky Kicks | Trees kick your disc toward the basket. | you | unique |
+| 8 | Magnet Basket | Discs stopping within 4 m of your basket slide 1.5 m closer. You see its pull. | your course | unique |
+| 9 | Hover Plastic | +2 glide and −1 fade on every disc. | you | stacks |
+| 10 | OB Insurance | No penalty strokes for OB or water. | you | unique |
+| 11 | Wide Basket | Baskets are 20% bigger for you. | your course | stacks |
+| 12 | Double Draft | Drafts show one more card. | you | stacks |
+| 13 | Thread the Needle | Branches are 50% less likely to grab your disc. | you | stacks |
+| 14 | Jump Putt | Putts reach 40% farther. | you | stacks |
+| 15 | Sticky Plastic | Discs stop where they land; landing within 2 m of OB or water is saved. | you | unique |
+| 16 | Flight Plan | See 60% more of your ghost flight line. | you | stacks |
+| 17 | The Bucket | Your basket is 100% bigger, and looks it (only for you). | your course | unique |
+| 18 | Clear-Cut | Before each hole, remove one tree, for you only. | your course | stacks |
+| 19 | Thicket | Before each hole, plant 3 trees on the hole. Opponents see and hit them; you never do. | **hex** | stacks |
+| 20 | Pond Prank | Before each hole, drop a pond on the hole. For opponents it is water (+1). | **hex** | stacks |
+
+## Legendary (12)
+
+| # | Name | Effect | Affects | |
+|---|---|---|---|---|
+| 1 | Phase Disc | Your disc passes through every tree. | you | unique |
+| 2 | Homing Chains | Discs bend toward the basket late in flight. | you | stacks |
+| 3 | Black Hole | Chains catch anything they touch; baskets 35% bigger. | you | unique |
+| 4 | Golden Arm | +30% distance and no wobble when muscling a throw. | you | unique |
+| 5 | Rewind | 2 mulligans per hole (M). | you | stacks |
+| 6 | Perfect Form | Once per hole, arm a throw (P) that flies exactly on the ghost line. | you | stacks |
+| 7 | Gimme Circle | Anything that stops within 5 m of the basket is in. | you | unique |
+| 8 | Clone Disc | Every throw is thrown twice; you play the better one. | you | unique |
+| 9 | Lumberjack | Trees your disc hits are cut down for the rest of the round. | you | unique |
+| 10 | Oracle | See your whole ghost flight line, plus the spread of your wobble. | you | unique |
+| 11 | Short Pin | Your basket sits 20% closer to the tee on every hole (only for you). | your course | unique |
+| 12 | Shrink Ray | Opponents' baskets are 40% smaller. | **hex** | unique |
 
 ## Implementation notes
 
-- Distance bonuses scale the power meter (which maps ~linearly to distance), so "+15%" is ~+15% at any power. Past a full meter, release speed follows the measured full-power sensitivity.
-- Mulligan / Rewind: after a throw lands, a ~2.6 s window shows "M: mulligan"; pressing M restores the player's lie and strokes. Not offered after holing out.
-- Perfect Form: P arms it for the next throw, which uses zero execution error (exactly the ghost line).
-- Clone Disc simulates two throws and keeps the better one (holed, else closer to the basket, with penalties counting 30 m).
-- Lumberjack removes trees for everyone for the rest of the run (3D instance hidden, map symbols redrawn).
-
-## Open questions for review
-
-- Base game currently shows the full ghost flight line. A roguelike usually makes information a reward (e.g. short ghost line by default, powerups to extend it). Change the base?
-- Run structure: is a run just 18 holes, or should there be lives / a par target that ends the run early?
-- Should drafts be per player (current) or one shared pick in co-op?
+- Code: `src/rogue/powerups.ts` (catalog, draft), `src/rogue/course.ts` (per-player course: trees, ponds, tees, baskets, placement rules), `src/disc/mods.ts` (modifiers; `effectiveMods` applies opponents' hexes).
+- Distance bonuses scale the power meter, so "+15%" is ~+15% at any power.
+- Mulligan / Rewind: ~2.6 s "M: mulligan" window after a throw lands. Perfect Form: P arms a zero-error throw.
+- Clone Disc keeps the better of two throws; Lumberjack removes hit trees for everyone (a hit hex tree is removed from the hole).
 

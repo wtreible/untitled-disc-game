@@ -1,6 +1,7 @@
 // Setup screen: pick the game and players, then hand off to a mode. Modes own the page after that;
 // "Play again" reloads, which brings this screen back with the last names filled in.
 import { PLAYER_COLORS } from './game/game';
+import { getUnits, setUnits, type Units } from './units';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -37,11 +38,11 @@ $('holes').innerHTML = holeOptions.map((o, i) => `<option value="${i}">${o.label
 
 function syncMode(): void {
   const mode = $<HTMLSelectElement>('mode').value;
-  $('holes-row').hidden = mode === 'golf';
+  $('holes-row').hidden = mode === 'golf' || mode === 'disc-rogue'; // runs are always 18 holes
   $('setup-hole').textContent = {
     'disc-simple': 'Tali disc golf park layout, drawn simply: 1–5 trees per hole, a defender guarding every basket. Starts in first person.',
     'disc-forest': 'Tali disc golf park over satellite imagery: ~10k trees from HSY 2024 canopy data. Starts in first person.',
-    'disc-rogue': 'Roguelike run on the simple Tali course: after every hole, draft 1 of 3 powerups (common, epic or legendary). Powerups last the whole run.',
+    'disc-rogue': 'Roguelike run: 18 holes on the simple Tali course. Start with a starter augment, then draft 1 of 3 after every hole. Earn your ghost line; hex your friends.',
     golf: 'The Country Club, Brookline MA: Main course hole 17, par 4.',
   }[mode] ?? '';
 }
@@ -56,12 +57,30 @@ $('player-count').addEventListener('change', renderNameInputs);
 syncMode();
 renderNameInputs();
 
+// Units: on the setup screen and in the in-game settings menu (⚙ / Esc).
+for (const id of ['units-setup', 'units-game']) {
+  const sel = $<HTMLSelectElement>(id);
+  sel.value = getUnits();
+  sel.addEventListener('change', () => setUnits(sel.value as Units));
+}
+window.addEventListener('unitschange', () => {
+  for (const id of ['units-setup', 'units-game']) $<HTMLSelectElement>(id).value = getUnits();
+});
+const openSettings = (open: boolean) => { $('settings').hidden = !open; };
+$('settings-btn').addEventListener('click', () => openSettings(true));
+$('settings-close').addEventListener('click', () => openSettings(false));
+$('settings-menu').addEventListener('click', () => location.reload());
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('setup').hidden === true) openSettings($('settings').hidden === true);
+});
+
 $('start').addEventListener('click', async () => {
   const names = [...$('player-names').querySelectorAll('input')].map((i, k) => i.value.trim() || `Player ${k + 1}`);
   const mode = $<HTMLSelectElement>('mode').value;
   save('sat-golf:names', names);
   save('sat-golf:setup', { mode, holes: $<HTMLSelectElement>('holes').value, players: $<HTMLSelectElement>('player-count').value });
   $('setup').hidden = true;
+  $('settings-btn').hidden = false;
   if (mode === 'golf') {
     $('release').hidden = true;
     const { startGolf } = await import('./modes/golf');
@@ -70,6 +89,7 @@ $('start').addEventListener('click', async () => {
     const o = holeOptions[parseInt($<HTMLSelectElement>('holes').value, 10)];
     $('fp-toggle').hidden = false;
     const { startDisc } = await import('./modes/disc');
-    await startDisc({ names, course: mode === 'disc-forest' ? 'forest' : 'simple', first: o.first, count: o.count, rogue: mode === 'disc-rogue' });
+    const rogue = mode === 'disc-rogue';
+    await startDisc({ names, course: mode === 'disc-forest' ? 'forest' : 'simple', first: rogue ? 0 : o.first, count: rogue ? 18 : o.count, rogue });
   }
 });

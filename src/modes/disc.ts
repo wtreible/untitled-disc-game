@@ -2,12 +2,13 @@
 import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
 import { simplify } from '../course/disc-build';
-import { decodeTrees, type DiscCourseFile, type DiscHole } from '../course/disc-types';
+import { decodeTrees, type DiscCourseFile, type DiscHole, type Tree } from '../course/disc-types';
 import { DISCS, PUTTER_DISC, suggestDisc, type Disc } from '../disc/discs';
 import { BASKET, simulateThrow, type DiscWorld, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
 import { TreeIndex } from '../disc/trees';
-import { neutralMods, type Mods } from '../disc/mods';
-import { byId, drawOffer, type Offer } from '../rogue/powerups';
+import { effectiveMods, neutralMods, rogueStartMods, type Mods } from '../disc/mods';
+import { emptyChanges, PLACE_TEXT, pinFor, place, placementQueue, pondsFor, teeFor, treesFor, type HoleChanges, type PlaceKind } from '../rogue/course';
+import { byId, drawOffer, rollTier, STARTER_WEIGHTS, type Offer } from '../rogue/powerups';
 import { PLAYER_COLORS } from '../game/game';
 import { Round } from '../game/round';
 import { SurfaceGrid } from '../game/surfaces';
@@ -15,6 +16,7 @@ import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
+import { convertText, fmtLen } from '../units';
 
 export const DISC_COURSES = {
   simple: '/courses/tali-simple.json',
@@ -24,8 +26,11 @@ const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 const PLAYBACK = 1.5;
 /** Circle 2: inside this, switch to first-person putting. */
 const PUTT_RANGE = 20;
+/** First person: launch = view pitch + this, so a level view gives a putt's gentle arc… */
 const PUTT_LAUNCH_OFFSET = 0.12;
-const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2; // launch angle = view pitch + this, so a level view gives a putt's gentle arc
+/** …or, for throws, the disc's own best launch angle (fast discs want it flatter). */
+const launchOffset = (disc: Disc, putt: boolean) => (putt ? PUTT_LAUNCH_OFFSET : disc.launch);
+const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2;
 const LIE_LABELS: Record<string, string> = {
   tee: 'Tee pad', fairway: 'Fairway', rough: 'Open', trees: 'Woods', bunker: 'Sand', green: 'Basket', path: 'Path', water: 'Water', oob: 'OB',
 };
@@ -61,7 +66,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const fmtPar = (d: number) => (d === 0 ? 'E' : d > 0 ? `+${d}` : String(d));
 
-type Phase = 'aim' | 'charging' | 'flying' | 'between';
+type Phase = 'aim' | 'charging' | 'flying' | 'between' | 'placing';
 
 export interface DiscOptions {
   names: string[];
@@ -81,17 +86,41 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     bounds: course.bounds, boundary: course.boundary, features: course.features, ob: course.ob,
     trees: course.canopy.map((c, i) => ({ osm_id: `canopy/${i}`, rings: c.rings, height_m: c.height_m })),
   }, 0.5);
-  const treeIndex = new TreeIndex(trees);
   const round = new Round(course.holes, opts.names, opts.first, opts.count);
   // Roguelike state per player (neutral and unused outside rogue mode).
   const rogue = !!opts.rogue;
-  const mods: Mods[] = opts.names.map(() => neutralMods());
+  const mods: Mods[] = opts.names.map(() => (rogue ? rogueStartMods() : neutralMods()));
+  const blocked = (q: Vec2) => { const c = grid.classAt(q[0], q[1]); return c === 'oob' || c === 'water'; };
+  // Per-player tees/baskets (Forward Tee, Back Tees, Short Pin), decided when the hole is set up.
+  round.setup = (hi) => {
+    const h = course.holes[hi];
+    return { tees: opts.names.map((_, i) => teeFor(h, mods, i, blocked)), pins: opts.names.map((_, i) => pinFor(h, mods[i])) };
+  };
+  round.restartHole();
+  let changes: HoleChanges = emptyChanges(opts.names.length);
+  /** Bumped whenever trees/ponds change, to invalidate per-player worlds. */
+  let courseVersion = 0;
   const owned: string[][] = opts.names.map(() => []);
   const mulligansLeft = opts.names.map(() => 0);
   const perfectLeft = opts.names.map(() => 0);
   let perfectArmed = false;
-  const alive = new Set(trees);
-  const world = (): DiscWorld => ({ grid, terrain: new FlatTerrain(), trees: treeIndex, basket: round.hole.pin, branchDensity: course.branch_density });
+  const removed = new Set<Tree>(); // Lumberjack: gone for everyone
+  const worldCache = new Map<number, { v: number; w: DiscWorld }>();
+  /** The course as player i plays it: their trees, their ponds, their basket. */
+  const worldFor = (i: number): DiscWorld => {
+    const c = worldCache.get(i);
+    const pin = round.game.pins[i];
+    if (c && c.v === courseVersion && c.w.basket === pin) return c.w;
+    const w: DiscWorld = {
+      grid, terrain: new FlatTerrain(), basket: pin, branchDensity: course.branch_density,
+      trees: new TreeIndex(treesFor(trees, removed, changes, i)), hazards: pondsFor(changes, i),
+    };
+    worldCache.set(i, { v: courseVersion, w });
+    return w;
+  };
+  const world = () => worldFor(round.game.current);
+  /** Mods acting on player i's throws: their own plus opponents' hexes. */
+  const modsFor = (i: number) => effectiveMods(mods, i);
   const hole = () => round.hole as DiscHole;
 
   // Expected full-power flat range per disc, for disc suggestions.
@@ -134,20 +163,95 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   const game = () => round.game;
   const player = () => game().player;
-  const toBasket = () => dist(player().ball, hole().pin);
+  const pinOf = (i: number) => game().pins[i];
+  const myPin = () => pinOf(game().current);
+  const toBasket = () => dist(player().ball, myPin());
   const autoFP = () => toBasket() <= PUTT_RANGE && player().strokes > 0;
   const isFP = () => fpOverride ?? (preferFP || autoFP());
   const puttStyle = () => isFP() && disc === PUTTER_DISC && toBasket() <= PUTT_RANGE + 5;
 
+  function startHoleInfo(): void {
+    const h = hole();
+    $('hole-info').innerHTML = `<b>${esc(course.name)}</b><br>Hole ${h.ref} · Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length"> (est.)</span>' : ''} · ${fmtLen(h.length_m)}`;
+  }
+
   function startHole(): void {
     mods.forEach((m, i) => { mulligansLeft[i] = m.mulligans; perfectLeft[i] = m.perfectForm; round.capBonus[i] = m.pickupBonus; });
-    game().capBonus = round.capBonus;
+    round.restartHole(); // pick up this hole's per-player tees/baskets (nobody has thrown yet)
+    changes = emptyChanges(opts.names.length);
+    courseVersion++;
     scene.setHole(hole());
     scene.clearTrails();
-    const h = hole();
-    $('hole-info').innerHTML = `<b>${esc(course.name)}</b><br>Hole ${h.ref} · Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length"> (est.)</span>' : ''} · ${Math.round(h.length_m)} m`;
-    startTurn();
+    startHoleInfo();
+    const queue = rogue ? placementQueue(mods) : [];
+    runPlacements(queue, startTurn);
   }
+
+  /** Show the course as player i plays it. */
+  function refreshViewer(i: number): void {
+    const m = modsFor(i);
+    const visible = new Set(treesFor(trees, removed, { ...changes, trees: [] }, i));
+    scene.setViewer({
+      trees: visible,
+      extras: changes.trees.filter((t) => t.owner !== i).map((t) => t.tree),
+      ponds: pondsFor(changes, i),
+      basketScale: m.basketScale, magnet: m.magnet,
+      tee: teeFor(hole(), mods, i, blocked), pin: pinOf(i),
+    });
+  }
+
+  // ---------- placement (roguelike, before each hole) ----------
+  let placing: { player: number; kind: PlaceKind; rest: { player: number; kind: PlaceKind }[]; done: () => void } | null = null;
+
+  function runPlacements(queue: { player: number; kind: PlaceKind }[], done: () => void): void {
+    if (queue.length === 0) {
+      placing = null;
+      $('place-bar').hidden = true;
+      scene.setPlacementPreview(null);
+      $('hud').hidden = false;
+      return done();
+    }
+    const [step, ...rest] = queue;
+    placing = { ...step, rest, done };
+    phase = 'placing';
+    $('hud').hidden = true;
+    // Top-down over the hole, as the placer sees it.
+    scene.setFirstPerson(false);
+    $('reticle').hidden = true;
+    $('minimap').hidden = true;
+    refreshViewer(step.player);
+    scene.frame([hole().tee, hole().pin, ...hole().routing], 90, 12);
+    showPlacementPreview();
+    const left = queue.filter((q) => q.player === step.player && q.kind === step.kind).length;
+    $('place-text').innerHTML = `<span style="color:${PLAYER_COLORS[step.player]}">●</span> <b>${esc(opts.names[step.player])}</b>: ${convertText(PLACE_TEXT[step.kind])} <small>(${left} left; click the map)</small>`;
+    $('place-bar').hidden = false;
+  }
+
+  function showPlacementPreview(): void {
+    if (!placing) return;
+    const me = placing.player;
+    scene.setPlacementPreview([
+      ...changes.trees.filter((t) => t.owner === me).map((t) => ({ at: [t.tree.x, t.tree.y] as Vec2, r: t.tree.r, color: PLAYER_COLORS[me] })),
+      ...changes.ponds.filter((q) => q.owner === me).map((q) => ({ at: q.c, r: q.r, color: '#4f8fcf' })),
+    ]);
+  }
+
+  function placeAt(at: Vec2): void {
+    if (!placing) return;
+    const { player: me, kind } = placing;
+    const res = place(kind, at, { hole: hole(), blocked, trees: treesFor(trees, removed, changes, me), rng: Math.random });
+    if (!res.ok) { toast(res.reason); return; }
+    if (res.kind === 'pond') changes.ponds.push({ ...res.pond, owner: me });
+    else if (res.kind === 'clear-cut') changes.cleared[me].add(res.target);
+    else changes.trees.push({ tree: res.tree, owner: me });
+    courseVersion++;
+    if (res.kind === 'clear-cut') refreshViewer(me);
+    showPlacementPreview();
+    const { rest, done } = placing;
+    runPlacements(rest, done);
+  }
+
+  $('place-skip').addEventListener('click', () => { if (placing) runPlacements(placing.rest, placing.done); });
 
   /**
    * Default aim: from the fairway, the next bend of the hole line (else the basket). From the
@@ -155,16 +259,17 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
    */
   function defaultTarget(from: Vec2): Vec2 {
     const h = hole();
-    const dB = dist(from, h.pin);
+    const pin = myPin();
+    const dB = dist(from, pin);
     // OSM hole lines often trace the walking path; only real doglegs (> 8 m off straight) count.
     const bends = simplify(h.routing, 8, 2).slice(1, -1);
     if (dB > PUTT_RANGE && distToPolyline(from, h.routing) > 6) {
       const along = closestAlong(from, h.routing) + 25;
       const total = polylineLength(h.routing);
-      return along >= total ? h.pin : pointAlong(h.routing, along);
+      return along >= total ? pin : pointAlong(h.routing, along);
     }
-    for (const p of bends) if (dist(p, h.pin) < dB - 20 && dist(from, p) > 30) return p;
-    return h.pin;
+    for (const p of bends) if (dist(p, pin) < dB - 20 && dist(from, p) > 30) return p;
+    return pin;
   }
 
   function startTurn(): void {
@@ -172,6 +277,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     power = 0;
     fpOverride = null;
     perfectArmed = false;
+    refreshViewer(game().current);
     const p = player();
     aimTarget = defaultTarget(p.ball);
     yaw = Math.atan2(aimTarget[1] - p.ball[1], aimTarget[0] - p.ball[0]);
@@ -188,12 +294,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.setFirstPerson(fp);
     $('reticle').hidden = !fp;
     $('minimap').hidden = !fp;
-    scene.setMinimapFrame([hole().tee, hole().pin, ...hole().routing, ...game().players.filter((q) => !q.holed).map((q) => q.ball)]);
+    scene.setMinimapFrame([hole().tee, myPin(), ...hole().routing, ...game().players.filter((q) => !q.holed).map((q) => q.ball)]);
     const p = player();
     if (fp) scene.setEye(p.ball, yaw, pitch);
     else if (reframe) {
-      const ahead = hole().routing.filter((r) => dist(r, hole().pin) < toBasket() + 1);
-      scene.frame([p.ball, hole().pin, ...ahead], 90, toBasket() < 40 ? 20 : 12);
+      const ahead = hole().routing.filter((r) => dist(r, myPin()) < toBasket() + 1);
+      scene.frame([p.ball, myPin(), ...ahead], 90, toBasket() < 40 ? 20 : 12);
     }
   }
 
@@ -201,9 +307,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const fp = isFP();
     return {
       start: player().ball, aim: yaw, power: pw, disc, hyzer, mirror: forehand,
-      launch: fp ? pitch + PUTT_LAUNCH_OFFSET : undefined,
+      launch: fp ? pitch + launchOffset(disc, puttStyle()) : undefined,
       style: puttStyle() ? 'putt' : 'drive',
-      mods: mods[game().current],
+      mods: modsFor(game().current),
       fromTee: player().strokes === 0,
     };
   }
@@ -240,7 +346,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   /** Lower is better: holed, then distance to the basket, with penalties counting heavily. */
-  const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, hole().pin) + r.penalty * 30);
+  const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, myPin()) + r.penalty * 30);
 
   function release(): void {
     if (phase !== 'charging') return;
@@ -248,7 +354,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const input = { ...throwInput(Math.max(0.01, power)), perfect: perfectArmed };
     if (perfectArmed) { perfectArmed = false; perfectLeft[me]--; }
     let result = simulateThrow(input, world());
-    if (mods[me].clone) {
+    if (modsFor(me).clone) {
       // Clone Disc: throw twice, keep the better one.
       const twin = simulateThrow(input, world());
       if (outcomeScore(twin) < outcomeScore(result)) result = twin;
@@ -271,11 +377,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     undo = { idx, ball: pl.ball, lie: pl.lie, strokes: pl.strokes, pickedUp: pl.pickedUp, lastFrom: pl.lastFrom, current: idx };
     game().applyShot(r);
     // Lumberjack: cut down every tree the disc touched.
-    if (mods[idx].treeChopper) for (const t of r.treesHit) {
-      if (!alive.has(t)) continue;
-      alive.delete(t);
-      treeIndex.remove(t);
-      scene.removeTree(trees.indexOf(t), [...alive]);
+    if (mods[idx].treeChopper && r.treesHit.length) {
+      for (const t of r.treesHit) {
+        // A planted hex tree is removed from the hole; a base tree is gone for everyone.
+        const placed = changes.trees.findIndex((x) => x.tree === t);
+        if (placed >= 0) changes.trees.splice(placed, 1);
+        else removed.add(t);
+      }
+      courseVersion++;
     }
     const done = game().players[idx];
     let msg = r.events.map((e) => EVENT_TOASTS[e]).filter((m, i, a) => m && a.indexOf(m) === i).join(' · ');
@@ -352,17 +461,18 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   // ---------- roguelike draft ----------
-  function runDrafts(order: number[], done: () => void): void {
+  function runDrafts(order: number[], done: () => void, starter = false): void {
     if (order.length === 0) return done();
     const [pi, ...rest] = order;
-    let offer: Offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard);
+    const players = opts.names.length;
+    let offer: Offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, rollTier(Math.random, starter ? STARTER_WEIGHTS : undefined), players);
     const render = () => {
-      $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: choose a powerup`;
+      $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: choose ${starter ? 'your starter augment' : 'a powerup'}`;
       $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
       $('draft-tier').className = `tier ${offer.tier}`;
       $('draft-cards').innerHTML = offer.cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
           <span class="ptier">${c.tier}${offer.bumped === i ? ' ★ bumped' : ''}</span>
-          <b>${esc(c.name)}</b><span>${esc(c.text)}</span></button>`).join('');
+          <b>${esc(c.name)}</b><span>${esc(convertText(c.text))}</span></button>`).join('');
       $('draft-reroll').hidden = mods[pi].rerolls <= 0;
       $('draft-reroll').textContent = `Reroll (${mods[pi].rerolls})`;
       $('draft-owned').textContent = owned[pi].length ? `Have: ${owned[pi].map((id) => byId(id).name).join(', ')}` : '';
@@ -371,16 +481,16 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         card.apply(mods[pi]);
         owned[pi].push(card.id);
         $('draft').hidden = true;
-        runDrafts(rest, done);
+        runDrafts(rest, done, starter);
       }));
     };
     $('draft-reroll').onclick = () => {
       if (mods[pi].rerolls <= 0) return;
       mods[pi].rerolls--;
-      offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, offer.tier);
+      offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, offer.tier, players);
       render();
     };
-    $('draft-skip').onclick = () => { $('draft').hidden = true; runDrafts(rest, done); };
+    $('draft-skip').onclick = () => { $('draft').hidden = true; runDrafts(rest, done, starter); };
     render();
     $('draft').hidden = false;
   }
@@ -414,9 +524,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       if (mods[me].mulligans) bits.push(`Mulligans ${mulligansLeft[me]} (M)`);
       if (mods[me].perfectForm) bits.push(perfectArmed ? '<b>Perfect Form ARMED</b>' : `Perfect Form ${perfectLeft[me]} (P)`);
       $('rogue-bar').innerHTML = bits.join(' · ');
-      $('rogue-bar').title = owned[me].map((id) => `${byId(id).name}: ${byId(id).text}`).join('\n');
+      $('rogue-bar').title = owned[me].map((id) => `${byId(id).name}: ${convertText(byId(id).text)}`).join('\n');
     }
-    $('stats').innerHTML = `Basket <b>${Math.round(toBasket())} m</b> · Target <b>${Math.round(dist(p.ball, aimTarget))} m</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
+    $('stats').innerHTML = `Basket <b>${fmtLen(toBasket())}</b> · Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
     $('meter-fill').style.width = `${power * 100}%`;
     $('meter-target').style.left = `${tick * 100}%`;
     $('view-toggle').textContent = VIEW_LABELS[scene.viewMode];
@@ -429,7 +539,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       .replace(vector ? ' · V view' : '\u0000', '');
     $('scoreboard').innerHTML = game().players.map((q, i) => {
       const toPar = round.toPar(i);
-      const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${Math.round(dist(q.ball, hole().pin))} m · ${LIE_LABELS[q.lie] ?? q.lie}`;
+      const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${fmtLen(dist(q.ball, pinOf(i)))} · ${LIE_LABELS[q.lie] ?? q.lie}`;
       return `<div class="row ${i === game().current && !game().finished ? 'active' : ''}"><span class="dot" style="background:${q.color}"></span><span class="name">${esc(q.name)}</span><span class="strokes">${q.strokes}</span><span class="topar">${fmtPar(toPar)}</span></div><div class="state">${state}</div>`;
     }).join('');
   }
@@ -449,6 +559,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
+    if (phase === 'placing') {
+      if (e.button === 0) placeAt(scene.screenToWorld(e.clientX, e.clientY));
+      else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
+      return;
+    }
     if (isFP()) drag = { x: e.clientX, y: e.clientY, mode: 'look' };
     else if (e.button === 0 && phase === 'aim') { drag = { x: e.clientX, y: e.clientY, mode: 'aim' }; setAimTarget(scene.screenToWorld(e.clientX, e.clientY)); }
     else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
@@ -571,10 +686,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   $('fp-toggle').addEventListener('click', toggleFP);
   $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; recomputeTick(); updateHud(); } });
 
+  window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
+
   // ---------- frame loop ----------
   function frameLoop(now: number): void {
     if (phase === 'charging') {
-      const t = (((now - chargeStart) / 1000) * mods[game().current].meterSpeed) % 2;
+      const t = (((now - chargeStart) / 1000) * modsFor(game().current).meterSpeed) % 2;
       power = t < 1 ? t : 2 - t;
       $('meter-fill').style.width = `${power * 100}%`;
     }
@@ -602,7 +719,18 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const p = player();
       scene.setAim(p.ball, aimTarget, p.color); // top-down line; also drawn in the first-person minimap
       scene.setTarget3d(isFP() ? p.ball : null, aimTarget, p.color);
-      scene.setPreview(ghost(phase === 'charging' ? Math.max(power, 0.01) : tick).samples, p.color);
+      // Ghost line: earned in the roguelike (fraction of the flight shown); Oracle adds the wobble spread.
+      const m = modsFor(game().current);
+      const pw = phase === 'charging' ? Math.max(power, 0.01) : tick;
+      const cut = (q: Vec3[]) => q.slice(0, Math.max(0, Math.round(q.length * Math.min(1, m.ghost))));
+      if (m.ghost <= 0) scene.setPreview(null, p.color);
+      else {
+        const spread = m.ghostCone ? [-1, 1].map((k) => {
+          const sigma = ((puttStyle() ? 0.5 : 1.4) * (puttStyle() ? m.puttAimError : m.aimError) * Math.PI) / 180;
+          return cut(simulateThrow({ ...throwInput(pw), aim: yaw + k * sigma }, world(), () => 0.25, { ghost: true }).samples);
+        }) : [];
+        scene.setPreview(cut(ghost(pw).samples), p.color, spread);
+      }
     } else {
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
@@ -612,7 +740,27 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     requestAnimationFrame(frameLoop);
   }
 
-  $('hud').hidden = false;
-  startHole();
   requestAnimationFrame(frameLoop);
+  // Dev builds only: a handle for automated browser checks.
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>).__satgolf = {
+      scene, hole, game, pinOf, changes: () => changes, phase: () => phase, worldFor, trees,
+    };
+  }
+  // Dev/play-test: ?grant=0:sapling,1:the-bucket gives augments to players at the start of a run.
+  if (rogue) for (const g of (new URLSearchParams(location.search).get('grant') ?? '').split(',').filter(Boolean)) {
+    const [pi, id] = g.includes(':') ? g.split(':') : ['0', g];
+    const pu = byId(id);
+    const i = parseInt(pi, 10);
+    if (pu && mods[i]) { pu.apply(mods[i]); owned[i].push(pu.id); }
+  }
+  if (rogue) {
+    // Starter augment before hole 1, with better odds (epic/legendary more likely).
+    $('hud').hidden = true;
+    const order = opts.names.map((_, i) => i);
+    runDrafts(order, () => { $('hud').hidden = false; startHole(); }, true);
+  } else {
+    $('hud').hidden = false;
+    startHole();
+  }
 }

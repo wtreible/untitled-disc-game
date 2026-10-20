@@ -4,12 +4,14 @@ import type { Tree } from '../src/course/disc-types';
 import type { Rings } from '../src/course/types';
 import { DISCS, PUTTER_DISC } from '../src/disc/discs';
 import { simulateThrow, type DiscWorld, type ThrowInput } from '../src/disc/flight';
-import { neutralMods, type Mods } from '../src/disc/mods';
+import { backTeeFor, effectiveMods, neutralMods, rogueStartMods, type Mods } from '../src/disc/mods';
+import { emptyChanges, pinFor, place, placementQueue, pondsFor, teeFor, treesFor } from '../src/rogue/course';
+import type { DiscHole } from '../src/course/disc-types';
 import { TreeIndex } from '../src/disc/trees';
 import { mulberry32 } from '../src/game/physics';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
-import { BUMP_CHANCE, POWERUPS, byId, drawOffer, rollTier, TIERS } from '../src/rogue/powerups';
+import { BUMP_CHANCE, POWERUPS, STARTER_WEIGHTS, byId, drawOffer, rollTier, TIERS } from '../src/rogue/powerups';
 
 const sq = (n: number): Rings => [[[-n, -n], [n, -n], [n, n], [-n, n]]];
 const rect = (x0: number, y0: number, x1: number, y1: number): Rings => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]];
@@ -27,15 +29,15 @@ const withPower = (...ids: string[]): Mods => { const m = neutralMods(); for (co
 const rate = (n: number, f: (seed: number) => boolean) => { let k = 0; for (let s = 1; s <= n; s++) if (f(s)) k++; return k / n; };
 
 describe('catalog', () => {
-  it('has 20 common, 15 epic, 9 legendary with unique ids', () => {
+  it('has 25 common, 20 epic, 12 legendary with unique ids', () => {
     const count = (t: string) => POWERUPS.filter((p) => p.tier === t).length;
-    expect([count('common'), count('epic'), count('legendary')]).toEqual([20, 15, 9]);
+    expect([count('common'), count('epic'), count('legendary')]).toEqual([25, 20, 12]);
     expect(new Set(POWERUPS.map((p) => p.id)).size).toBe(POWERUPS.length);
   });
 
-  it('every powerup actually changes something', () => {
-    const base = JSON.stringify(neutralMods());
-    for (const p of POWERUPS) expect(JSON.stringify(withPower(p.id)), p.id).not.toBe(base);
+  it('every powerup actually changes something (from the roguelike starting point)', () => {
+    const base = JSON.stringify(rogueStartMods());
+    for (const p of POWERUPS) { const m = rogueStartMods(); p.apply(m); expect(JSON.stringify(m), p.id).not.toBe(base); }
   });
 });
 
@@ -152,3 +154,94 @@ describe('effects in the flight model', () => {
     expect(throwIt(withPower('lumberjack'), world([t]), 1, { perfect: true }).treesHit).toContain(t);
   });
 });
+
+describe('starter draft and hexes in drafts', () => {
+  it('the starter rolls epic/legendary far more often', () => {
+    const rng = mulberry32(5);
+    let good = 0;
+    for (let i = 0; i < 10000; i++) if (rollTier(rng, STARTER_WEIGHTS) !== 'common') good++;
+    expect(good / 10000).toBeCloseTo(0.6, 1);
+  });
+
+  it('single player never sees hexes; two players can', () => {
+    const rng = mulberry32(9);
+    let hexSeen = false;
+    for (let i = 0; i < 400; i++) {
+      for (const c of drawOffer(rng, [], 3, 'epic', 1).cards) expect(c.kind).not.toBe('hex');
+      if (drawOffer(rng, [], 3, 'epic', 2).cards.some((c) => c.kind === 'hex')) hexSeen = true;
+    }
+    expect(hexSeen).toBe(true);
+  });
+});
+
+describe('per-player course changes', () => {
+  const hole: DiscHole = { ref: '1', par: 3, par_source: 'length', tee: [0, 0], pin: [0, 100], routing: [[0, 0], [0, 100]], length_m: 100, warnings: [] };
+  const t1: Tree = { x: 5, y: 50, h: 10, r: 2, b: 1, t: 0.2 };
+  const t2: Tree = { x: -5, y: 60, h: 10, r: 2, b: 1, t: 0.2 };
+
+  it('hex trees and ponds affect everyone except their owner; clear-cut only its owner', () => {
+    const ch = emptyChanges(3);
+    const planted: Tree = { x: 0, y: 90, h: 6, r: 2, b: 0.4, t: 0.15 };
+    ch.trees.push({ tree: planted, owner: 0 });
+    ch.ponds.push({ c: [0, 70], r: 3.5, owner: 1 });
+    ch.cleared[2].add(t1);
+    const base = [t1, t2];
+    expect(treesFor(base, new Set(), ch, 0)).toEqual([t1, t2]); // owner doesn't get their own sapling
+    expect(treesFor(base, new Set(), ch, 1)).toContain(planted);
+    expect(treesFor(base, new Set(), ch, 2)).toEqual([t2, planted]); // cleared t1 for player 2 only
+    expect(treesFor(base, new Set([t2]), ch, 1)).not.toContain(t2); // Lumberjack removals apply to all
+    expect(pondsFor(ch, 1)).toEqual([]);
+    expect(pondsFor(ch, 0).length).toBe(1);
+  });
+
+  it('Forward Tee / Back Tees / Short Pin move tees and baskets per player', () => {
+    const all = [withPower('forward-tee'), withPower('back-tees'), neutralMods()];
+    expect(teeFor(hole, [withPower('forward-tee'), neutralMods()], 0)).toEqual([0, 8]); // forward tee alone
+    expect(backTeeFor(all, 0)).toBe(8);
+    // Player 0: +8 forward, −8 back from player 1 → back at 0. Player 2 only gets pushed back.
+    const p0 = teeFor(hole, all, 0), p2 = teeFor(hole, all, 2);
+    expect(p0[1]).toBeCloseTo(0, 5);
+    expect(p2[1]).toBeCloseTo(-8, 5);
+    expect(teeFor(hole, all, 1)[1]).toBeCloseTo(0, 5); // owner of Back Tees unaffected
+    expect(pinFor(hole, withPower('short-pin'))).toEqual([0, 80]);
+    expect(pinFor(hole, neutralMods())).toEqual([0, 100]);
+  });
+
+  it('Heckler and Shrink Ray hit opponents, never the owner', () => {
+    const all = [withPower('heckler', 'shrink-ray'), neutralMods()];
+    expect(effectiveMods(all, 0).meterSpeed).toBe(1);
+    expect(effectiveMods(all, 0).basketScale).toBe(1);
+    expect(effectiveMods(all, 1).meterSpeed).toBeCloseTo(1.15);
+    expect(effectiveMods(all, 1).basketScale).toBeCloseTo(0.6);
+  });
+
+  it('placement rules', () => {
+    const c = { hole, blocked: () => false, trees: [t1, t2], rng: mulberry32(1) };
+    expect(place('sapling', [0, 92], c).ok).toBe(true);
+    expect(place('sapling', [0, 99], c).ok).toBe(false); // on the basket
+    expect(place('sapling', [0, 50], c).ok).toBe(false); // not near the basket
+    expect(place('thicket', [0, 3], c).ok).toBe(false); // on the tee
+    expect(place('thicket', [60, 50], c).ok).toBe(false); // off the hole
+    expect(place('pond', [0, 50], c).ok).toBe(true);
+    const cut = place('clear-cut', [5.5, 50.5], c);
+    expect(cut.ok && cut.kind === 'clear-cut' && cut.target).toBe(t1);
+    expect(place('sapling', [0, 92], { ...c, blocked: () => true }).ok).toBe(false);
+  });
+
+  it('placement queue: clear-cut works solo; hexes only with opponents', () => {
+    expect(placementQueue([withPower('clear-cut', 'sapling')]).map((q) => q.kind)).toEqual(['clear-cut']);
+    expect(placementQueue([withPower('thicket'), neutralMods()]).map((q) => q.kind)).toEqual(['thicket', 'thicket', 'thicket']);
+  });
+
+  it('a hex pond is water for the thrower who has it', () => {
+    const land = throwItWorld(world(), 1).rest;
+    const w = { ...world(), hazards: [{ c: land, r: 3.5 }] };
+    const r = throwItWorld(w, 1);
+    expect(r.events).toContain('water');
+    expect(r.penalty).toBe(1);
+  });
+});
+
+function throwItWorld(w: DiscWorld, seed: number) {
+  return simulateThrow({ start: [0, 0], aim: NORTH, power: 0.6, disc: MR, hyzer: 0 }, w, mulberry32(seed));
+}

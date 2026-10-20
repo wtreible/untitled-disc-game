@@ -57,6 +57,30 @@ export interface Mods {
   treeChopper: boolean;
   rerolls: number;
   extraCard: number;
+  /** Fraction of the ghost (predicted) flight line shown, 0..1. Base game 1; roguelike starts at 0. */
+  ghost: number;
+  /** Ghost line also shows the ±1σ wobble spread (Oracle). */
+  ghostCone: boolean;
+  // Personal course changes (only the owner plays and sees them):
+  /** Your tee is this many meters closer along the hole line. */
+  teeForward: number;
+  /** Your basket sits this fraction of the hole closer to the tee. */
+  pinCloser: number;
+  /** Trees you may remove (for you only) at the start of each hole. */
+  clearCut: number;
+  // Hexes: change the course for every other player, not the owner:
+  /** Bushes the owner plants within 4–15 m of the basket each hole. */
+  hexSapling: number;
+  /** Trees the owner plants anywhere on the hole each hole. */
+  hexThicket: number;
+  /** Ponds (3 m, water) the owner places on the hole each hole. */
+  hexPond: number;
+  /** × opponents' meter speed. */
+  hexMeter: number;
+  /** Opponents tee this many meters farther back. */
+  hexBackTee: number;
+  /** × opponents' basket size. */
+  hexShrink: number;
 }
 
 export function neutralMods(): Mods {
@@ -67,7 +91,33 @@ export function neutralMods(): Mods {
     branch: 1, branchPass: 0, trunkKeep: 1, phaseTrees: 0, kickToward: false,
     skid: 1, sticky: false, obInsurance: false, puttRange: 1, homing: 0,
     meterSpeed: 1, pickupBonus: 0, mulligans: 0, perfectForm: 0, clone: false, treeChopper: false, rerolls: 0, extraCard: 0,
+    ghost: 1, ghostCone: false, teeForward: 0, pinCloser: 0, clearCut: 0,
+    hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1,
   };
+}
+
+/** Roguelike starting point: like the base game, but the ghost line has to be earned. */
+export function rogueStartMods(): Mods {
+  return { ...neutralMods(), ghost: 0 };
+}
+
+/**
+ * The modifiers that act on `player`'s throws: their own, plus every other player's hexes.
+ * Hexes never affect their owner.
+ */
+export function effectiveMods(all: Mods[], player: number): Mods {
+  const m = { ...all[player] };
+  all.forEach((o, i) => {
+    if (i === player) return;
+    m.meterSpeed *= o.hexMeter;
+    m.basketScale *= o.hexShrink;
+  });
+  return m;
+}
+
+/** Meters the player's tee moves back because of opponents' Back Tees. */
+export function backTeeFor(all: Mods[], player: number): number {
+  return all.reduce((s, o, i) => (i === player ? s : s + o.hexBackTee), 0);
 }
 
 export const NEUTRAL: Readonly<Mods> = Object.freeze(neutralMods());

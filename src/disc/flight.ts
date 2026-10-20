@@ -24,7 +24,7 @@ const G = 9.81;
 export const TAP_IN = 1.0;
 const DT = 1 / 240;
 const SAMPLE_EVERY = 4; // 240 / 4 = 60 Hz
-const MAX_T = 14;
+const MAX_T = 20;
 
 // Aerodynamics after Hummel (2003) / Potts & Crowther: CL = CL0 + CLa·α, CD = CD0 + CDa·(α − α0)²,
 // accel = K·v²·C with K = ½ρA/m. Glide and speed ratings nudge CL0 and CD0. The disc's nose angle
@@ -38,10 +38,21 @@ export const FLIGHT = {
   cla: 1.4,
   cd0: 0.06,
   cd0PerSpeed: -0.0042,
+  /** Drag floor. At 0.02 the distance driver glided so efficiently that a dead-flat launch flew 50% past its max. */
+  cd0Min: 0.02,
   cda: 1.2,
   alpha0: -0.07,
-  /** Nose angle relative to launch angle at release (slightly nose-up). */
-  nose: 0.03,
+  /**
+   * Nose angle at release = noseBase + noseFollow·launch. Only partly following the launch keeps
+   * the default launch near the sweet spot: fully following it made dead-flat launches fly
+   * 50% past the tuned maximum (low angle of attack, low drag). Calibrated so the default launch
+   * (0.11 rad) gets the same nose angle as before (0.14 rad).
+   */
+  noseBase: 0.03,
+  noseFollow: 1,
+  /** Stall: past this angle of attack, lift fades to 0 at 90° and drag rises toward a flat plate. */
+  stallAlpha: 0.45,
+  flatPlateCd: 1.1,
   /** Bank rate (rad/s) per unit of turn at full speed, and per unit of fade at low speed. */
   turnRate: 0.25,
   fadeRate: 0.8,
@@ -95,6 +106,14 @@ export interface DiscWorld {
   basket: Vec2;
   /** Branch hits per meter inside a crown; defaults to FLIGHT.branchDensity. */
   branchDensity?: number;
+  /** Extra water circles for this thrower only (roguelike Pond Prank). */
+  hazards?: { c: Vec2; r: number }[];
+}
+
+/** Surface under (x, y) for this world's thrower: the course grid, plus any personal hazards. */
+export function surfaceAt(world: DiscWorld, x: number, y: number): SurfaceClass {
+  for (const h of world.hazards ?? []) if (Math.hypot(x - h.c[0], y - h.c[1]) < h.r) return 'water';
+  return world.grid.classAt(x, y);
 }
 
 export interface ThrowInput {
@@ -136,23 +155,44 @@ export interface ThrowResult {
   treesHit: Tree[];
 }
 
-// Distance fraction → release speed fraction, measured from this model (a midrange, flat, full
-// glide). Distance grows ~v^3.7 because lift collapses at low speed, so a linear meter would make
-// the bottom half useless. Interpolating the inverse makes the meter ~linear in distance.
-const METER_CURVE: [number, number][] = [
-  [0, 0.15], [0.06, 0.3], [0.1, 0.4], [0.14, 0.5], [0.24, 0.6], [0.38, 0.7], [0.58, 0.8], [0.8, 0.9], [1, 1],
-];
+// Release-speed fractions at which each disc's `curve` (distance fractions) was measured.
+const CURVE_SPEEDS = [0.15, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
 
-export function meterToSpeed(m: number): number {
+/**
+ * Meter fill (≈ wanted fraction of max distance) → release speed fraction, by inverting the disc's
+ * measured curve. Distance grows steeply with speed (lift collapses at low speed) and differently
+ * per disc, so a linear meter would waste its bottom half. Below the first point, interpolate
+ * from (0, 0.1).
+ */
+export function meterToSpeed(m: number, disc: Disc): number {
   const x = Math.min(1, Math.max(0, m));
-  for (let i = 1; i < METER_CURVE.length; i++) {
-    const [x1, y1] = METER_CURVE[i];
+  const pts: [number, number][] = [[0, 0.1], ...disc.curve.map((d, i): [number, number] => [d, CURVE_SPEEDS[i]])];
+  for (let i = 1; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
     if (x <= x1) {
-      const [x0, y0] = METER_CURVE[i - 1];
-      return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+      const [x0, y0] = pts[i - 1];
+      return y0 + ((x - x0) / Math.max(1e-9, x1 - x0)) * (y1 - y0);
     }
   }
   return 1;
+}
+
+/**
+ * Lift and drag coefficients. Linear lift and quadratic drag up to the stall angle; past it, lift
+ * fades to 0 at ±90° (a disc falling flat makes no lift) and drag rises toward a flat plate's.
+ * Without the stall, a steeply falling disc's lift pointed backward and pushed it back toward the
+ * thrower.
+ */
+export function aero(alpha: number, cl0: number, cd0: number): { CL: number; CD: number } {
+  const S = FLIGHT.stallAlpha;
+  const lin = (a: number) => ({ CL: cl0 + FLIGHT.cla * a, CD: cd0 + FLIGHT.cda * (a - FLIGHT.alpha0) ** 2 });
+  if (Math.abs(alpha) <= S) return lin(alpha);
+  const edge = lin(Math.sign(alpha) * S);
+  const t = Math.min(1, (Math.abs(alpha) - S) / (Math.PI / 2 - S)); // 0 at stall, 1 at 90°
+  return {
+    CL: edge.CL * Math.cos((t * Math.PI) / 2),
+    CD: edge.CD + (FLIGHT.flatPlateCd - edge.CD) * Math.sin((t * Math.PI) / 2),
+  };
 }
 
 function gaussian(rng: Rng): number {
@@ -179,16 +219,16 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   // Distance bonuses scale the meter, which maps ~linearly to distance; past full power, release
   // speed grows with the measured full-power sensitivity (distance ∝ v^~1.8 there).
   const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange : m.distance * (input.fromTee ? m.teeDistance : 1));
-  const power = (meter <= 1 ? meterToSpeed(meter) : meter ** 0.55) * (1 + noise() * (putt ? 0.015 : 0.02));
-  const launch = (input.launch ?? (putt ? 0.12 : 0.11)) + noise() * 0.01;
+  const power = (meter <= 1 ? meterToSpeed(meter, input.disc) : meter ** 0.55) * (1 + noise() * (putt ? 0.015 : 0.02));
+  const launch = (input.launch ?? (putt ? 0.12 : input.disc.launch)) + noise() * 0.01;
   let bank = mirror * (input.hyzer * FLIGHT.maxReleaseBank * m.shape + noise() * 0.04);
   const speed0 = disc.v0 * power;
   let p: Vec3 = [input.start[0], input.start[1], world.terrain.heightAt(input.start[0], input.start[1]) + (input.releaseZ ?? 1.0)];
   let v: Vec3 = [Math.cos(yaw) * Math.cos(launch) * speed0, Math.sin(yaw) * Math.cos(launch) * speed0, Math.sin(launch) * speed0];
 
   const cl0 = FLIGHT.cl0 + FLIGHT.cl0PerGlide * (disc.glide - 5);
-  const cd0 = Math.max(0.02, FLIGHT.cd0 + FLIGHT.cd0PerSpeed * disc.speed);
-  const nose = launch + FLIGHT.nose;
+  const cd0 = Math.max(FLIGHT.cd0Min, FLIGHT.cd0 + FLIGHT.cd0PerSpeed * disc.speed);
+  const nose = FLIGHT.noseBase + FLIGHT.noseFollow * launch;
   // Putts get a fraction of the spin-driven roll: push putts are thrown flat and slow.
   const turnK = putt ? 0.3 : 1;
 
@@ -219,7 +259,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     if (state === 'ground') {
       const sh = Math.hypot(v[0], v[1]);
       if (sh < 0.05) break;
-      const surf = world.grid.classAt(p[0], p[1]);
+      const surf = surfaceAt(world, p[0], p[1]);
       const decel = (FLIGHT.skid[surf] ?? FLIGHT.skid.default) / m.skid;
       const ns = Math.max(0, sh - decel * DT);
       v = [(v[0] / sh) * ns, (v[1] / sh) * ns, 0];
@@ -234,10 +274,11 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       const u: Vec3 = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]]; // up, ⟂ f
       // Angle of attack: fixed nose angle minus the flight path angle. A tumbling (dead) disc
       // gets a fraction of the lift and extra drag.
-      const alpha = Math.max(-0.5, Math.min(0.6, nose - Math.atan2(v[2], Math.hypot(v[0], v[1]))));
+      const alpha = nose - Math.atan2(v[2], Math.hypot(v[0], v[1])); // −π/2 … +π/2-ish
       const dead = state === 'dead';
-      const CL = (cl0 + FLIGHT.cla * alpha) * (dead ? 0.2 : 1);
-      const CD = cd0 + FLIGHT.cda * (alpha - FLIGHT.alpha0) ** 2 + (dead ? 0.3 : 0);
+      const { CL: cl, CD: cd } = aero(alpha, cl0, cd0);
+      const CL = cl * (dead ? 0.2 : 1);
+      const CD = cd + (dead ? 0.3 : 0);
       const L = FLIGHT.K * s * s * CL;
       const D = FLIGHT.K * s * CD; // × v below gives K·s²·CD along −v
       const n: Vec3 = [u[0] * Math.cos(bank) - r[0] * Math.sin(bank), u[1] * Math.cos(bank) - r[1] * Math.sin(bank), u[2] * Math.cos(bank) - r[2] * Math.sin(bank)];
@@ -289,7 +330,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
         const keep = m.sticky ? 0 : state === 'dead' ? 0.25 : 0.4;
         v = [v[0] * keep, v[1] * keep, 0];
         state = 'ground';
-        const surf = world.grid.classAt(p[0], p[1]);
+        const surf = surfaceAt(world, p[0], p[1]);
         if (surf === 'water' || surf === 'oob') break;
       }
     }
@@ -319,21 +360,21 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   samples.push([...p]);
   banks.push(0);
   let rest: Vec2 = [p[0], p[1]];
-  const surf = world.grid.classAt(rest[0], rest[1]);
+  const surf = surfaceAt(world, rest[0], rest[1]);
   if (surf === 'water' || surf === 'oob') {
     // Play from where it last crossed into OB (casual, D19): last in-bounds point on the path.
     let drop: Vec2 = input.start;
     for (let i = samples.length - 1; i >= 0; i--) {
-      const c = world.grid.classAt(samples[i][0], samples[i][1]);
+      const c = surfaceAt(world, samples[i][0], samples[i][1]);
       if (c !== 'water' && c !== 'oob') { drop = [samples[i][0], samples[i][1]]; break; }
     }
     // Sticky Plastic: a near miss (within 2 m of the edge) is saved, no penalty.
     if (m.sticky && Math.hypot(drop[0] - rest[0], drop[1] - rest[1]) <= 2) {
       events.push('saved');
-      return { samples, banks, rest: drop, restSurface: world.grid.classAt(drop[0], drop[1]), holed: false, penalty: 0, events, treesHit };
+      return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: 0, events, treesHit };
     }
     events.push(surf);
-    return { samples, banks, rest: drop, restSurface: world.grid.classAt(drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit };
+    return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit };
   }
   if (!opt.ghost) {
     const d = Math.hypot(rest[0] - world.basket[0], rest[1] - world.basket[1]);
@@ -351,7 +392,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       events.push('magnet');
     }
   }
-  return { samples, banks, rest, restSurface: world.grid.classAt(rest[0], rest[1]), holed: false, penalty: 0, events, treesHit };
+  return { samples, banks, rest, restSurface: surfaceAt(world, rest[0], rest[1]), holed: false, penalty: 0, events, treesHit };
 }
 
 interface TreeCtx {

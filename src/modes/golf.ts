@@ -1,12 +1,13 @@
 import { LocalFrame, dist, type Vec2 } from '../course/geo';
 import type { CourseFile } from '../course/types';
-import { CLUBS, PUTTER, PUTT_MAX_M, YD, suggestClub, type Club } from '../game/clubs';
+import { CLUBS, PUTTER, PUTT_MAX_M, suggestClub, type Club } from '../game/clubs';
 import { HoleGame, PLAYER_COLORS, scoreName } from '../game/game';
 import { lieMultiplier, previewCarry, SURFACES, simulateShot, type ShotEvent, type ShotResult, type World } from '../game/physics';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { HoleScene, VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
+import { fmtLen } from '../units';
 
 const COURSE_URL = '/courses/tcc-main-17.json';
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
@@ -20,7 +21,6 @@ const EVENT_TOASTS: Partial<Record<ShotEvent, string>> = {
 };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const yd = (m: number) => Math.round(m / YD);
 
 type Phase = 'setup' | 'aim' | 'charging' | 'flying' | 'done';
 
@@ -32,8 +32,8 @@ export async function startGolf(names: string[]): Promise<void> {
   const grid = SurfaceGrid.fromHole(hole);
   const world: World = { grid, terrain: new FlatTerrain(), pin: hole.pin };
 
-  $('hole-info').innerHTML = `<b>${course.name}</b><br>Hole ${hole.ref}${course.links ? ` (${course.links})` : ''} · Par ${hole.par} · ${yd(hole.length_m)} yd`;
-  $('setup-hole').textContent = `${course.name}, hole ${hole.ref}: par ${hole.par}, ${yd(hole.length_m)} yd`;
+  $('hole-info').innerHTML = `<b>${course.name}</b><br>Hole ${hole.ref}${course.links ? ` (${course.links})` : ''} · Par ${hole.par} · ${fmtLen(hole.length_m, 'golf')}`;
+  $('setup-hole').textContent = `${course.name}, hole ${hole.ref}: par ${hole.par}, ${fmtLen(hole.length_m, 'golf')}`;
   $('attribution').textContent = `${ESRI_ATTRIBUTION} · Course data ${course.source.attribution}`;
 
   const scene = new HoleScene($('stage'), hole, grid, PLAYER_COLORS);
@@ -168,9 +168,9 @@ export async function startGolf(names: string[]): Promise<void> {
     if (!game) return;
     const p = game.player;
     $('turn').innerHTML = `<span style="color:${p.color}">●</span> ${esc(p.name)}`;
-    const carryTxt = club.carry ? `${yd(club.carry)} yd` : `${yd(PUTT_MAX_M)} yd max`;
+    const carryTxt = club.carry ? fmtLen(club.carry, 'golf') : `${fmtLen(PUTT_MAX_M, 'golf')} max`;
     $('club-name').textContent = `${club.name} · ${carryTxt}`;
-    $('stats').innerHTML = `To pin <b>${yd(game.distanceToPin())} yd</b> · Target <b>${yd(dist(p.ball, aimTarget))} yd</b> · Lie <b>${LIE_LABELS[p.lie]}</b> · Stroke <b>${p.strokes + 1}</b>`;
+    $('stats').innerHTML = `To pin <b>${fmtLen(game.distanceToPin(), 'golf')}</b> · Target <b>${fmtLen(dist(p.ball, aimTarget), 'golf')}</b> · Lie <b>${LIE_LABELS[p.lie]}</b> · Stroke <b>${p.strokes + 1}</b>`;
     $('meter-fill').style.width = `${power * 100}%`;
     $('meter-target').style.left = `${targetPower() * 100}%`;
     $('view-toggle').textContent = VIEW_LABELS[scene.viewMode];
@@ -178,7 +178,7 @@ export async function startGolf(names: string[]): Promise<void> {
 
     $('scoreboard').innerHTML = game.players
       .map((q, i) => {
-        const state = q.holed ? scoreName(q.strokes, hole.par) : q.pickedUp ? 'picked up' : `${yd(game.distanceToPin(q))} yd · ${LIE_LABELS[q.lie]}`;
+        const state = q.holed ? scoreName(q.strokes, hole.par) : q.pickedUp ? 'picked up' : `${fmtLen(game.distanceToPin(q), 'golf')} · ${LIE_LABELS[q.lie]}`;
         return `<div class="row ${i === game.current && !game.finished ? 'active' : ''}"><span class="dot" style="background:${q.color}"></span><span class="name">${esc(q.name)}</span><span class="strokes">${q.strokes}</span></div><div class="state">${state}</div>`;
       })
       .join('');
@@ -305,6 +305,11 @@ export async function startGolf(names: string[]): Promise<void> {
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+
+  window.addEventListener('unitschange', () => {
+    $('hole-info').innerHTML = `<b>${course.name}</b><br>Hole ${hole.ref}${course.links ? ` (${course.links})` : ''} · Par ${hole.par} · ${fmtLen(hole.length_m, 'golf')}`;
+    updateHud();
+  });
 
   newGame(names);
 }

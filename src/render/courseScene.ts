@@ -9,7 +9,7 @@ import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
 import type { Vec3 } from '../game/terrain';
 import { classCanvas } from './classTexture';
-import { basketModel, discMesh, treeMeshes } from './disc3d';
+import { basketModel, discMesh, setTreesVisible, treeMeshes } from './disc3d';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
@@ -36,6 +36,19 @@ export class CourseScene {
   private readonly symbols?: THREE.Group;
   private readonly beacon: THREE.Mesh;
   private beaconAt: Vec2 = [0, 0];
+  // Per-viewer course (roguelike): which trees exist for the current player, placed trees,
+  // ponds, basket size/position, magnet ring. See setViewer().
+  private readonly baseTrees: Tree[];
+  private readonly treeIdx = new Map<Tree, number>();
+  private readonly holes: DiscHole[];
+  private holeIndex = 0;
+  private readonly baskets: THREE.Group[] = [];
+  private readonly extras = new THREE.Group();
+  private extraSymbols = new THREE.Group();
+  private readonly ponds = new THREE.Group();
+  private readonly magnetRing: THREE.LineLoop;
+  private readonly placePreview = new THREE.Group();
+  private readonly spread = new THREE.Group();
   // First-person extras: target ring + ground line, and a top-down minimap inset.
   private readonly target3d = new THREE.Group();
   private readonly targetLine: THREE.Line;
@@ -94,6 +107,18 @@ export class CourseScene {
     this.beacon.visible = false;
     this.scene.add(this.beacon);
 
+    this.scene.add(this.extras, this.ponds);
+    if (this.symbols) this.scene.add(this.extraSymbols);
+    this.magnetRing = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints(Array.from({ length: 64 }, (_, i) => new THREE.Vector3(Math.cos((i / 64) * Math.PI * 2), Math.sin((i / 64) * Math.PI * 2), 0))),
+      new THREE.LineBasicMaterial({ color: '#c58cff', transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    this.magnetRing.visible = false;
+    this.magnetRing.renderOrder = 3;
+    this.scene.add(this.magnetRing);
+    this.placePreview.renderOrder = 12;
+    this.scene.add(this.placePreview, this.spread);
+
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 40), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
     ring.name = 'ring';
     this.targetMat = new THREE.LineDashedMaterial({ color: '#ffffff', dashSize: 0.6, gapSize: 0.5, transparent: true, opacity: 0.7, depthWrite: false });
@@ -109,9 +134,13 @@ export class CourseScene {
 
     this.trees3d = treeMeshes(trees);
     this.world3d.add(this.trees3d);
+    this.baseTrees = trees;
+    trees.forEach((t, i) => this.treeIdx.set(t, i));
+    this.holes = course.holes;
     for (const h of course.holes) {
       const b = basketModel();
       b.position.set(h.pin[0], h.pin[1], 0);
+      this.baskets.push(b);
       this.world3d.add(b);
       // Tee pad.
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.5), new THREE.MeshLambertMaterial({ color: '#9a9488' }));
@@ -188,6 +217,7 @@ export class CourseScene {
   }
 
   setHole(h: DiscHole): void {
+    this.holeIndex = Math.max(0, this.holes.indexOf(h));
     const [a, b] = [h.tee, h.pin];
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
     this.up = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
@@ -214,6 +244,10 @@ export class CourseScene {
       this.trees3d.visible = fp || v === 'classes' || !this.photo;
     }
     for (const c of this.world3d.children) if (c !== this.trees3d) c.visible = fp;
+    // Placed (roguelike) trees follow the same rule as the base trees.
+    this.extras.visible = this.trees3d.visible;
+    this.extraSymbols.visible = !fp && !!this.symbols?.visible;
+    this.placePreview.visible = !fp;
     for (const d of this.discs3d) d.layers.set(fp ? 0 : 1); // hide 3D discs from top-down passes
     this.target3d.layers.set(fp ? 0 : 1);
     this.beacon.layers.set(fp ? 0 : 1);
@@ -246,19 +280,51 @@ export class CourseScene {
     this.persp.lookAt(this.persp.position.clone().add(cur));
   }
 
-  /** Lumberjack: hide tree i in 3D (zero-scale instance) and redraw the top-down symbols. */
-  removeTree(i: number, alive: Tree[]): void {
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
-    for (const c of this.trees3d.children) {
-      const im = c as THREE.InstancedMesh;
-      if (!im.isInstancedMesh) continue;
-      im.setMatrixAt(i, zero);
-      im.instanceMatrix.needsUpdate = true;
-    }
+  /**
+   * Show the course as one player plays it: which base trees exist for them, trees planted
+   * against them, their ponds, their basket size and position, and their magnet radius.
+   */
+  setViewer(v: { trees: Set<Tree>; extras: Tree[]; ponds: { c: Vec2; r: number }[]; basketScale: number; magnet: number; tee: Vec2; pin: Vec2 }): void {
+    setTreesVisible(this.trees3d, (i) => v.trees.has(this.baseTrees[i]));
+    // Placed trees: rebuilt each time (a handful at most).
+    for (const c of [...this.extras.children]) this.extras.remove(c);
+    if (v.extras.length) this.extras.add(treeMeshes(v.extras));
     if (this.symbols) {
-      for (const c of [...this.symbols.children]) { this.symbols.remove(c); (c as THREE.Mesh).geometry.dispose(); }
-      const fresh = treeSymbols(alive, OVERLAY_Z - 5);
-      for (const c of [...fresh.children]) this.symbols.add(c);
+      const rebuild = (g: THREE.Group, list: Tree[]) => {
+        for (const c of [...g.children]) { g.remove(c); (c as THREE.Mesh).geometry?.dispose(); }
+        for (const c of [...treeSymbols(list, OVERLAY_Z - 5).children]) g.add(c);
+      };
+      rebuild(this.symbols, this.baseTrees.filter((t) => v.trees.has(t)));
+      rebuild(this.extraSymbols, v.extras);
+    }
+    for (const c of [...this.ponds.children]) this.ponds.remove(c);
+    for (const p of v.ponds) {
+      const m = new THREE.Mesh(new THREE.CircleGeometry(p.r, 32), new THREE.MeshBasicMaterial({ color: '#4f8fcf', depthWrite: false }));
+      m.position.set(p.c[0], p.c[1], 0.035);
+      m.renderOrder = -9;
+      this.ponds.add(m);
+    }
+    for (const b of this.baskets) b.scale.set(v.basketScale, v.basketScale, 1);
+    const cur = this.baskets[this.holeIndex];
+    if (cur) cur.position.set(v.pin[0], v.pin[1], 0);
+    this.basketMarker.position.set(v.pin[0], v.pin[1], OVERLAY_Z);
+    this.basketMarker.userData.scale = v.basketScale;
+    this.teeMarker.position.set(v.tee[0], v.tee[1], OVERLAY_Z);
+    this.beaconAt = v.pin;
+    this.beacon.position.set(v.pin[0], v.pin[1], 1.6 + 8);
+    this.magnetRing.visible = v.magnet > 0;
+    this.magnetRing.position.set(v.pin[0], v.pin[1], 0.06);
+    this.magnetRing.scale.setScalar(Math.max(0.01, v.magnet));
+  }
+
+  /** Placement mode: rings for what's been placed so far (top-down), or null to clear. */
+  setPlacementPreview(items: { at: Vec2; r: number; color: string }[] | null): void {
+    for (const c of [...this.placePreview.children]) this.placePreview.remove(c);
+    for (const it of items ?? []) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(Math.max(0.2, it.r - 0.35), it.r, 32), new THREE.MeshBasicMaterial({ color: it.color, transparent: true, opacity: 0.9, depthTest: false }));
+      ring.position.set(it.at[0], it.at[1], OVERLAY_Z + 3);
+      ring.renderOrder = 12;
+      this.placePreview.add(ring);
     }
   }
 
@@ -340,6 +406,13 @@ export class CourseScene {
     return [v.x, v.y];
   }
 
+  /** Top-down: world point → client pixels. */
+  worldToScreen(p: Vec2): [number, number] {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3(p[0], p[1], 0).project(this.ortho);
+    return [rect.left + ((v.x + 1) / 2) * rect.width, rect.top + ((1 - v.y) / 2) * rect.height];
+  }
+
   panPixels(dx: number, dy: number): void {
     const right: Vec2 = [this.up[1], -this.up[0]];
     this.center = [
@@ -373,8 +446,10 @@ export class CourseScene {
     body.scale.setScalar(1 + lift / 25);
     shadow.visible = lift > 0.3;
     d3.position.set(p[0], p[1], Math.max(p[2], 0.012));
-    // Never smaller than a few pixels in first person: a 21 cm disc is sub-pixel past ~20 m.
-    d3.scale.setScalar(Math.max(1, this.persp.position.distanceTo(d3.position) / 8));
+    // A real 21 cm disc is sub-pixel past ~20 m. Grow it with √distance so it still shrinks on
+    // screen as it flies away (~40 px at 5 m, ~20 px at 20 m, ~9 px at 100 m) but stays trackable.
+    // (Scaling linearly with distance kept it the same size on screen at any range.)
+    d3.scale.setScalar(Math.min(8, Math.max(1, Math.sqrt(this.persp.position.distanceTo(d3.position) / 3))));
     // Tilt: bank about the direction of travel.
     d3.rotation.set(0, 0, 0);
     d3.rotateZ(heading);
@@ -391,7 +466,16 @@ export class CourseScene {
   }
 
   /** Ghost flight path. Top-down it's drawn flat above everything; in first person at true height. */
-  setPreview(samples: Vec3[] | null, color: string): void {
+  setPreview(samples: Vec3[] | null, color: string, spread: Vec3[][] = []): void {
+    // Oracle: faint lines for the ±1σ wobble spread.
+    for (const c of [...this.spread.children]) { this.spread.remove(c); (c as THREE.Line).geometry.dispose(); }
+    for (const sp of samples ? spread : []) {
+      if (sp.length < 2) continue;
+      const pts = sp.filter((_, i) => i % 3 === 0).map((q) => new THREE.Vector3(q[0], q[1], this.fp ? q[2] : OVERLAY_Z + 0.5));
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.35, depthTest: false }));
+      l.renderOrder = 11;
+      this.spread.add(l);
+    }
     this.preview.visible = samples !== null && samples.length > 1;
     if (!samples || samples.length < 2) return;
     this.preview.geometry.dispose();

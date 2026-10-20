@@ -55,7 +55,9 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 - Turn and fade each push the bank toward a limit set by the flight numbers (turn about −31° for turn −1; fade 21–35° for fade 1–3) and ease off near it. Unbounded, fade rolled drivers past 170° (upside down) by landing.
 - Release angle (hyzer/anhyzer, Q/E) sets the initial bank; forehand (T) mirrors the curve.
 - Power meter maps to release speed through the measured distance-vs-speed curve, so meter fill ≈ fraction of max distance (distance grows ~v^3.7 otherwise).
-- Tuned by grid search to typical amateur full-power ranges: distance driver ~103 m, fairway ~84 m, midrange ~71 m, putter ~59 m (thrown), ~25 m (putt style).
+- **Stall:** past ~26° angle of attack, lift fades to zero at 90° and drag rises toward a flat plate. Without it, high launches stalled and drifted backward toward the thrower.
+- **Per-disc launch, speed and meter curve** (2026-10-20): each disc has a default launch near its best (distance driver 0.09 rad, fairway 0.09, midrange 0.10, putter 0.13), a release speed fitted so that default reaches its range (110 / 90 / 72 / 58 m), and a measured distance-vs-speed curve the meter inverts, so meter fill ≈ fraction of max distance for every disc. In first person, launch = view pitch + that default (putts: +0.12 rad). A pitched-down line drive with the distance driver gains ~18%; launching much higher or lower loses distance.
+- Verified with an 8,640-throw sweep (every disc × power × release angle × launch −20°…41° × backhand/forehand × stacked augments): no NaN, nothing underground, no backward flights, banks within limits; only absurd distance stacks (+74%) still reach a 37 m apex.
 
 ## Collisions
 

@@ -92,7 +92,23 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
   crowns.instanceMatrix.needsUpdate = true;
   if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
   g.add(trunks, crowns);
+  // Keep each instance's matrix so individual trees can be hidden and restored per viewer.
+  const keep = (im: THREE.InstancedMesh) => Array.from({ length: n }, (_, i) => { const mm = new THREE.Matrix4(); im.getMatrixAt(i, mm); return mm; });
+  g.userData = { trunks, crowns, trunkM: keep(trunks), crownM: keep(crowns) };
   return g;
+}
+
+/** Show only the trees whose index is in `visible` (others collapse to zero scale). */
+export function setTreesVisible(g: THREE.Group, visible: (i: number) => boolean): void {
+  const { trunks, crowns, trunkM, crownM } = g.userData as { trunks: THREE.InstancedMesh; crowns: THREE.InstancedMesh; trunkM: THREE.Matrix4[]; crownM: THREE.Matrix4[] };
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (let i = 0; i < trunkM.length; i++) {
+    const on = visible(i);
+    trunks.setMatrixAt(i, on ? trunkM[i] : zero);
+    crowns.setMatrixAt(i, on ? crownM[i] : zero);
+  }
+  trunks.instanceMatrix.needsUpdate = true;
+  crowns.instanceMatrix.needsUpdate = true;
 }
 
 export function discMesh(color: string): THREE.Mesh {

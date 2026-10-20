@@ -14,7 +14,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) | Park-to-course editor, disc golf variant (future) |
 | [09-glossary](09-glossary.md) | Terms used across these docs |
 | [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
-| [11-roguelike](11-roguelike.md) | Roguelike run mode: draft rules and the proposed powerup list (under review) |
+| [11-roguelike](11-roguelike.md) | Roguelike run mode: draft rules, augment kinds (self / your course / hex), full list |
 
 ## Decision log
 
@@ -49,6 +49,10 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D27 | Turn and fade drive the bank toward limits from the flight numbers (fixes discs flipping upside down). | 2026-10-20 |
 | D28 | First person gets a top-down minimap (click to aim), W/S target distance, scroll-wheel zoom. | 2026-10-20 |
 | D29 | Roguelike is a **separate mode**: draft 1 of 3 powerups after each hole; tier 70/25/5; 5% center-card bump. Powerup list is a proposal under review. | 2026-10-20 |
+| D30 | Roguelike runs are 18 holes; a starter augment (40/45/15) before hole 1; the ghost line is earned (starts hidden). | 2026-10-20 |
+| D31 | Augments can change the course per player: "your course" ones only for the owner, hexes for everyone but the owner (placed before each hole). Each player throws against their own copy of the course. | 2026-10-20 |
+| D32 | Flight model: stall past ~26° angle of attack; per-disc default launch, release speed and meter curve (fixes too-long flat launches, backward-drifting high launches, and first person launching drivers too high). | 2026-10-20 |
+| D33 | Settings menu (⚙ / Esc) with metric (m) / imperial (ft for disc, yd for golf). | 2026-10-20 |
 
 ## Open questions
 
