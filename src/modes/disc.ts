@@ -221,6 +221,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.setHole(hole());
     scene.clearTrails();
     startHoleInfo();
+    // Every hole starts from a flat backhand; startTurn picks the suggested disc.
+    hyzer = 0;
+    forehand = false;
     const queue = rogue ? placementQueue(mods) : [];
     runPlacements(queue, startTurn);
   }
