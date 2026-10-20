@@ -54,16 +54,30 @@ export const FLIGHT = {
   skid: { default: 7, trees: 11, path: 3.5, tee: 4, fairway: 6 } as Record<string, number>,
 };
 
-/** Standard basket dimensions (m). */
+/**
+ * Basket dimensions (m). A little bigger than a PDGA target (tray, chains and band radii up ~15%,
+ * chain section ~25% taller) to make catches more forgiving in a game where you can't feel the putt.
+ */
 export const BASKET = {
   poleR: 0.024,
-  trayBottom: 0.58,
-  trayTop: 0.8,
-  trayR: 0.33,
-  chainR: 0.28,
-  chainTop: 1.32,
-  bandTop: 1.4,
-  bandR: 0.32,
+  trayBottom: 0.55,
+  trayTop: 0.78,
+  trayR: 0.38,
+  chainR: 0.33,
+  chainTop: 1.45,
+  bandTop: 1.53,
+  bandR: 0.37,
+};
+
+/** Chain catch tuning: probability = base − edgePenalty·edge³ − speedPenalty·(speed − fastSpeed)⁺. */
+export const CATCH = {
+  base: 0.98,
+  edgePenalty: 0.55,
+  speedPenalty: 0.03,
+  fastSpeed: 11,
+  min: 0.08,
+  /** Misses with the line this far out (0 center … 1 edge) cut through instead of spitting out. */
+  cutEdge: 0.8,
 };
 
 export interface DiscWorld {
@@ -324,17 +338,25 @@ function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, eve
   if (d > 1) return none;
   const z = p[2];
   const B = BASKET;
-  const bounce = (keep: number, ev: ThrowEvent) => {
-    const nx = dx / (d || 1), ny = dy / (d || 1);
+  /**
+   * Bounce off a vertical surface of radius R around the pole: push the disc back outside it and
+   * reflect the inward part of its velocity. Pushing out matters: without it the disc stays inside
+   * the surface, gets damped again every step, and sticks to the basket.
+   */
+  const bounce = (keep: number, ev: ThrowEvent, R: number) => {
+    const nx = d > 1e-6 ? dx / d : -v[0] / (Math.hypot(v[0], v[1]) || 1);
+    const ny = d > 1e-6 ? dy / d : -v[1] / (Math.hypot(v[0], v[1]) || 1);
     const vn = v[0] * nx + v[1] * ny;
-    if (vn < 0) { v[0] -= 1.4 * vn * nx; v[1] -= 1.4 * vn * ny; }
+    if (d < R) { p[0] = basket[0] + nx * (R + 0.005); p[1] = basket[1] + ny * (R + 0.005); }
+    if (vn >= 0) return { holed: false, hit: false, inChains: false }; // already moving away
+    v[0] -= 1.4 * vn * nx; v[1] -= 1.4 * vn * ny;
     v[0] *= keep; v[1] *= keep; v[2] = Math.min(v[2], 0) * keep;
     events.push(ev);
     return { holed: false, hit: true, inChains: false };
   };
 
   // Lid / top band.
-  if (z > B.chainTop && z < B.bandTop + DISC_RADIUS * 0.5 && d < B.bandR + DISC_RADIUS) return bounce(0.3, 'band');
+  if (z > B.chainTop && z < B.bandTop + DISC_RADIUS * 0.5 && d < B.bandR + DISC_RADIUS) return bounce(0.3, 'band', B.bandR + DISC_RADIUS);
   // Chains.
   const inChains = z >= B.trayTop && z <= B.chainTop && d < B.chainR + DISC_RADIUS * 0.6;
   if (inChains && !wasInChains) {
@@ -343,10 +365,10 @@ function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, eve
     const offset = Math.abs((v[0] * (basket[1] - prev[1]) - v[1] * (basket[0] - prev[0])) / sh);
     const s = Math.hypot(v[0], v[1], v[2]);
     const edge = Math.min(1, offset / (B.chainR + DISC_RADIUS * 0.6));
-    const pCatch = Math.min(0.98, Math.max(0.04, 0.97 - 0.85 * edge ** 2.5 - 0.05 * Math.max(0, s - 9)));
+    const pCatch = Math.min(0.99, Math.max(CATCH.min, CATCH.base - CATCH.edgePenalty * edge ** 3 - CATCH.speedPenalty * Math.max(0, s - CATCH.fastSpeed)));
     events.push('chains');
     if (rng() < pCatch) return { holed: true, hit: false, inChains: true };
-    if (edge > 0.65) {
+    if (edge > CATCH.cutEdge) {
       // Cut through the edge of the chains: keep going, slower, pushed away from the pole.
       const side = Math.sign(v[0] * dy - v[1] * dx) || 1;
       const yaw = Math.atan2(v[1], v[0]) + side * (0.2 + rng() * 0.35);
@@ -363,13 +385,15 @@ function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, eve
     return { holed: false, hit: true, inChains: true };
   }
   if (inChains) return { holed: false, hit: false, inChains: true };
-  // Tray side / rim.
+  // Tray. Coming down inside its footprint (a spit-out or band hit dropping straight down, or a
+  // disc sliding off the chains) lands in the tray, which counts as holed. Arriving from outside
+  // at tray height hits the cage and bounces off.
   if (z >= B.trayBottom - DISC_RADIUS * 0.3 && z < B.trayTop && d < B.trayR + DISC_RADIUS) {
-    // Falling in from directly above the tray (rare, between chains and rim) counts.
-    if (prev[2] >= B.trayTop && d < B.trayR - DISC_RADIUS) return { holed: true, hit: false, inChains: false };
-    return bounce(0.3, 'tray');
+    const prevD = Math.hypot(prev[0] - basket[0], prev[1] - basket[1]);
+    if (d < B.trayR && prevD < B.trayR && v[2] <= 0) return { holed: true, hit: false, inChains: false };
+    return bounce(0.3, 'tray', B.trayR + DISC_RADIUS);
   }
   // Pole below the tray.
-  if (z < B.trayBottom && d < B.poleR + DISC_RADIUS) return bounce(0.25, 'pole');
+  if (z < B.trayBottom && d < B.poleR + DISC_RADIUS) return bounce(0.25, 'pole', B.poleR + DISC_RADIUS);
   return none;
 }

@@ -63,9 +63,20 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 | Trunk | Cylinder; reflect horizontal velocity, keep ~half the speed, disc "dies" (lift ×0.2, extra drag) |
 | Crown | Ellipsoid matching the 3D crown; branch-hit probability per meter traveled inside it, denser toward the middle; a hit kicks the disc in a random direction at 20–40% speed |
 | Basket chains | Entering the chain zone: catch probability from how centered the line is (perpendicular offset from the pole) and speed. Misses near the edge **cut through**; others **spit out** backward |
-| Top band / lid, tray (cage), pole | Bounce off with heavy speed loss |
+| Top band / lid, tray (cage), pole | Bounce off with heavy speed loss. The disc is pushed back outside the surface it hit (without that it stuck to the cage and slid down it) |
+| Tray from above | A disc coming down inside the tray's footprint (a spit-out or band hit falling back) lands in the tray and counts, as in the PDGA rules |
 | Water / OB | +1, play from where the disc last crossed in (casual, D19) |
 | Tap-in | Putts from < 1 m drop in |
+
+## Basket size and forgiveness
+
+The basket is ~15% wider than a PDGA target (tray r 0.38 m, chains r 0.33 m, band r 0.37 m) and the chain section ~25% taller (0.78–1.45 m), with a gentler catch curve (`CATCH` in `src/disc/flight.ts`). Measured over 100 putts at the HUD's suggested power (before → after, 2026-10-20):
+
+| Putt | Centered | 30 cm off |
+|---|---|---|
+| 5 m | 82% → 98% | 35% → 69% |
+| 10 m | 52% → 83% | 45% → 75% |
+| 15 m | 34% → 53% | 42% → 67% |
 
 ## First-person putting
 

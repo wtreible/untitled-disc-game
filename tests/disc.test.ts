@@ -126,15 +126,40 @@ describe('basket', () => {
     expect(made).toBeGreaterThan(28);
   });
 
-  it('a putt lined up on the edge of the chains mostly misses (cut, spit, band or tray)', () => {
+  it('a putt lined up just past the edge of the chains mostly misses (cut, spit, band or tray)', () => {
     let made = 0, edge = 0;
     for (let s = 1; s <= 40; s++) {
-      const r = putt(0.33, s);
+      const r = putt(0.5, s);
       if (r.holed) made++;
       if (r.events.some((e) => e === 'cut' || e === 'spit' || e === 'band' || e === 'tray')) edge++;
     }
-    expect(made).toBeLessThan(18);
-    expect(edge).toBeGreaterThan(15);
+    expect(made).toBeLessThan(12);
+    expect(edge).toBeGreaterThan(0); // some clip the basket; the rest miss clean
+  });
+
+  it('is forgiving: a putt 30 cm off center still goes in more often than not', () => {
+    let made = 0;
+    for (let s = 1; s <= 40; s++) if (putt(0.3, s).holed) made++;
+    expect(made).toBeGreaterThan(22);
+  });
+
+  it('a low putt into the cage bounces off once and ends away from the basket (no sticking)', () => {
+    // Launch ~0: arrives at tray height. Regression: it used to register hundreds of tray hits,
+    // freeze against the cage and slide down it.
+    for (let s = 1; s <= 8; s++) {
+      const r = putt(0, s, 0.0, 0.5);
+      if (!r.events.includes('tray')) continue;
+      expect(r.events.filter((e) => e === 'tray').length).toBe(1);
+      expect(r.holed).toBe(false);
+      expect(Math.hypot(r.rest[0] - B[0], r.rest[1] - B[1])).toBeGreaterThan(BASKET.trayR + 0.1);
+    }
+    expect([...Array(8).keys()].some((k) => putt(0, k + 1, 0.0, 0.5).events.includes('tray'))).toBe(true);
+  });
+
+  it('a disc dropping straight down inside the tray footprint lands in the basket', () => {
+    // Released right above the tray, slow: e.g. a spit-out falling back in.
+    const r = simulateThrow({ start: [0, 5.85], aim: NORTH, power: 0.0005, disc: PUTTER_DISC, hyzer: 0, style: 'drive', releaseZ: 1.0 }, world([], B), mulberry32(1));
+    expect(r.holed).toBe(true);
   });
 
   it('a putt a meter wide never goes in', () => {
