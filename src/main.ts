@@ -41,6 +41,7 @@ function syncMode(): void {
   $('setup-hole').textContent = {
     'disc-simple': 'Tali disc golf park layout, drawn simply: 1–5 trees per hole, a defender guarding every basket. Starts in first person.',
     'disc-forest': 'Tali disc golf park over satellite imagery: ~10k trees from HSY 2024 canopy data. Starts in first person.',
+    'disc-rogue': 'Roguelike run on the simple Tali course: after every hole, draft 1 of 3 powerups (common, epic or legendary). Powerups last the whole run.',
     golf: 'The Country Club, Brookline MA: Main course hole 17, par 4.',
   }[mode] ?? '';
 }
@@ -69,6 +70,6 @@ $('start').addEventListener('click', async () => {
     const o = holeOptions[parseInt($<HTMLSelectElement>('holes').value, 10)];
     $('fp-toggle').hidden = false;
     const { startDisc } = await import('./modes/disc');
-    await startDisc({ names, course: mode === 'disc-forest' ? 'forest' : 'simple', first: o.first, count: o.count });
+    await startDisc({ names, course: mode === 'disc-forest' ? 'forest' : 'simple', first: o.first, count: o.count, rogue: mode === 'disc-rogue' });
   }
 });

@@ -52,6 +52,7 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 
 - Point mass + bank angle φ. Lift and drag from angle of attack (Hummel 2003 / Potts & Crowther form: CL = CL0 + CLα·α, CD = CD0 + CDα·(α−α0)², a = ½ρA/m·v²·C). The disc's nose angle stays fixed, so as the path drops the angle of attack rises and the disc glides.
 - Lift tilts with bank, which is what makes discs curve. Flight numbers drive the bank: **turn** rolls toward anhyzer while speed > 60% of release; **fade** rolls back toward hyzer as it slows. Underpowered throws never turn and fade early, as real ones do.
+- Turn and fade each push the bank toward a limit set by the flight numbers (turn about −31° for turn −1; fade 21–35° for fade 1–3) and ease off near it. Unbounded, fade rolled drivers past 170° (upside down) by landing.
 - Release angle (hyzer/anhyzer, Q/E) sets the initial bank; forehand (T) mirrors the curve.
 - Power meter maps to release speed through the measured distance-vs-speed curve, so meter fill ≈ fraction of max distance (distance grows ~v^3.7 otherwise).
 - Tuned by grid search to typical amateur full-power ranges: distance driver ~103 m, fairway ~84 m, midrange ~71 m, putter ~59 m (thrown), ~25 m (putt style).
@@ -80,7 +81,7 @@ The basket is ~15% wider than a PDGA target (tray r 0.38 m, chains r 0.33 m, ban
 
 ## First-person putting
 
-Inside 20 m (circle 2), after the tee throw, the camera switches to the thrower's eyes (1.65 m) with a putter selected. Drag/arrows aim; up/down sets launch angle (launch = view pitch + 7°). The power tick shows the power whose flight crosses the basket at mid-chain height. C toggles first person anywhere; the ghost arc shows the zero-error flight path in 3D.
+First person shows a top-down **minimap** of the current hole (bottom-left; click it to aim), **W/S** moves the target distance (Shift: 5 m), and the **scroll wheel zooms**. Inside 20 m (circle 2), after the tee throw, the camera switches to the thrower's eyes (1.65 m) with a putter selected. Drag/arrows aim; up/down sets launch angle (launch = view pitch + 7°). The power tick shows the power whose flight crosses the basket at mid-chain height. C toggles first person anywhere; the ghost arc shows the zero-error flight path in 3D.
 
 ## Rules
 

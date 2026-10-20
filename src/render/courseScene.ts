@@ -36,6 +36,18 @@ export class CourseScene {
   private readonly symbols?: THREE.Group;
   private readonly beacon: THREE.Mesh;
   private beaconAt: Vec2 = [0, 0];
+  // First-person extras: target ring + ground line, and a top-down minimap inset.
+  private readonly target3d = new THREE.Group();
+  private readonly targetLine: THREE.Line;
+  private readonly targetMat: THREE.LineDashedMaterial;
+  private readonly miniCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
+  private miniCenter: Vec2 = [0, 0];
+  private miniPpm = 1;
+  /** Minimap rect in CSS pixels from the bottom-left corner of the canvas. */
+  readonly minimap = { x: 12, y: 12, w: 250, h: 250 };
+  private readonly skyColor: THREE.Color;
+  private readonly groundColor: THREE.Color;
+  private readonly fog: THREE.Fog;
   private view: ViewMode = 'photo';
   private readonly trees3d: THREE.Group;
   private readonly overlays = new THREE.Group();
@@ -81,6 +93,19 @@ export class CourseScene {
     this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 16, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.55, fog: false }));
     this.beacon.visible = false;
     this.scene.add(this.beacon);
+
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 40), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+    ring.name = 'ring';
+    this.targetMat = new THREE.LineDashedMaterial({ color: '#ffffff', dashSize: 0.6, gapSize: 0.5, transparent: true, opacity: 0.7, depthWrite: false });
+    this.targetLine = new THREE.Line(new THREE.BufferGeometry(), this.targetMat);
+    this.target3d.add(ring, this.targetLine);
+    this.target3d.visible = false;
+    this.scene.add(this.target3d);
+
+    const sky = this.style === 'vector' ? '#bcd9f2' : '#a9c8e8';
+    this.skyColor = new THREE.Color(sky);
+    this.groundColor = new THREE.Color(this.style === 'vector' ? '#3c4a37' : '#1d2419');
+    this.fog = new THREE.Fog(sky, 80, 520);
 
     this.trees3d = treeMeshes(trees);
     this.world3d.add(this.trees3d);
@@ -173,24 +198,27 @@ export class CourseScene {
     this.updateOrtho();
   }
 
-  private applyVisibility(): void {
+  /** Show what one camera should see: first person (fp = true) or a top-down view. */
+  private applyVisibility(fp = this.fp): void {
     const v = this.view;
-    this.overlays.visible = !this.fp;
+    this.overlays.visible = !fp;
     if (this.style === 'vector') {
       // One drawn world: flat symbols from above, the same trees in 3D at eye level.
-      this.symbols!.visible = !this.fp;
-      this.trees3d.visible = this.fp;
+      this.symbols!.visible = !fp;
+      this.trees3d.visible = fp;
     } else {
       if (this.photo) this.photo.visible = v !== 'classes';
       this.classes!.visible = v === 'classes' || !this.photo;
-      this.overlayPlane!.visible = v === 'overlay' && !this.fp;
+      this.overlayPlane!.visible = v === 'overlay' && !fp;
       // Trees: always in first person; top-down only in the class view (the photo shows real ones).
-      this.trees3d.visible = this.fp || v === 'classes' || !this.photo;
+      this.trees3d.visible = fp || v === 'classes' || !this.photo;
     }
-    for (const c of this.world3d.children) if (c !== this.trees3d) c.visible = this.fp;
-    const sky = this.style === 'vector' ? '#bcd9f2' : '#a9c8e8';
-    this.scene.background = new THREE.Color(this.fp ? sky : this.style === 'vector' ? '#3c4a37' : '#1d2419');
-    this.scene.fog = this.fp ? new THREE.Fog(sky, 80, 520) : null;
+    for (const c of this.world3d.children) if (c !== this.trees3d) c.visible = fp;
+    for (const d of this.discs3d) d.layers.set(fp ? 0 : 1); // hide 3D discs from top-down passes
+    this.target3d.layers.set(fp ? 0 : 1);
+    this.beacon.layers.set(fp ? 0 : 1);
+    this.scene.background = fp ? this.skyColor : this.groundColor;
+    this.scene.fog = fp ? this.fog : null;
   }
 
   // ---------- cameras ----------
@@ -216,6 +244,73 @@ export class CourseScene {
     const want = new THREE.Vector3(p[0], p[1], p[2]).sub(this.persp.position).normalize();
     cur.lerp(want, smoothing).normalize();
     this.persp.lookAt(this.persp.position.clone().add(cur));
+  }
+
+  /** Lumberjack: hide tree i in 3D (zero-scale instance) and redraw the top-down symbols. */
+  removeTree(i: number, alive: Tree[]): void {
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (const c of this.trees3d.children) {
+      const im = c as THREE.InstancedMesh;
+      if (!im.isInstancedMesh) continue;
+      im.setMatrixAt(i, zero);
+      im.instanceMatrix.needsUpdate = true;
+    }
+    if (this.symbols) {
+      for (const c of [...this.symbols.children]) { this.symbols.remove(c); (c as THREE.Mesh).geometry.dispose(); }
+      const fresh = treeSymbols(alive, OVERLAY_Z - 5);
+      for (const c of [...fresh.children]) this.symbols.add(c);
+    }
+  }
+
+  /** First-person target: ring on the ground at `to`, dashed ground line from the thrower. */
+  setTarget3d(from: Vec2 | null, to: Vec2, color: string): void {
+    this.target3d.visible = from !== null;
+    if (!from) return;
+    const ring = this.target3d.getObjectByName('ring') as THREE.Mesh;
+    ring.position.set(to[0], to[1], 0.04);
+    (ring.material as THREE.MeshBasicMaterial).color.set(color);
+    this.targetLine.geometry.dispose();
+    this.targetLine.geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(from[0], from[1], 0.05), new THREE.Vector3(to[0], to[1], 0.05)]);
+    this.targetLine.computeLineDistances();
+    this.targetMat.color.set(color);
+  }
+
+  /** First-person zoom: scroll changes the field of view. */
+  zoomFov(factor: number): void {
+    this.persp.fov = Math.min(80, Math.max(25, this.persp.fov * factor));
+    this.persp.updateProjectionMatrix();
+  }
+
+  /** Frame the minimap on these points (current hole + players), hole pointing up. */
+  setMinimapFrame(points: Vec2[], pad = 18): void {
+    const right: Vec2 = [this.up[1], -this.up[0]];
+    let minU = Infinity, maxU = -Infinity, minR = Infinity, maxR = -Infinity;
+    for (const p of points) {
+      const u = p[0] * this.up[0] + p[1] * this.up[1];
+      const r = p[0] * right[0] + p[1] * right[1];
+      minU = Math.min(minU, u); maxU = Math.max(maxU, u); minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+    }
+    const { w, h } = this.minimap;
+    this.miniPpm = Math.min(6, (h - 2 * pad) / Math.max(10, maxU - minU), (w - 2 * pad) / Math.max(10, maxR - minR));
+    const cu = (minU + maxU) / 2, cr = (minR + maxR) / 2;
+    this.miniCenter = [this.up[0] * cu + right[0] * cr, this.up[1] * cu + right[1] * cr];
+    const hw = w / 2 / this.miniPpm, hh = h / 2 / this.miniPpm;
+    Object.assign(this.miniCam, { left: -hw, right: hw, top: hh, bottom: -hh });
+    this.miniCam.position.set(this.miniCenter[0], this.miniCenter[1], 1000);
+    this.miniCam.up.set(this.up[0], this.up[1], 0);
+    this.miniCam.lookAt(this.miniCenter[0], this.miniCenter[1], 0);
+    this.miniCam.updateProjectionMatrix();
+  }
+
+  /** Minimap click → world point, or null if outside the inset. */
+  minimapToWorld(clientX: number, clientY: number): Vec2 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const { x, y, w, h } = this.minimap;
+    const lx = clientX - rect.left - x;
+    const ly = rect.bottom - clientY - y; // from the bottom
+    if (!this.fp || lx < 0 || ly < 0 || lx > w || ly > h) return null;
+    const v = new THREE.Vector3((lx / w) * 2 - 1, (ly / h) * 2 - 1, 0).unproject(this.miniCam);
+    return [v.x, v.y];
   }
 
   /** Fit points on screen (top-down). */
@@ -314,6 +409,12 @@ export class CourseScene {
     this.trails.add(line);
   }
 
+  /** Remove the most recent trail (mulligan). */
+  popTrail(): void {
+    const c = this.trails.children[this.trails.children.length - 1] as THREE.Line | undefined;
+    if (c) { this.trails.remove(c); c.geometry.dispose(); }
+  }
+
   clearTrails(): void {
     for (const c of [...this.trails.children]) {
       this.trails.remove(c);
@@ -322,13 +423,44 @@ export class CourseScene {
   }
 
   render(): void {
-    const s = 1 / this.ppm;
     const rot = Math.atan2(this.up[1], this.up[0]) - Math.PI / 2;
-    for (const o of this.pixelScaled) { o.scale.set(s, s, 1); o.rotation.z = rot; }
-    const dash = this.fp ? 0.25 : 8 / this.ppm;
-    this.aimMat.dashSize = this.previewMat.dashSize = dash;
-    this.aimMat.gapSize = this.previewMat.gapSize = dash * 0.7;
-    this.renderer.render(this.scene, this.fp ? this.persp : this.ortho);
+    const scalePixels = (ppm: number) => {
+      const k = 1 / ppm;
+      for (const o of this.pixelScaled) { o.scale.set(k, k, 1); o.rotation.z = rot; }
+      const dash = 8 / ppm;
+      this.aimMat.dashSize = this.previewMat.dashSize = dash;
+      this.aimMat.gapSize = this.previewMat.gapSize = dash * 0.7;
+    };
+    this.persp.layers.set(0);
+    if (!this.fp) {
+      scalePixels(this.ppm);
+      this.ortho.layers.enableAll();
+      this.ortho.layers.disable(1);
+      this.renderer.render(this.scene, this.ortho);
+      return;
+    }
+    // First person, then the minimap inset drawn top-down over the bottom-left corner.
+    this.previewMat.dashSize = 0.25;
+    this.previewMat.gapSize = 0.18;
+    this.renderer.render(this.scene, this.persp);
+
+    const { x, y, w, h } = this.minimap;
+    const size = this.size();
+    this.applyVisibility(false);
+    scalePixels(this.miniPpm);
+    this.miniCam.layers.set(0);
+    this.renderer.setScissorTest(true);
+    this.renderer.setScissor(x, y, w, h);
+    this.renderer.setViewport(x, y, w, h);
+    this.renderer.setClearColor(this.groundColor, 1);
+    this.renderer.clear(true, true, false);
+    const bg = this.scene.background;
+    this.scene.background = null;
+    this.renderer.render(this.scene, this.miniCam);
+    this.scene.background = bg;
+    this.renderer.setScissorTest(false);
+    this.renderer.setViewport(0, 0, size.w, size.h);
+    this.applyVisibility(true);
   }
 
   // ---------- internals ----------

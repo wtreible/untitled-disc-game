@@ -18,6 +18,12 @@ export class TreeIndex {
     return (cx + 50000) * 100000 + (cy + 50000);
   }
 
+  remove(t: Tree): void {
+    const k = this.key(Math.floor(t.x / TreeIndex.CELL), Math.floor(t.y / TreeIndex.CELL));
+    const list = this.cells.get(k);
+    if (list) { const i = list.indexOf(t); if (i >= 0) list.splice(i, 1); }
+  }
+
   /** Trees whose crown or trunk might touch (x, y). */
   near(x: number, y: number, out: Tree[] = []): Tree[] {
     out.length = 0;

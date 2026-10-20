@@ -96,3 +96,30 @@ kbd { font-size: 11px; opacity: 0.7; border: 1px solid currentColor; border-radi
 #results-table td.under { color: #8fdc6a; font-weight: 700; }
 #results-table td.over { color: #ff9a7a; }
 .panel:empty { display: none; }
+#minimap {
+  position: fixed; left: 12px; bottom: 12px; width: 250px; height: 250px;
+  border: 2px solid rgba(255, 255, 255, 0.7); border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  cursor: crosshair;
+}
+
+/* roguelike */
+#rogue-bar { font-size: 13px; color: var(--muted); }
+#rogue-bar b { color: #ffd23f; }
+.draft-card { width: min(880px, calc(100vw - 32px)); }
+.tier { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+.tier.common, .pcard.common .ptier { color: #b8d4a8; }
+.tier.epic, .pcard.epic .ptier { color: #c58cff; }
+.tier.legendary, .pcard.legendary .ptier { color: #ffc23d; }
+#draft-cards { display: flex; gap: 12px; flex-wrap: wrap; }
+.pcard {
+  flex: 1 1 200px; min-height: 150px; display: flex; flex-direction: column; gap: 8px; text-align: left;
+  padding: 14px; border-radius: 12px; background: #182214; border: 2px solid #3b4a35;
+}
+.pcard b { font-size: 17px; }
+.pcard span:last-child { color: var(--muted); font-size: 14px; }
+.pcard .ptier { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+.pcard.epic { border-color: #7a4bb0; }
+.pcard.legendary { border-color: #c9952a; box-shadow: 0 0 14px rgba(255, 194, 61, 0.35); }
+.pcard:hover { transform: translateY(-2px); background: #1f2c1a; }
+.draft-actions { display: flex; gap: 8px; }
+#draft-owned { font-size: 12px; }

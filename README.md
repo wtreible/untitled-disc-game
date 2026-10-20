@@ -3,6 +3,7 @@
 Browser golf on real courses: geometry from OpenStreetMap, drawn over live Esri satellite imagery, local hot-seat for 1–4 players.
 
 - **Disc golf: Tali (simple), default.** The real Tali (Helsinki) layout drawn as a clean vector course with 1–5 trees per hole and a defender guarding every basket. Starts in first person; the top-down map (C) shows the same trees.
+- **Disc golf: Roguelike run.** The simple course, plus a powerup draft after every hole (common / epic / legendary). See [docs/11-roguelike.md](docs/11-roguelike.md).
 - **Disc golf: Tali (forest).** The same holes over satellite imagery with ~10k trees from HSY canopy data.
 - Both: trunk/branch/chain collisions, full rounds with scorecard. See [docs/10-disc-golf.md](docs/10-disc-golf.md).
 - **Golf:** The Country Club (Brookline, MA), Main #17.
@@ -24,13 +25,14 @@ npm run dev        # http://localhost:5173
 | Action | Input |
 |---|---|
 | Aim (top-down) | Click / drag on the map; ←/→ to nudge (Shift for fine) |
-| Aim (first person) | Drag, or arrows; ↑/↓ sets launch angle |
+| Aim (first person) | Drag, or arrows; ↑/↓ sets launch angle; W/S target distance (Shift: 5 m); click the minimap to aim there; scroll to zoom |
 | Disc | `[` / `]` or the ‹ › buttons (distance driver, fairway, midrange, putter) |
 | Release angle | Q (more hyzer, curves left) / E (more anhyzer, curves right), or click the release button |
 | Forehand / backhand | T (mirrors the curve) |
 | Throw | Hold Space, release at the power you want. The white tick reaches your target (putts: crosses the basket at chain height). The dashed ghost line is the error-free flight |
 | First person / top-down | C. Starts in first person; inside 20 m it's always first person unless you press C |
 | Pan / zoom / view / re-frame | Right-drag / scroll / V / F |
+| Roguelike | M: mulligan (if owned, right after a throw lands); P: arm Perfect Form |
 
 ## Controls: golf
 

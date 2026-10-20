@@ -8,12 +8,15 @@ export class Round {
   index: number;
   game: HoleGame;
   private order: number[];
+  /** Per-player extra throws before pick-up, applied to each new hole. */
+  readonly capBonus: number[];
 
   constructor(readonly holes: HoleLike[], readonly names: string[], readonly first = 0, readonly count = holes.length) {
     this.scores = names.map(() => holes.map(() => undefined));
     this.index = first;
     this.order = names.map((_, i) => i);
-    this.game = new HoleGame(holes[first], names, this.order);
+    this.capBonus = names.map(() => 0);
+    this.game = new HoleGame(holes[first], names, this.order, this.capBonus);
   }
 
   get hole(): HoleLike {
@@ -35,7 +38,7 @@ export class Round {
     const last = this.index;
     this.order = [...this.order].sort((a, b) => (this.scores[a][last] ?? 0) - (this.scores[b][last] ?? 0));
     this.index++;
-    this.game = new HoleGame(this.holes[this.index], this.names, this.order);
+    this.game = new HoleGame(this.holes[this.index], this.names, this.order, this.capBonus);
     return true;
   }
 

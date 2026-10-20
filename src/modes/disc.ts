@@ -1,10 +1,13 @@
 // Disc golf mode (default): a round at an OSM-mapped course with real tree canopy, local hot-seat.
 import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from '../course/geo';
+import type { SurfaceClass } from '../course/types';
 import { simplify } from '../course/disc-build';
 import { decodeTrees, type DiscCourseFile, type DiscHole } from '../course/disc-types';
 import { DISCS, PUTTER_DISC, suggestDisc, type Disc } from '../disc/discs';
 import { BASKET, simulateThrow, type DiscWorld, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
 import { TreeIndex } from '../disc/trees';
+import { neutralMods, type Mods } from '../disc/mods';
+import { byId, drawOffer, type Offer } from '../rogue/powerups';
 import { PLAYER_COLORS } from '../game/game';
 import { Round } from '../game/round';
 import { SurfaceGrid } from '../game/surfaces';
@@ -29,6 +32,7 @@ const LIE_LABELS: Record<string, string> = {
 const EVENT_TOASTS: Partial<Record<ThrowEvent, string>> = {
   trunk: 'Tree!', branch: 'Kicked by branches', spit: 'Spit out!', cut: 'Cut through the chains', band: 'Top band!',
   tray: 'Off the cage', pole: 'Pole hit', water: 'Splash! +1', oob: 'OB! +1',
+  phased: 'Phased through a tree', saved: 'Saved by Sticky Plastic', magnet: 'Magnet pull',
 };
 
 function closestAlong(p: Vec2, line: Vec2[]): number {
@@ -65,6 +69,8 @@ export interface DiscOptions {
   /** First hole index and number of holes. */
   first: number;
   count: number;
+  /** Roguelike run: draft a powerup after every hole. */
+  rogue?: boolean;
 }
 
 export async function startDisc(opts: DiscOptions): Promise<void> {
@@ -77,6 +83,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }, 0.5);
   const treeIndex = new TreeIndex(trees);
   const round = new Round(course.holes, opts.names, opts.first, opts.count);
+  // Roguelike state per player (neutral and unused outside rogue mode).
+  const rogue = !!opts.rogue;
+  const mods: Mods[] = opts.names.map(() => neutralMods());
+  const owned: string[][] = opts.names.map(() => []);
+  const mulligansLeft = opts.names.map(() => 0);
+  const perfectLeft = opts.names.map(() => 0);
+  let perfectArmed = false;
+  const alive = new Set(trees);
   const world = (): DiscWorld => ({ grid, terrain: new FlatTerrain(), trees: treeIndex, basket: round.hole.pin, branchDensity: course.branch_density });
   const hole = () => round.hole as DiscHole;
 
@@ -126,6 +140,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const puttStyle = () => isFP() && disc === PUTTER_DISC && toBasket() <= PUTT_RANGE + 5;
 
   function startHole(): void {
+    mods.forEach((m, i) => { mulligansLeft[i] = m.mulligans; perfectLeft[i] = m.perfectForm; round.capBonus[i] = m.pickupBonus; });
+    game().capBonus = round.capBonus;
     scene.setHole(hole());
     scene.clearTrails();
     const h = hole();
@@ -155,6 +171,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     phase = 'aim';
     power = 0;
     fpOverride = null;
+    perfectArmed = false;
     const p = player();
     aimTarget = defaultTarget(p.ball);
     yaw = Math.atan2(aimTarget[1] - p.ball[1], aimTarget[0] - p.ball[0]);
@@ -170,6 +187,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const fp = isFP();
     scene.setFirstPerson(fp);
     $('reticle').hidden = !fp;
+    $('minimap').hidden = !fp;
+    scene.setMinimapFrame([hole().tee, hole().pin, ...hole().routing, ...game().players.filter((q) => !q.holed).map((q) => q.ball)]);
     const p = player();
     if (fp) scene.setEye(p.ball, yaw, pitch);
     else if (reframe) {
@@ -184,6 +203,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       start: player().ball, aim: yaw, power: pw, disc, hyzer, mirror: forehand,
       launch: fp ? pitch + PUTT_LAUNCH_OFFSET : undefined,
       style: puttStyle() ? 'putt' : 'drive',
+      mods: mods[game().current],
+      fromTee: player().strokes === 0,
     };
   }
 
@@ -218,35 +239,77 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     chargeStart = performance.now();
   }
 
+  /** Lower is better: holed, then distance to the basket, with penalties counting heavily. */
+  const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, hole().pin) + r.penalty * 30);
+
   function release(): void {
     if (phase !== 'charging') return;
-    const result = simulateThrow(throwInput(Math.max(0.01, power)), world());
+    const me = game().current;
+    const input = { ...throwInput(Math.max(0.01, power)), perfect: perfectArmed };
+    if (perfectArmed) { perfectArmed = false; perfectLeft[me]--; }
+    let result = simulateThrow(input, world());
+    if (mods[me].clone) {
+      // Clone Disc: throw twice, keep the better one.
+      const twin = simulateThrow(input, world());
+      if (outcomeScore(twin) < outcomeScore(result)) result = twin;
+    }
     flight = { result, t0: performance.now(), speed: puttStyle() ? 1 : PLAYBACK };
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
   }
 
+  let pendingTimer = 0;
+  let undo: { idx: number; ball: Vec2; lie: SurfaceClass; strokes: number; pickedUp: boolean; lastFrom?: Vec2; current: number } | null = null;
+
   function finishThrow(): void {
     const r = flight!.result;
     const idx = game().current;
     scene.addTrail(r.samples, player().color);
     flight = null;
+    const pl = player();
+    undo = { idx, ball: pl.ball, lie: pl.lie, strokes: pl.strokes, pickedUp: pl.pickedUp, lastFrom: pl.lastFrom, current: idx };
     game().applyShot(r);
+    // Lumberjack: cut down every tree the disc touched.
+    if (mods[idx].treeChopper) for (const t of r.treesHit) {
+      if (!alive.has(t)) continue;
+      alive.delete(t);
+      treeIndex.remove(t);
+      scene.removeTree(trees.indexOf(t), [...alive]);
+    }
     const done = game().players[idx];
     let msg = r.events.map((e) => EVENT_TOASTS[e]).filter((m, i, a) => m && a.indexOf(m) === i).join(' · ');
     if (done.holed) msg = `${r.events.includes('chains') ? 'Chains! ' : ''}${esc(done.name)}: ${scoreWord(done.strokes, hole().par)}`;
     else if (done.pickedUp) msg = `${esc(done.name)} picks up (${done.strokes})`;
+    // Mulligan window: a few seconds to take the throw back (not after holing out).
+    const canMull = rogue && !done.holed && mulligansLeft[idx] > 0;
+    if (canMull) msg = `${msg ? msg + '<br>' : ''}<small>M: mulligan (${mulligansLeft[idx]} left)</small>`;
+    else undo = null;
     if (msg) toast(msg);
     phase = 'between';
     updateHud();
+    const wait = canMull ? 2600 : msg ? 1300 : 600;
     if (game().finished) {
       round.recordCurrent();
       updateHud();
-      setTimeout(showCard, 1500);
+      pendingTimer = window.setTimeout(() => { undo = null; showCard(); }, Math.max(1500, wait));
     } else {
-      setTimeout(startTurn, msg ? 1300 : 600);
+      pendingTimer = window.setTimeout(() => { undo = null; startTurn(); }, wait);
     }
+  }
+
+  function takeMulligan(): void {
+    if (!undo || phase !== 'between') return;
+    clearTimeout(pendingTimer);
+    const u = undo;
+    undo = null;
+    const p = game().players[u.idx];
+    Object.assign(p, { ball: u.ball, lie: u.lie, strokes: u.strokes, pickedUp: u.pickedUp, lastFrom: u.lastFrom });
+    game().current = u.idx;
+    mulligansLeft[u.idx]--;
+    scene.popTrail();
+    toast('Mulligan!');
+    startTurn();
   }
 
   function scoreWord(strokes: number, par: number): string {
@@ -277,9 +340,50 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   $('next').addEventListener('click', () => {
     $('results').hidden = true;
+    if (!rogue) return advanceHole();
+    // Draft in order of this hole's score (best first).
+    const order = game().players.map((_, i) => i).sort((a, b) => game().players[a].strokes - game().players[b].strokes);
+    runDrafts(order, advanceHole);
+  });
+
+  function advanceHole(): void {
     $('hud').hidden = false;
     if (round.nextHole()) startHole();
-  });
+  }
+
+  // ---------- roguelike draft ----------
+  function runDrafts(order: number[], done: () => void): void {
+    if (order.length === 0) return done();
+    const [pi, ...rest] = order;
+    let offer: Offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard);
+    const render = () => {
+      $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: choose a powerup`;
+      $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
+      $('draft-tier').className = `tier ${offer.tier}`;
+      $('draft-cards').innerHTML = offer.cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
+          <span class="ptier">${c.tier}${offer.bumped === i ? ' ★ bumped' : ''}</span>
+          <b>${esc(c.name)}</b><span>${esc(c.text)}</span></button>`).join('');
+      $('draft-reroll').hidden = mods[pi].rerolls <= 0;
+      $('draft-reroll').textContent = `Reroll (${mods[pi].rerolls})`;
+      $('draft-owned').textContent = owned[pi].length ? `Have: ${owned[pi].map((id) => byId(id).name).join(', ')}` : '';
+      $('draft-cards').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+        const card = offer.cards[parseInt(b.dataset.i!, 10)];
+        card.apply(mods[pi]);
+        owned[pi].push(card.id);
+        $('draft').hidden = true;
+        runDrafts(rest, done);
+      }));
+    };
+    $('draft-reroll').onclick = () => {
+      if (mods[pi].rerolls <= 0) return;
+      mods[pi].rerolls--;
+      offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, offer.tier);
+      render();
+    };
+    $('draft-skip').onclick = () => { $('draft').hidden = true; runDrafts(rest, done); };
+    render();
+    $('draft').hidden = false;
+  }
   $('again').addEventListener('click', () => location.reload());
 
   // ---------- HUD ----------
@@ -303,6 +407,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('turn').innerHTML = `<span style="color:${p.color}">●</span> ${esc(p.name)}`;
     $('club-name').innerHTML = `${disc.name} <span class="nums">${disc.speed} | ${disc.glide} | ${disc.turn} | ${disc.fade}</span>`;
     $('release').textContent = `${releaseLabel()} · ${forehand ? 'Forehand' : 'Backhand'}`;
+    const me = game().current;
+    $('rogue-bar').hidden = !rogue;
+    if (rogue) {
+      const bits = [`⚡ ${owned[me].length} powerup${owned[me].length === 1 ? '' : 's'}`];
+      if (mods[me].mulligans) bits.push(`Mulligans ${mulligansLeft[me]} (M)`);
+      if (mods[me].perfectForm) bits.push(perfectArmed ? '<b>Perfect Form ARMED</b>' : `Perfect Form ${perfectLeft[me]} (P)`);
+      $('rogue-bar').innerHTML = bits.join(' · ');
+      $('rogue-bar').title = owned[me].map((id) => `${byId(id).name}: ${byId(id).text}`).join('\n');
+    }
     $('stats').innerHTML = `Basket <b>${Math.round(toBasket())} m</b> · Target <b>${Math.round(dist(p.ball, aimTarget))} m</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
     $('meter-fill').style.width = `${power * 100}%`;
     $('meter-target').style.left = `${tick * 100}%`;
@@ -311,7 +424,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('swing').toggleAttribute('disabled', phase !== 'aim' && phase !== 'charging');
     $('swing').innerHTML = `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>Space</kbd>`;
     $('help').textContent = (isFP()
-      ? 'Drag or arrows to aim (up/down = launch) · Q/E release angle · [ / ] disc · T forehand · C top-down · V view'
+      ? 'Drag or arrows to aim (up/down = launch) · W/S target distance · scroll zoom · click minimap to aim · Q/E release angle · [ / ] disc · T forehand · C top-down · V view'
       : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
       .replace(vector ? ' · V view' : '\u0000', '');
     $('scoreboard').innerHTML = game().players.map((q, i) => {
@@ -353,7 +466,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   canvas.addEventListener('pointerup', () => { drag = null; });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    if (!isFP()) scene.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
+    const f = Math.exp(-e.deltaY * 0.0015);
+    if (isFP()) scene.zoomFov(1 / f);
+    else scene.zoomAt(e.clientX, e.clientY, f);
   }, { passive: false });
 
   /** First-person look: yaw/pitch deltas in radians. Keeps the aim target at the same distance. */
@@ -375,6 +490,26 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const d = dist(b, aimTarget);
     setAimTarget([b[0] + Math.cos(a) * d, b[1] + Math.sin(a) * d]);
   }
+
+  /** First person: move the target along the aim line (W/S), keeping direction. */
+  function nudgeTargetDistance(dm: number): void {
+    if (phase !== 'aim') return;
+    const b = player().ball;
+    const d = Math.max(1, dist(b, aimTarget) + dm);
+    aimTarget = [b[0] + Math.cos(yaw) * d, b[1] + Math.sin(yaw) * d];
+    recomputeTick();
+    updateHud();
+  }
+
+  // Minimap click: aim at that point (direction and distance).
+  $('minimap').addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    if (phase !== 'aim') return;
+    const w = scene.minimapToWorld(e.clientX, e.clientY);
+    if (!w) return;
+    setAimTarget(w);
+    scene.setEye(player().ball, yaw, pitch);
+  });
 
   function cycleDisc(dir: 1 | -1): void {
     if (phase !== 'aim') return;
@@ -414,6 +549,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (k === 'arrowright') rotateAim(e.shiftKey ? -0.2 : -1);
     else if (k === 'arrowup' && isFP() && phase === 'aim') { look(0, (e.shiftKey ? 0.2 : 1) * Math.PI / 180); recomputeTick(); }
     else if (k === 'arrowdown' && isFP() && phase === 'aim') { look(0, -(e.shiftKey ? 0.2 : 1) * Math.PI / 180); recomputeTick(); }
+    else if (k === 'w' && isFP()) nudgeTargetDistance(e.shiftKey ? 5 : 1);
+    else if (k === 's' && isFP()) nudgeTargetDistance(e.shiftKey ? -5 : -1);
+    else if (k === 'm' && rogue) takeMulligan();
+    else if (k === 'p' && rogue && phase === 'aim' && perfectLeft[game().current] > 0) { perfectArmed = !perfectArmed; updateHud(); }
     else if (k === 'q') setHyzer(1);
     else if (k === 'e') setHyzer(-1);
     else if (k === 't') { if (phase === 'aim') { forehand = !forehand; recomputeTick(); updateHud(); } }
@@ -435,7 +574,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // ---------- frame loop ----------
   function frameLoop(now: number): void {
     if (phase === 'charging') {
-      const t = ((now - chargeStart) / 1000) % 2;
+      const t = (((now - chargeStart) / 1000) * mods[game().current].meterSpeed) % 2;
       power = t < 1 ? t : 2 - t;
       $('meter-fill').style.width = `${power * 100}%`;
     }
@@ -457,13 +596,16 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       // First person: turn the head to follow the disc.
       if (isFP()) scene.lookToward(s[kk], 0.12);
       scene.setAim(null, [0, 0], '#fff');
+      scene.setTarget3d(null, [0, 0], '#fff');
       if (k >= s.length + 25) finishThrow();
     } else if (phase === 'aim' || phase === 'charging') {
       const p = player();
-      scene.setAim(isFP() ? null : p.ball, aimTarget, p.color);
+      scene.setAim(p.ball, aimTarget, p.color); // top-down line; also drawn in the first-person minimap
+      scene.setTarget3d(isFP() ? p.ball : null, aimTarget, p.color);
       scene.setPreview(ghost(phase === 'charging' ? Math.max(power, 0.01) : tick).samples, p.color);
     } else {
       scene.setAim(null, [0, 0], '#fff');
+      scene.setTarget3d(null, [0, 0], '#fff');
       scene.setPreview(null, '#fff');
     }
     scene.render();

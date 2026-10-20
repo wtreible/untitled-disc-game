@@ -14,6 +14,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) | Park-to-course editor, disc golf variant (future) |
 | [09-glossary](09-glossary.md) | Terms used across these docs |
 | [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
+| [11-roguelike](11-roguelike.md) | Roguelike run mode: draft rules and the proposed powerup list (under review) |
 
 ## Decision log
 
@@ -45,6 +46,9 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D24 | **Default course: Tali (simple)**, a vector drawing of the real layout with 1–5 designed trees per hole and a defender at every basket. The satellite forest version stays selectable. | 2026-10-19 |
 | D25 | Disc golf starts in first person; C toggles to the top-down map and the choice persists across turns. | 2026-10-19 |
 | D26 | Branch density is per course (simple 0.9/m, forest 0.25/m). | 2026-10-19 |
+| D27 | Turn and fade drive the bank toward limits from the flight numbers (fixes discs flipping upside down). | 2026-10-20 |
+| D28 | First person gets a top-down minimap (click to aim), W/S target distance, scroll-wheel zoom. | 2026-10-20 |
+| D29 | Roguelike is a **separate mode**: draft 1 of 3 powerups after each hole; tier 70/25/5; 5% center-card bump. Powerup list is a proposal under review. | 2026-10-20 |
 
 ## Open questions
 

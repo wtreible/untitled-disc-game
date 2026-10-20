@@ -41,12 +41,15 @@ export class HoleGame {
   current: number;
   /** Tee order (honors); breaks ties in the away rule. */
   private readonly rank: number[];
+  /** Extra throws before pick-up, per player (roguelike Second Wind). */
+  capBonus: number[];
 
-  constructor(readonly hole: HoleLike, names: string[], order?: number[]) {
+  constructor(readonly hole: HoleLike, names: string[], order?: number[], capBonus?: number[]) {
     this.players = names.map((name, i) => ({
       name, color: PLAYER_COLORS[i % PLAYER_COLORS.length],
       ball: [...hole.tee] as Vec2, lie: 'tee', strokes: 0, holed: false, pickedUp: false,
     }));
+    this.capBonus = capBonus ?? names.map(() => 0);
     const o = order ?? names.map((_, i) => i);
     this.rank = names.map((_, i) => o.indexOf(i));
     this.current = o[0];
@@ -72,8 +75,8 @@ export class HoleGame {
     p.ball = r.rest;
     p.lie = r.restSurface;
     if (r.holed) p.holed = true;
-    else if (p.strokes >= maxStrokes(this.hole.par)) {
-      p.strokes = maxStrokes(this.hole.par);
+    else if (p.strokes >= maxStrokes(this.hole.par) + (this.capBonus[this.current] ?? 0)) {
+      p.strokes = maxStrokes(this.hole.par) + (this.capBonus[this.current] ?? 0);
       p.pickedUp = true;
     }
     this.advance();

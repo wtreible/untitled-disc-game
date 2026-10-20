@@ -23,6 +23,7 @@
         <button id="release" title="Release angle (Q / E)"></button>
         <div id="stats"></div>
       </div>
+      <div class="hud-row" id="rogue-bar" hidden></div>
       <div class="hud-row">
         <div id="meter"><div id="meter-fill"></div><div id="meter-target"></div></div>
         <button id="swing">Hold to swing <kbd>Space</kbd></button>
@@ -33,6 +34,7 @@
     </footer>
 
     <div id="reticle" hidden></div>
+    <div id="minimap" hidden title="Click to aim here"></div>
     <div id="toast" hidden></div>
     <div id="status"></div>
     <div id="attribution"></div>
@@ -44,6 +46,7 @@
           <select id="mode">
             <option value="disc-simple" selected>Disc golf: Tali (simple)</option>
             <option value="disc-forest">Disc golf: Tali (forest, satellite)</option>
+            <option value="disc-rogue">Disc golf: Roguelike run (Tali simple)</option>
             <option value="golf">Golf: The Country Club #17</option>
           </select>
         </label>
@@ -67,6 +70,16 @@
         <div class="table-wrap"><table id="results-table"></table></div>
         <button id="next" class="primary" hidden>Next hole</button>
         <button id="again" class="primary">Play again</button>
+      </div>
+    </div>
+
+    <div id="draft" class="modal" hidden>
+      <div class="card draft-card">
+        <h1 id="draft-title"></h1>
+        <div id="draft-tier" class="tier"></div>
+        <div id="draft-cards"></div>
+        <div class="draft-actions"><button id="draft-reroll" hidden>Reroll</button><button id="draft-skip">Skip</button></div>
+        <p id="draft-owned"></p>
       </div>
     </div>
 

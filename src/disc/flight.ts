@@ -17,6 +17,7 @@ import type { SurfaceGrid } from '../game/surfaces';
 import type { Terrain, Vec3 } from '../game/terrain';
 import { DISC_RADIUS, type Disc } from './discs';
 import type { TreeIndex } from './trees';
+import { NEUTRAL, type Mods } from './mods';
 
 const G = 9.81;
 /** Putts from closer than this are dropped in. */
@@ -44,6 +45,13 @@ export const FLIGHT = {
   /** Bank rate (rad/s) per unit of turn at full speed, and per unit of fade at low speed. */
   turnRate: 0.25,
   fadeRate: 0.8,
+  /** Bank limits (rad): turn rolls toward −(base + per·|turn|), fade toward base + per·fade. */
+  turnLimitBase: 0.3,
+  turnLimitPer: 0.25,
+  fadeLimitBase: 0.25,
+  fadeLimitPer: 0.12,
+  /** Rates taper to zero over this last stretch before a limit. */
+  limitEase: 0.25,
   /** Release angle for hyzer = ±1. */
   maxReleaseBank: 0.35,
   /** Putts use this fraction of the meter, so a full putt meter reaches ~35 m (circle-2 putts need ~20 m at chain height). */
@@ -105,9 +113,15 @@ export interface ThrowInput {
   style?: 'drive' | 'putt';
   /** Mirror the curve for left-handed backhand / right-handed forehand. */
   mirror?: boolean;
+  /** Player modifiers (roguelike powerups). Omitted = base game. */
+  mods?: Mods;
+  /** First throw of the hole (tee-only modifiers). */
+  fromTee?: boolean;
+  /** Zero execution error: fly exactly the ghost line (Perfect Form). */
+  perfect?: boolean;
 }
 
-export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed';
+export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed' | 'phased' | 'saved' | 'gimme' | 'magnet';
 
 export interface ThrowResult {
   samples: Vec3[];
@@ -118,6 +132,8 @@ export interface ThrowResult {
   holed: boolean;
   penalty: number;
   events: ThrowEvent[];
+  /** Trees the disc touched (for Lumberjack). */
+  treesHit: Tree[];
 }
 
 // Distance fraction → release speed fraction, measured from this model (a midrange, flat, full
@@ -150,17 +166,22 @@ export interface SimOptions {
 }
 
 export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Math.random, opt: SimOptions = {}): ThrowResult {
-  const { disc } = input;
+  const m = input.mods ?? NEUTRAL;
+  const disc: Disc = { ...input.disc, glide: input.disc.glide + m.glide, turn: input.disc.turn + m.turn, fade: input.disc.fade + m.fade };
   const putt = input.style === 'putt';
-  const noise = opt.ghost ? () => 0 : () => gaussian(rng);
+  const err = putt ? m.puttAimError : m.aimError;
+  const noise = opt.ghost || input.perfect ? () => 0 : () => gaussian(rng) * err;
   const mirror = input.mirror ? -1 : 1;
 
   // Release, with execution error (bigger when muscling past ~90%).
-  const over = Math.max(0, input.power - 0.9) * 10;
+  const over = m.noOverpowerWobble ? 0 : Math.max(0, input.power - 0.9) * 10;
   const yaw = input.aim + (noise() * (putt ? 0.5 : 1.4 + over * 2) * Math.PI) / 180;
-  const power = meterToSpeed(input.power * (putt ? FLIGHT.puttScale : 1)) * (1 + noise() * (putt ? 0.015 : 0.02));
+  // Distance bonuses scale the meter, which maps ~linearly to distance; past full power, release
+  // speed grows with the measured full-power sensitivity (distance ∝ v^~1.8 there).
+  const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange : m.distance * (input.fromTee ? m.teeDistance : 1));
+  const power = (meter <= 1 ? meterToSpeed(meter) : meter ** 0.55) * (1 + noise() * (putt ? 0.015 : 0.02));
   const launch = (input.launch ?? (putt ? 0.12 : 0.11)) + noise() * 0.01;
-  let bank = mirror * (input.hyzer * FLIGHT.maxReleaseBank + noise() * 0.04);
+  let bank = mirror * (input.hyzer * FLIGHT.maxReleaseBank * m.shape + noise() * 0.04);
   const speed0 = disc.v0 * power;
   let p: Vec3 = [input.start[0], input.start[1], world.terrain.heightAt(input.start[0], input.start[1]) + (input.releaseZ ?? 1.0)];
   let v: Vec3 = [Math.cos(yaw) * Math.cos(launch) * speed0, Math.sin(yaw) * Math.cos(launch) * speed0, Math.sin(launch) * speed0];
@@ -173,13 +194,19 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
 
   const samples: Vec3[] = [[...p]];
   const banks: number[] = [bank];
-  if (!opt.ghost && putt && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) < TAP_IN) {
+  if (!opt.ghost && putt && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) < Math.max(TAP_IN, m.tapIn)) {
     // Tap-in: inside a meter you just drop it in.
     const [bx, by] = world.basket;
     for (let k = 1; k <= 20; k++) samples.push([p[0] + (bx - p[0]) * (k / 20), p[1] + (by - p[1]) * (k / 20), p[2] + (BASKET.trayBottom + 0.05 - p[2]) * (k / 20)]);
-    return { samples, banks: samples.map(() => 0), rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events: ['holed'] };
+    return { samples, banks: samples.map(() => 0), rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events: ['holed'], treesHit: [] };
   }
   const events: ThrowEvent[] = [];
+  const tctx: TreeCtx = { m, phaseLeft: m.phaseTrees, passed: new Set(), hits: [], basket: world.basket, rng, events };
+  const bopt: BasketOpts = {
+    B: scaledBasket(m.basketScale),
+    catchBonus: m.catchBonus + (input.fromTee ? m.teeCatchBonus : 0),
+    cutToCatch: m.cutToCatch,
+  };
   let state: 'flight' | 'dead' | 'ground' = 'flight';
   let holedAt: Vec3 | null = null;
   const near: Tree[] = [];
@@ -193,11 +220,11 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       const sh = Math.hypot(v[0], v[1]);
       if (sh < 0.05) break;
       const surf = world.grid.classAt(p[0], p[1]);
-      const decel = FLIGHT.skid[surf] ?? FLIGHT.skid.default;
+      const decel = (FLIGHT.skid[surf] ?? FLIGHT.skid.default) / m.skid;
       const ns = Math.max(0, sh - decel * DT);
       v = [(v[0] / sh) * ns, (v[1] / sh) * ns, 0];
       p = [p[0] + v[0] * DT, p[1] + v[1] * DT, ground];
-      if (!opt.ghost) trunkCollide(p, v, world, near, events, 0.2);
+      if (!opt.ghost) trunkCollide(p, v, world, near, tctx, 0.2);
     } else {
       // Forces.
       const q = s / disc.v0; // speed relative to this disc's full-power release
@@ -215,21 +242,42 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       const D = FLIGHT.K * s * CD; // × v below gives K·s²·CD along −v
       const n: Vec3 = [u[0] * Math.cos(bank) - r[0] * Math.sin(bank), u[1] * Math.cos(bank) - r[1] * Math.sin(bank), u[2] * Math.cos(bank) - r[2] * Math.sin(bank)];
       const a: Vec3 = [L * n[0] - D * v[0], L * n[1] - D * v[1], L * n[2] - D * v[2] - G];
+      if (m.homing > 0 && state === 'flight') {
+        // Homing: steer the horizontal velocity toward the basket late in flight, within 80 m.
+        const bx = world.basket[0] - p[0], by = world.basket[1] - p[1];
+        const db = Math.hypot(bx, by);
+        const sh = Math.hypot(v[0], v[1]);
+        if (db < 80 && db > 0.5 && q < 0.8 && sh > 0.5) {
+          const cross = (v[0] * by - v[1] * bx) / (sh * db); // + = basket to the left
+          const k = m.homing * 6 * Math.max(-1, Math.min(1, cross * 3));
+          a[0] += (-v[1] / sh) * k;
+          a[1] += (v[0] / sh) * k;
+        }
+      }
       v = [v[0] + a[0] * DT, v[1] + a[1] * DT, v[2] + a[2] * DT];
       const prev: Vec3 = p;
       p = [p[0] + v[0] * DT, p[1] + v[1] * DT, p[2] + v[2] * DT];
 
       if (state === 'flight') {
-        // Turn needs speed (> ~60% of full release); fade grows as the disc slows.
+        // Turn needs speed (> ~60% of full release); fade grows as the disc slows. Each drives the
+        // bank toward a limit set by the flight numbers and eases off near it. Unbounded, fade
+        // kept rolling until drivers landed upside down (bank ~175°).
         const hs = Math.min(1, Math.max(0, (q - 0.6) / 0.4));
         const ls = Math.min(1, Math.max(0, (0.8 - q) / 0.8));
-        bank += mirror * (FLIGHT.turnRate * disc.turn * hs * turnK + FLIGHT.fadeRate * disc.fade * ls) * DT;
+        const b = mirror * bank; // work in right-hand-backhand terms
+        const turnLimit = -(FLIGHT.turnLimitBase + FLIGHT.turnLimitPer * Math.max(0, -disc.turn));
+        const fadeLimit = FLIGHT.fadeLimitBase + FLIGHT.fadeLimitPer * Math.max(0, disc.fade);
+        const ease = (gap: number) => Math.min(1, Math.max(0, gap / FLIGHT.limitEase));
+        let db = 0;
+        if (disc.turn < 0) db -= FLIGHT.turnRate * -disc.turn * hs * turnK * ease(b - turnLimit);
+        if (disc.fade > 0) db += FLIGHT.fadeRate * disc.fade * ls * ease(fadeLimit - b);
+        bank = mirror * (b + db * DT);
       }
 
       if (!opt.ghost) {
-        const hitTree = treeCollide(prev, p, v, world, near, rng, events);
+        const hitTree = treeCollide(prev, p, v, world, near, tctx);
         if (hitTree) { state = 'dead'; bank = (rng() - 0.5) * 1.2; }
-        const b = basketCollide(prev, p, v, world.basket, rng, events, inChains);
+        const b = basketCollide(prev, p, v, world.basket, rng, events, inChains, bopt);
         inChains = b.inChains;
         if (b.holed) { holedAt = p; break; }
         if (b.hit) { state = 'dead'; }
@@ -238,7 +286,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       if (p[2] <= ground) {
         // Landing: keep a fraction of horizontal speed as a skid.
         p = [p[0], p[1], ground];
-        const keep = state === 'dead' ? 0.25 : 0.4;
+        const keep = m.sticky ? 0 : state === 'dead' ? 0.25 : 0.4;
         v = [v[0] * keep, v[1] * keep, 0];
         state = 'ground';
         const surf = world.grid.classAt(p[0], p[1]);
@@ -252,39 +300,87 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     }
   }
 
-  if (holedAt) {
+  const treesHit = tctx.hits;
+  const holedResult = (from: Vec3, ev: ThrowEvent): ThrowResult => {
     // Drop into the tray.
     const [bx, by] = world.basket;
-    const z0 = holedAt[2];
+    const z0 = from[2];
     for (let k = 1; k <= 18; k++) {
       const t = k / 18;
-      samples.push([holedAt[0] + (bx - holedAt[0]) * t * 0.6, holedAt[1] + (by - holedAt[1]) * t * 0.6, z0 + (BASKET.trayBottom + 0.05 - z0) * t]);
+      samples.push([from[0] + (bx - from[0]) * t * 0.6, from[1] + (by - from[1]) * t * 0.6, z0 + (BASKET.trayBottom + 0.05 - z0) * t]);
       banks.push(0);
     }
+    if (ev !== 'holed') events.push(ev);
     events.push('holed');
-    return { samples, banks, rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events };
-  }
+    return { samples, banks, rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events, treesHit };
+  };
+  if (holedAt) return holedResult(holedAt, 'holed');
 
   samples.push([...p]);
   banks.push(0);
-  const rest: Vec2 = [p[0], p[1]];
+  let rest: Vec2 = [p[0], p[1]];
   const surf = world.grid.classAt(rest[0], rest[1]);
   if (surf === 'water' || surf === 'oob') {
-    events.push(surf);
     // Play from where it last crossed into OB (casual, D19): last in-bounds point on the path.
     let drop: Vec2 = input.start;
     for (let i = samples.length - 1; i >= 0; i--) {
       const c = world.grid.classAt(samples[i][0], samples[i][1]);
       if (c !== 'water' && c !== 'oob') { drop = [samples[i][0], samples[i][1]]; break; }
     }
-    return { samples, banks, rest: drop, restSurface: world.grid.classAt(drop[0], drop[1]), holed: false, penalty: 1, events };
+    // Sticky Plastic: a near miss (within 2 m of the edge) is saved, no penalty.
+    if (m.sticky && Math.hypot(drop[0] - rest[0], drop[1] - rest[1]) <= 2) {
+      events.push('saved');
+      return { samples, banks, rest: drop, restSurface: world.grid.classAt(drop[0], drop[1]), holed: false, penalty: 0, events, treesHit };
+    }
+    events.push(surf);
+    return { samples, banks, rest: drop, restSurface: world.grid.classAt(drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit };
   }
-  return { samples, banks, rest, restSurface: surf, holed: false, penalty: 0, events };
+  if (!opt.ghost) {
+    const d = Math.hypot(rest[0] - world.basket[0], rest[1] - world.basket[1]);
+    if (d < m.gimme) return holedResult([...p], 'gimme');
+    if (m.magnet > 0 && d < m.magnet && d > 0.4) {
+      // Magnet Basket: slide up to 1.5 m toward the basket.
+      const slide = Math.min(1.5, d - 0.3);
+      const ux = (world.basket[0] - rest[0]) / d, uy = (world.basket[1] - rest[1]) / d;
+      for (let k = 1; k <= 30; k++) {
+        const t = (k / 30) * slide;
+        samples.push([rest[0] + ux * t, rest[1] + uy * t, p[2]]);
+        banks.push(0);
+      }
+      rest = [rest[0] + ux * slide, rest[1] + uy * slide];
+      events.push('magnet');
+    }
+  }
+  return { samples, banks, rest, restSurface: world.grid.classAt(rest[0], rest[1]), holed: false, penalty: 0, events, treesHit };
+}
+
+interface TreeCtx {
+  m: Mods;
+  /** Trees left to pass through this throw (Ghost/Phase Disc), and ones already passed. */
+  phaseLeft: number;
+  passed: Set<Tree>;
+  hits: Tree[];
+  basket: Vec2;
+  rng: Rng;
+  events: ThrowEvent[];
+}
+
+/** True if the disc should ignore this tree (phasing through it). */
+function phases(t: Tree, c: TreeCtx): boolean {
+  if (c.passed.has(t)) return true;
+  if (c.phaseLeft > 0) {
+    c.phaseLeft--;
+    c.passed.add(t);
+    c.events.push('phased');
+    return true;
+  }
+  return false;
 }
 
 /** Trunk cylinders (hard) and crown ellipsoids (probabilistic branch hits). Mutates p and v. */
-function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[], rng: Rng, events: ThrowEvent[]): boolean {
-  if (trunkCollide(p, v, world, near, events, 0.35)) return true;
+function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[], c: TreeCtx): boolean {
+  const { rng, events, m } = c;
+  if (trunkCollide(p, v, world, near, c, 0.35)) return true;
   const ds = Math.hypot(p[0] - prev[0], p[1] - prev[1], p[2] - prev[2]);
   for (const t of world.trees.near(p[0], p[1], near)) {
     const g = world.terrain.heightAt(t.x, t.y);
@@ -294,12 +390,17 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
     const k = (dx * dx + dy * dy) / ((t.r + DISC_RADIUS) ** 2) + (dz * dz) / (hz * hz);
     if (k >= 1) continue;
     // Denser toward the crown's middle.
-    const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * (1.4 - k);
+    const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * m.branch * (1.4 - k);
     if (rng() < 1 - Math.exp(-lambda * ds)) {
+      if (phases(t, c)) continue;
+      if (m.branchPass > 0 && rng() < m.branchPass) continue;
       events.push('branch');
-      // Kick in a random direction, mostly sideways/back, keep a third of the speed.
+      if (!c.hits.includes(t)) c.hits.push(t);
+      // Kick in a random direction (or toward the basket with Lucky Kicks), keep 20–40% of the speed.
       const s = Math.hypot(v[0], v[1], v[2]) * (0.2 + rng() * 0.2);
-      const yaw = Math.atan2(v[1], v[0]) + (rng() - 0.5) * 2 * 2.2;
+      const yaw = m.kickToward
+        ? Math.atan2(c.basket[1] - p[1], c.basket[0] - p[0]) + (rng() - 0.5) * 0.6
+        : Math.atan2(v[1], v[0]) + (rng() - 0.5) * 2 * 2.2;
       v[0] = Math.cos(yaw) * s;
       v[1] = Math.sin(yaw) * s;
       v[2] = (rng() - 0.6) * s;
@@ -309,35 +410,50 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
   return false;
 }
 
-function trunkCollide(p: Vec3, v: Vec3, world: DiscWorld, near: Tree[], events: ThrowEvent[], restitution: number): boolean {
+function trunkCollide(p: Vec3, v: Vec3, world: DiscWorld, near: Tree[], c: TreeCtx, restitution: number): boolean {
   for (const t of world.trees.near(p[0], p[1], near)) {
     const dx = p[0] - t.x, dy = p[1] - t.y;
     const d = Math.hypot(dx, dy);
     const R = t.t + DISC_RADIUS;
     if (d >= R || p[2] > world.terrain.heightAt(t.x, t.y) + t.h * 0.9) continue;
+    if (phases(t, c)) continue;
     const nx = dx / (d || 1), ny = dy / (d || 1);
     const vn = v[0] * nx + v[1] * ny;
     if (vn < 0) {
+      const keep = Math.min(0.95, 0.5 * c.m.trunkKeep);
       v[0] -= (1 + restitution) * vn * nx;
       v[1] -= (1 + restitution) * vn * ny;
-      v[0] *= 0.5; v[1] *= 0.5; v[2] *= 0.5;
+      v[0] *= keep; v[1] *= keep; v[2] *= keep;
     }
     p[0] = t.x + nx * R;
     p[1] = t.y + ny * R;
-    events.push('trunk');
+    c.events.push('trunk');
+    if (!c.hits.includes(t)) c.hits.push(t);
     return true;
   }
   return false;
 }
 
+interface BasketOpts {
+  B: typeof BASKET;
+  catchBonus: number;
+  cutToCatch: number;
+}
+
+/** Basket with radii scaled (Wide Basket etc.); heights unchanged. */
+function scaledBasket(k: number): typeof BASKET {
+  if (k === 1) return BASKET;
+  return { ...BASKET, poleR: BASKET.poleR, trayR: BASKET.trayR * k, chainR: BASKET.chainR * k, bandR: BASKET.bandR * k };
+}
+
 /** Basket contact. Returns holed / hit, and whether the disc is inside the chain zone (to detect entry). */
-function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, events: ThrowEvent[], wasInChains: boolean): { holed: boolean; hit: boolean; inChains: boolean } {
+function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, events: ThrowEvent[], wasInChains: boolean, o: BasketOpts): { holed: boolean; hit: boolean; inChains: boolean } {
   const dx = p[0] - basket[0], dy = p[1] - basket[1];
   const d = Math.hypot(dx, dy);
   const none = { holed: false, hit: false, inChains: false };
   if (d > 1) return none;
   const z = p[2];
-  const B = BASKET;
+  const B = o.B;
   /**
    * Bounce off a vertical surface of radius R around the pole: push the disc back outside it and
    * reflect the inward part of its velocity. Pushing out matters: without it the disc stays inside
@@ -365,9 +481,10 @@ function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, eve
     const offset = Math.abs((v[0] * (basket[1] - prev[1]) - v[1] * (basket[0] - prev[0])) / sh);
     const s = Math.hypot(v[0], v[1], v[2]);
     const edge = Math.min(1, offset / (B.chainR + DISC_RADIUS * 0.6));
-    const pCatch = Math.min(0.99, Math.max(CATCH.min, CATCH.base - CATCH.edgePenalty * edge ** 3 - CATCH.speedPenalty * Math.max(0, s - CATCH.fastSpeed)));
+    const pCatch = Math.min(0.99, Math.max(CATCH.min, CATCH.base + o.catchBonus - CATCH.edgePenalty * edge ** 3 - CATCH.speedPenalty * Math.max(0, s - CATCH.fastSpeed)));
     events.push('chains');
     if (rng() < pCatch) return { holed: true, hit: false, inChains: true };
+    if (edge > CATCH.cutEdge && o.cutToCatch > 0 && rng() < o.cutToCatch) return { holed: true, hit: false, inChains: true };
     if (edge > CATCH.cutEdge) {
       // Cut through the edge of the chains: keep going, slower, pushed away from the pole.
       const side = Math.sign(v[0] * dy - v[1] * dx) || 1;
