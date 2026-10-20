@@ -1,8 +1,11 @@
 import type { LatLon, Vec2 } from './geo';
 import type { CourseFeature, Rings } from './types';
+import type { Collider } from '../disc/props';
 
 export interface DiscHole {
   ref: string;
+  /** Themed hole name (hand-designed courses). */
+  name?: string;
   par: number;
   /** 'osm' when tagged; 'length' when estimated from hole length (docs/08). */
   par_source: 'osm' | 'length';
@@ -29,8 +32,35 @@ export interface Tree {
   t: number;
 }
 
+/** A decorative/obstacle 3D model on a themed course (docs/12-mini-golf-madness.md). */
+export interface PropDef {
+  /** Path under /models, e.g. "minigolf/structure-windmill.glb". */
+  model: string;
+  at: Vec2;
+  /** Rotation about the vertical axis; local forward (model −Z) points at angle yaw + π/2. */
+  yaw: number;
+  scale: number;
+  /** Animation clip to loop (Kenney animals: idle, eat, dance, walk…). */
+  anim?: string;
+  /** Spin a named node about its local Z axis using the matching blades collider's clock. */
+  spin?: { node: string; omega: number; phase: number };
+  /** Physics colliders in world space (see src/disc/props.ts). */
+  colliders: Collider[];
+  /** Index into the course's trees when this model *is* a tree (collision uses the tree model). */
+  tree?: number;
+  /** Toast shown when hit. */
+  hit?: string;
+  /** Raise the model this far off the ground (balls centered on their origin, a lion on a rock). */
+  lift?: number;
+}
+
 export interface DiscCourseFile {
   sport: 'disc';
+  /** Themed props and models; their colliders join the physics. */
+  props?: PropDef[];
+  /** Ground colors overriding the vector defaults (keys of VECTOR_COLORS). */
+  palette?: Record<string, string>;
+  sky?: string;
   /** 'photo': satellite imagery + dense canopy trees. 'vector': flat drawn course, few trees. */
   style?: 'photo' | 'vector';
   /** Branch hits per meter inside a crown. A forest needs it low; lone feature trees are fully leafy. */

@@ -15,6 +15,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [09-glossary](09-glossary.md) | Terms used across these docs |
 | [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
 | [11-roguelike](11-roguelike.md) | Roguelike run mode: draft rules, augment kinds (self / your course / hex), full list |
+| [12-mini-golf-madness](12-mini-golf-madness.md) | Themed 9-hole course with Kenney CC0 models: windmill, castle, animals; prop colliders |
 
 ## Decision log
 
@@ -56,6 +57,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D34 | Disc golf replays every throw from a disc-chasing camera (skip: Space/click; toggle in Settings). First-person zoom-out up to 105°. | 2026-10-20 |
 | D35 | Common augments buffed ~50% (still below the epic version of the same effect). | 2026-10-20 |
 | D36 | Replay camera is player-controlled: drag orbits, scroll zooms, R resets; only Space skips. | 2026-10-20 |
+| D37 | New themed course "Mini Golf Madness": full-size disc golf, mini-golf theming via scaled-up Kenney CC0 models; prop colliders (incl. time-dependent windmill blades) precomputed at build time. | 2026-10-20 |
 
 ## Open questions
 

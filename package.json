@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "course": "tsx scripts/build-course.ts",
-    "disc-course": "tsx scripts/build-disc-course.ts"
+    "disc-course": "tsx scripts/build-disc-course.ts",
+    "silly-course": "tsx scripts/build-silly-course.ts"
   },
   "dependencies": {
     "osmtogeojson": "^3.0.0-beta.5",

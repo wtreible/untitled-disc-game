@@ -14,6 +14,7 @@ import { Round } from '../game/round';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
+import { loadProps } from '../render/props';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen } from '../units';
@@ -22,6 +23,7 @@ import { replaysOn } from '../settings';
 export const DISC_COURSES = {
   simple: '/courses/tali-simple.json',
   forest: '/courses/tali.json',
+  silly: '/courses/silly.json',
 } as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 const PLAYBACK = 1.5;
@@ -114,6 +116,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const perfectLeft = opts.names.map(() => 0);
   let perfectArmed = false;
   const removed = new Set<Tree>(); // Lumberjack: gone for everyone
+  // Themed props: colliders for physics; hit toasts by collider tag.
+  const propColliders = (course.props ?? []).flatMap((p) => p.colliders);
+  const propToasts = new Map<string, string>([['blades', 'Swatted by the windmill!']]);
+  for (const p of course.props ?? []) for (const c of p.colliders) if (c.tag && p.hit && !propToasts.has(c.tag)) propToasts.set(c.tag, p.hit);
+  /**
+   * Game clock (s) for moving props. It advances with flight playback speed, so the blades you
+   * see match the physics (which evaluates them at release clock + flight time).
+   */
+  let gameClock = 0;
   const worldCache = new Map<number, { v: number; w: DiscWorld }>();
   /** The course as player i plays it: their trees, their ponds, their basket. */
   const worldFor = (i: number): DiscWorld => {
@@ -123,11 +134,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const w: DiscWorld = {
       grid, terrain: new FlatTerrain(), basket: pin, branchDensity: course.branch_density,
       trees: new TreeIndex(treesFor(trees, removed, changes, i)), hazards: pondsFor(changes, i),
+      props: propColliders, clock0: gameClock,
     };
     worldCache.set(i, { v: courseVersion, w });
     return w;
   };
-  const world = () => worldFor(round.game.current);
+  /** World for the current player, with moving props evaluated from the game clock now. */
+  const world = () => { const w = worldFor(round.game.current); w.clock0 = gameClock; return w; };
   /** Mods acting on player i's throws: their own plus opponents' hexes. */
   const modsFor = (i: number) => effectiveMods(mods, i);
   const hole = () => round.hole as DiscHole;
@@ -139,6 +152,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }));
 
   const scene = new CourseScene($('stage'), course, grid, trees, PLAYER_COLORS);
+  if (new URLSearchParams(location.search).get('debug') === 'colliders') scene.showColliders(propColliders);
+  if (course.props?.length) {
+    $('status').textContent = 'Loading models…';
+    loadProps(course.props, trees)
+      .then((v) => { scene.attachProps(v); $('status').textContent = ''; })
+      .catch((e) => { $('status').textContent = `Models failed to load (${e.message})`; });
+  }
   const vector = scene.style === 'vector';
   $('view-toggle').hidden = vector; // one look in vector style
   if (vector) {
@@ -167,7 +187,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let chargeStart = 0;
   let preferFP = true; // first person by default; C switches (persists across turns)
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
-  let flight: { result: ThrowResult; t0: number; speed: number } | null = null;
+  let flight: { result: ThrowResult; t0: number; speed: number; clock0: number } | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
   let replay: { t0: number; heading: number; smoothHeading: number; started: boolean; last: number } | null = null;
   const REPLAY_SPEED = 1.25;
@@ -185,7 +205,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function startHoleInfo(): void {
     const h = hole();
-    $('hole-info').innerHTML = `<b>${esc(course.name)}</b><br>Hole ${h.ref} · Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length"> (est.)</span>' : ''} · ${fmtLen(h.length_m)}`;
+    $('hole-info').innerHTML = `<b>${esc(course.name)}</b><br>Hole ${h.ref}${h.name ? ` · ${esc(h.name)}` : ''} · Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length"> (est.)</span>' : ''} · ${fmtLen(h.length_m)}`;
   }
 
   function startHole(): void {
@@ -372,7 +392,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const twin = simulateThrow(input, world());
       if (outcomeScore(twin) < outcomeScore(result)) result = twin;
     }
-    flight = { result, t0: performance.now(), speed: puttStyle() ? 1 : PLAYBACK };
+    flight = { result, t0: performance.now(), speed: puttStyle() ? 1 : PLAYBACK, clock0: gameClock };
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
@@ -423,7 +443,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       courseVersion++;
     }
     const done = game().players[idx];
-    let msg = r.events.map((e) => EVENT_TOASTS[e]).filter((m, i, a) => m && a.indexOf(m) === i).join(' · ');
+    const propMsgs = (r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!');
+    let msg = [...propMsgs, ...r.events.map((e) => EVENT_TOASTS[e])].filter((m, i, a) => m && a.indexOf(m) === i).join(' · ');
     if (done.holed) msg = `${r.events.includes('chains') ? 'Chains! ' : ''}${esc(done.name)}: ${scoreWord(done.strokes, hole().par)}`;
     else if (done.pickedUp) msg = `${esc(done.name)} picks up (${done.strokes})`;
     // Mulligan window: a few seconds to take the throw back (not after holing out).
@@ -738,7 +759,16 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
 
   // ---------- frame loop ----------
+  let lastFrame = performance.now();
   function frameLoop(now: number): void {
+    const dt = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now;
+    // Props clock: replays rewind to the throw's own time; live flights advance at playback speed.
+    if (flight && replay) scene.updateProps(flight.clock0 + Math.max(0, (now - replay.t0) / 1000) * REPLAY_SPEED, dt);
+    else {
+      gameClock += dt * (flight ? flight.speed : 1);
+      scene.updateProps(gameClock, dt);
+    }
     if (phase === 'charging') {
       const t = (((now - chargeStart) / 1000) * modsFor(game().current).meterSpeed) % 2;
       power = t < 1 ? t : 2 - t;

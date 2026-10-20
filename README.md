@@ -4,6 +4,7 @@ Browser golf on real courses: geometry from OpenStreetMap, drawn over live Esri 
 
 - **Disc golf: Tali (simple), default.** The real Tali (Helsinki) layout drawn as a clean vector course with 1–5 trees per hole and a defender guarding every basket. Starts in first person; the top-down map (C) shows the same trees.
 - **Disc golf: Roguelike run.** 18 holes on the simple course: a starter augment, then a draft after every hole (common / epic / legendary). Earn your ghost line; hex your friends' course. See [docs/11-roguelike.md](docs/11-roguelike.md).
+- **Disc golf: Mini Golf Madness.** A 9-hole full-size course themed like mini golf: thread a giant windmill's tunnel past spinning blades, throw through a castle gate, dodge giant animals, mushrooms and golf balls. See [docs/12-mini-golf-madness.md](docs/12-mini-golf-madness.md).
 - **Disc golf: Tali (forest).** The same holes over satellite imagery with ~10k trees from HSY canopy data.
 - Both: trunk/branch/chain collisions, full rounds with scorecard. See [docs/10-disc-golf.md](docs/10-disc-golf.md).
 - **Golf:** The Country Club (Brookline, MA), Main #17.
@@ -53,6 +54,7 @@ npm run dev        # http://localhost:5173
 |---|---|
 | `npm run disc-course -- --style simple --out tali-simple` | Rebuild the simple course (no HSY needed) |
 | `npm run disc-course` | Rebuild `public/courses/tali.json` from OSM + HSY canopy (cached in `data/raw/`; HSY files are git-ignored and re-downloaded when missing). `-- --course <way id> --out <name>` for another course; `-- --no-hsy` outside Helsinki (no trees) |
+| `npm run silly-course` | Rebuild `public/courses/silly.json` (Mini Golf Madness) |
 | `npm run course` | Rebuild `public/courses/tcc-main-17.json` from cached OSM data (`data/raw/`). Add `-- --refresh` to re-query Overpass. Other holes: `-- --course <way id> --hole <ref> --links <name> --out <file>` |
 | `npm test` | Unit tests (geo, surfaces, shot physics, rules, the built course file) |
 | `npm run typecheck` | TypeScript |
@@ -71,4 +73,4 @@ src/modes/                    golf.ts / disc.ts controllers (input, HUD, loop)
 src/main.ts                   setup screen → mode
 ```
 
-Attribution: imagery © Esri and its partners (streamed live, not stored); course data © OpenStreetMap contributors (ODbL); tree canopy © HSY land cover 2024.
+Attribution: imagery © Esri and its partners (streamed live, not stored); course data © OpenStreetMap contributors (ODbL); tree canopy © HSY land cover 2024; 3D models by Kenney (kenney.nl), CC0.

@@ -13,6 +13,8 @@ import { basketModel, discMesh, setTreesVisible, treeMeshes } from './disc3d';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
+import type { PropsView } from './props';
+import { bladeAngle, type Collider } from '../disc/props';
 
 const OVERLAY_Z = 30;
 /** Default replay chase offset: 2.5 m back and 1.2 m up, as distance + elevation. */
@@ -130,11 +132,14 @@ export class CourseScene {
     this.target3d.visible = false;
     this.scene.add(this.target3d);
 
-    const sky = this.style === 'vector' ? '#bcd9f2' : '#a9c8e8';
+    const sky = course.sky ?? (this.style === 'vector' ? '#bcd9f2' : '#a9c8e8');
     this.skyColor = new THREE.Color(sky);
-    this.groundColor = new THREE.Color(this.style === 'vector' ? '#3c4a37' : '#1d2419');
+    this.groundColor = new THREE.Color(course.palette?.outside ?? (this.style === 'vector' ? '#3c4a37' : '#1d2419'));
     this.fog = new THREE.Fog(sky, 80, 520);
 
+    // Trees that a themed course draws as 3D models (props) aren't drawn again as generic trees.
+    const modelTrees = new Set((course.props ?? []).filter((p) => p.tree !== undefined).map((p) => trees[p.tree!]));
+    trees = trees.filter((t) => !modelTrees.has(t));
     this.trees3d = treeMeshes(trees);
     this.world3d.add(this.trees3d);
     this.baseTrees = trees;
@@ -283,12 +288,65 @@ export class CourseScene {
     this.persp.lookAt(this.persp.position.clone().add(cur));
   }
 
+  /** Themed props (models). Visible in every view; model trees follow per-player visibility. */
+  private props?: PropsView;
+  attachProps(v: PropsView): void {
+    this.props = v;
+    this.scene.add(v.group);
+    if (this.lastViewer) this.setViewer(this.lastViewer);
+  }
+
+  updateProps(t: number, dt: number): void {
+    this.props?.update(t, dt);
+    this.updateColliderDebug(t);
+  }
+
+  // ?debug=colliders: magenta wireframes of every prop collider (blades follow the clock).
+  private debugBlades: { line: THREE.LineSegments; c: Extract<Collider, { kind: 'blades' }> }[] = [];
+  showColliders(colliders: Collider[]): void {
+    const mat = new THREE.LineBasicMaterial({ color: '#ff2bd6' });
+    for (const c of colliders) {
+      if (c.kind === 'blades') {
+        const line = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
+        this.debugBlades.push({ line, c });
+        this.scene.add(line);
+        continue;
+      }
+      const geo = c.kind === 'cyl'
+        ? new THREE.CylinderGeometry(c.r, c.r, c.z1 - c.z0, 20, 1, true).rotateX(Math.PI / 2)
+        : new THREE.BoxGeometry(c.hx * 2, c.hy * 2, c.z1 - c.z0);
+      const m = new THREE.LineSegments(new THREE.EdgesGeometry(geo), mat);
+      m.position.set(c.c[0], c.c[1], (c.z0 + c.z1) / 2);
+      if (c.kind === 'box') m.rotation.z = c.yaw;
+      this.scene.add(m);
+    }
+  }
+
+  private updateColliderDebug(t: number): void {
+    for (const { line, c } of this.debugBlades) {
+      const a = bladeAngle(c, t);
+      const X = new THREE.Vector3(Math.cos(c.yaw), Math.sin(c.yaw), 0);
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i < 4; i++) {
+        const th = Math.PI / 4 + (i * Math.PI) / 2 + a;
+        const hub = new THREE.Vector3(...c.hub);
+        pts.push(hub, hub.clone().addScaledVector(X, Math.cos(th) * c.radius).add(new THREE.Vector3(0, 0, Math.sin(th) * c.radius)));
+      }
+      line.geometry.dispose();
+      line.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+    }
+  }
+
+  private lastViewer?: Parameters<CourseScene['setViewer']>[0];
+
   /**
    * Show the course as one player plays it: which base trees exist for them, trees planted
    * against them, their ponds, their basket size and position, and their magnet radius.
    */
   setViewer(v: { trees: Set<Tree>; extras: Tree[]; ponds: { c: Vec2; r: number }[]; basketScale: number; magnet: number; tee: Vec2; pin: Vec2 }): void {
+    this.lastViewer = v;
     setTreesVisible(this.trees3d, (i) => v.trees.has(this.baseTrees[i]));
+    if (this.props) for (const [t, obj] of this.props.treeObjects) obj.visible = v.trees.has(t);
     // Placed trees: rebuilt each time (a handful at most).
     for (const c of [...this.extras.children]) this.extras.remove(c);
     if (v.extras.length) this.extras.add(treeMeshes(v.extras));

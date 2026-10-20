@@ -39,6 +39,7 @@ function merged(polys: Rings[]): THREE.BufferGeometry | null {
  */
 export function vectorGround(course: DiscCourseFile): THREE.Group {
   const g = new THREE.Group();
+  const colors: Record<string, string> = { ...VECTOR_COLORS, ...(course.palette ?? {}) };
   const [min, max] = course.bounds;
   const pad = 400;
   const layers: [string, Rings[]][] = [
@@ -53,7 +54,7 @@ export function vectorGround(course: DiscCourseFile): THREE.Group {
   layers.forEach(([name, polys], i) => {
     const geo = merged(polys);
     if (!geo) return;
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: VECTOR_COLORS[name as keyof typeof VECTOR_COLORS], depthWrite: false }));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: colors[name], depthWrite: false }));
     m.renderOrder = -20 + i;
     m.name = name;
     g.add(m);

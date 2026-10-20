@@ -18,6 +18,7 @@ import type { Terrain, Vec3 } from '../game/terrain';
 import { DISC_RADIUS, type Disc } from './discs';
 import type { TreeIndex } from './trees';
 import { NEUTRAL, type Mods } from './mods';
+import { collideProps, type Collider } from './props';
 
 const G = 9.81;
 /** Putts from closer than this are dropped in. */
@@ -108,6 +109,10 @@ export interface DiscWorld {
   branchDensity?: number;
   /** Extra water circles for this thrower only (roguelike Pond Prank). */
   hazards?: { c: Vec2; r: number }[];
+  /** Themed-course props (windmill, castle, animals…). */
+  props?: Collider[];
+  /** Absolute time (s) at release; moving props (windmill blades) are evaluated at clock0 + t. */
+  clock0?: number;
 }
 
 /** Surface under (x, y) for this world's thrower: the course grid, plus any personal hazards. */
@@ -140,7 +145,7 @@ export interface ThrowInput {
   perfect?: boolean;
 }
 
-export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed' | 'phased' | 'saved' | 'gimme' | 'magnet';
+export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed' | 'phased' | 'saved' | 'gimme' | 'magnet' | 'prop';
 
 export interface ThrowResult {
   samples: Vec3[];
@@ -153,6 +158,8 @@ export interface ThrowResult {
   events: ThrowEvent[];
   /** Trees the disc touched (for Lumberjack). */
   treesHit: Tree[];
+  /** Tags of props hit, in order ('windmill', 'cow', …). */
+  propHits?: string[];
 }
 
 // Release-speed fractions at which each disc's `curve` (distance fractions) was measured.
@@ -241,6 +248,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     return { samples, banks: samples.map(() => 0), rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events: ['holed'], treesHit: [] };
   }
   const events: ThrowEvent[] = [];
+  const propHits: string[] = [];
   const tctx: TreeCtx = { m, phaseLeft: m.phaseTrees, passed: new Set(), hits: [], basket: world.basket, rng, events };
   const bopt: BasketOpts = {
     B: scaledBasket(m.basketScale),
@@ -264,7 +272,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       const ns = Math.max(0, sh - decel * DT);
       v = [(v[0] / sh) * ns, (v[1] / sh) * ns, 0];
       p = [p[0] + v[0] * DT, p[1] + v[1] * DT, ground];
-      if (!opt.ghost) trunkCollide(p, v, world, near, tctx, 0.2);
+      if (!opt.ghost) {
+        trunkCollide(p, v, world, near, tctx, 0.2);
+        if (world.props) { const prevG: Vec3 = [p[0] - v[0] * DT, p[1] - v[1] * DT, p[2]]; const tag = collideProps(p, v, prevG, (world.clock0 ?? 0) + step * DT, world.props); if (tag) { propHits.push(tag); events.push('prop'); } }
+      }
     } else {
       // Forces.
       const q = s / disc.v0; // speed relative to this disc's full-power release
@@ -318,6 +329,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       if (!opt.ghost) {
         const hitTree = treeCollide(prev, p, v, world, near, tctx);
         if (hitTree) { state = 'dead'; bank = (rng() - 0.5) * 1.2; }
+        if (world.props) {
+          const tag = collideProps(p, v, prev, (world.clock0 ?? 0) + step * DT, world.props);
+          if (tag) { state = 'dead'; bank = (rng() - 0.5) * 1.2; if (propHits[propHits.length - 1] !== tag) propHits.push(tag); events.push('prop'); }
+        }
         const b = basketCollide(prev, p, v, world.basket, rng, events, inChains, bopt);
         inChains = b.inChains;
         if (b.holed) { holedAt = p; break; }
@@ -353,7 +368,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     }
     if (ev !== 'holed') events.push(ev);
     events.push('holed');
-    return { samples, banks, rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events, treesHit };
+    return { samples, banks, rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events, treesHit, propHits };
   };
   if (holedAt) return holedResult(holedAt, 'holed');
 
@@ -371,10 +386,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     // Sticky Plastic: a near miss (within 2 m of the edge) is saved, no penalty.
     if (m.sticky && Math.hypot(drop[0] - rest[0], drop[1] - rest[1]) <= 2) {
       events.push('saved');
-      return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: 0, events, treesHit };
+      return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: 0, events, treesHit, propHits };
     }
     events.push(surf);
-    return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit };
+    return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit, propHits };
   }
   if (!opt.ghost) {
     const d = Math.hypot(rest[0] - world.basket[0], rest[1] - world.basket[1]);
@@ -392,7 +407,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       events.push('magnet');
     }
   }
-  return { samples, banks, rest, restSurface: surfaceAt(world, rest[0], rest[1]), holed: false, penalty: 0, events, treesHit };
+  return { samples, banks, rest, restSurface: surfaceAt(world, rest[0], rest[1]), holed: false, penalty: 0, events, treesHit, propHits };
 }
 
 interface TreeCtx {

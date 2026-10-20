@@ -43,6 +43,7 @@ function syncMode(): void {
   $('setup-hole').textContent = {
     'disc-simple': 'Tali disc golf park layout, drawn simply: 1–5 trees per hole, a defender guarding every basket. Starts in first person.',
     'disc-forest': 'Tali disc golf park over satellite imagery: ~10k trees from HSY 2024 canopy data. Starts in first person.',
+    'disc-silly': 'A full-size disc golf course themed like mini golf: a giant windmill (thread the tunnel or dodge the blades), a castle gate, giant animals, mushrooms and golf balls.',
     'disc-rogue': 'Roguelike run: 18 holes on the simple Tali course. Start with a starter augment, then draft 1 of 3 after every hole. Earn your ghost line; hex your friends.',
     golf: 'The Country Club, Brookline MA: Main course hole 17, par 4.',
   }[mode] ?? '';
@@ -94,6 +95,10 @@ $('start').addEventListener('click', async () => {
     $('fp-toggle').hidden = false;
     const { startDisc } = await import('./modes/disc');
     const rogue = mode === 'disc-rogue';
-    await startDisc({ names, course: mode === 'disc-forest' ? 'forest' : 'simple', first: rogue ? 0 : o.first, count: rogue ? 18 : o.count, rogue });
+    const course = mode === 'disc-forest' ? 'forest' : mode === 'disc-silly' ? 'silly' : 'simple';
+    // Mini Golf Madness has 9 holes: clamp the hole menu to it.
+    const n = course === 'silly' ? 9 : 18;
+    const first = rogue ? 0 : Math.min(o.first, n - 1);
+    await startDisc({ names, course, first, count: rogue ? 18 : Math.min(o.count, n - first), rogue });
   }
 });
