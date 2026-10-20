@@ -29,7 +29,7 @@ A rainbow road floating in space. Only the road is in bounds: off it is the void
 |---|---|---|
 | 1 | Lights Out | A straight start from a checkered grid between alien and astronaut fans |
 | 2 | Mystery Box Alley | Two rows of spinning "?" boxes floating over the road (they're empty) |
-| 3 | Ring Road | Three hex rings on the line, each with an 8 m opening starting about 1 m up |
+| 3 | Ring Road | Three hex rings on the line. The hexagonal opening is 9.6 m wide at its middle (5 m at top and bottom), from about 1 m up to 10 m |
 | 4 | The Chicane | S-curves with parked racers on the apexes |
 | 5 | Asteroid Belt | Asteroids at every height from the road to 10 m up |
 | 6 | Rocket Garage | Rockets beside the road and one on the line before the basket |
@@ -56,6 +56,7 @@ Notes on the models:
 - **Space Kit** models sit around (2, 0, 1.5) instead of the origin, so their props carry `offset` to recenter them.
 - **Quaternius FBX** materials load as shiny Phong with white specular and emissive set equal to the color. They're made matte on load. The dragon and bats are near-black as authored, so the course `tint`s them by material name (a red dragon).
 - **KayKit** GLBs report raw bounds about 1.5× their skinned size, so the knight and mage sizes are measured in three.js (2.47 and 2.72 units tall) and hard-coded in the builder.
+- **Rings** collide as 41 thin boxes traced from the model's front outline (`silhouetteBoxes` in `scripts/course-kit.ts`: rasterize the mesh's front view, cut it into 0.04-unit bands, one box per solid run). Upright posts had filled the wide middle of the hexagonal opening, so good lines clipped thin air. The rings are sunk into the road, and sunk props are clipped at ground level so their buried part doesn't draw over the road.
 - **Mystery boxes** are a procedural model (`proc:mystery-box`, a canvas "?" texture) spinning about the vertical axis.
 
 ## Renderer and course-file additions

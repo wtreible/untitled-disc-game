@@ -108,9 +108,30 @@ describe('Rainbow Runs', () => {
       if ((r.propHits ?? []).length === 0 && [0, 1, 2].every((k) => { const x = crossing(r, k); return x !== null && Math.abs(x) < 4; })) found = true;
     }
     expect(found).toBe(true);
-    const post = (rings[0].colliders as Extract<Collider, { kind: 'box' }>[])[2].c;
+    // A box on the ring's side at mid-height (the widest side box).
+    const post = (rings[0].colliders as Extract<Collider, { kind: 'box' }>[]).reduce((a, b) => (Math.hypot(b.c[0] - rings[0].at[0], b.c[1] - rings[0].at[1]) > Math.hypot(a.c[0] - rings[0].at[0], a.c[1] - rings[0].at[1]) ? b : a)).c;
     const r2 = throwAt(c, w, { start: h.tee, aim: Math.atan2(post[1] - h.tee[1], post[0] - h.tee[0]), power: 0.85 });
     expect(r2.propHits).toContain('ring');
+  });
+});
+
+describe('Rainbow Runs rings', () => {
+  const c = load('rainbow');
+  it('colliders leave the hexagonal opening clear and fill the frame', () => {
+    for (const r of (c.props ?? []).filter((p) => p.hit === 'Clipped the ring!')) {
+      const boxes = r.colliders as Extract<Collider, { kind: 'box' }>[];
+      const s = r.scale, lift = r.lift ?? 0;
+      const yaw = r.yaw;
+      const hitAt = (x: number, zUnits: number) => {
+        const p: Vec2 = [r.at[0] + Math.cos(yaw) * x * s, r.at[1] + Math.sin(yaw) * x * s];
+        const z = zUnits * s + lift;
+        return boxes.some((b) => z >= b.z0 && z <= b.z1 && inside(p, b));
+      };
+      // Inside the opening (model units, measured from the mesh): clear.
+      for (const [x, z] of [[0, 0.32], [0, 0.58], [0, 0.84], [0.28, 0.58], [-0.28, 0.58], [0.15, 0.4], [-0.15, 0.76]]) expect(hitAt(x, z), `open ${x},${z}`).toBe(false);
+      // The frame: solid.
+      for (const [x, z] of [[0, 0.2], [0, 0.95], [0.42, 0.58], [-0.42, 0.58], [0.3, 0.32], [-0.3, 0.84]]) expect(hitAt(x, z), `frame ${x},${z}`).toBe(true);
+    }
   });
 });
 

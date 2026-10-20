@@ -85,6 +85,7 @@ export class CourseScene {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.localClippingEnabled = true; // sunk props are clipped at ground level
     container.appendChild(this.renderer.domElement);
 
     this.scene.add(new THREE.HemisphereLight('#dfeaff', '#4a5a3a', 1.6));

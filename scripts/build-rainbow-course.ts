@@ -10,7 +10,7 @@ import { encodeTrees } from '../src/course/disc-types';
 import { dist, type Vec2 } from '../src/course/geo';
 import type { CourseFeature, Rings } from '../src/course/types';
 import type { Collider } from '../src/disc/props';
-import { along, bbox, courseJson, heading, headingAt, makeHoles, propKit, rect, teeMat, type HoleSpec } from './course-kit';
+import { along, bbox, courseJson, heading, headingAt, makeHoles, propKit, rect, silhouetteBoxes, teeMat, type HoleSpec } from './course-kit';
 
 const { R, pick, props, trees } = propKit(4242);
 
@@ -146,24 +146,24 @@ function mysteryBox(at: Vec2, z = 3.2, size = 2.4): void {
   });
 }
 /**
- * A hex ring standing across the road: throw through it. Measured from the model: a low plinth
- * (0.5 × 0.5 units, up to 0.15), the ring's lower sides to about 0.2, and an opening about 0.54
- * wide up to 0.85. The ring itself is only about 0.15 thick.
+ * A hex ring standing across the road: throw through it. The opening (about 0.28 – 0.88 units up,
+ * ±0.32 wide at mid-height) is a hexagon, so the colliders are thin boxes that follow the model's
+ * front outline rather than upright posts (posts filled the opening's wide middle).
  */
+const RING_BOXES = silhouetteBoxes(space('gate_complex'), SPACE_OFFSET);
 function ring(at: Vec2, dir: number, s: number): void {
   const yaw = dir + Math.PI / 2; // ring plane (model X) across the direction of play
-  // Sunk into the road to the top of its plinth, so the opening starts about 1 m up.
-  const lift = -0.13 * s;
-  const off = (x: number): Vec2 => [at[0] + Math.cos(yaw) * x, at[1] + Math.sin(yaw) * x];
-  const box = (c: Vec2, hx: number, hy: number, z0: number, z1: number): Collider => ({ kind: 'box', c, yaw, hx, hy: hy * s, z0: Math.max(0, z0 + lift), z1: z1 + lift, tag: 'ring' });
-  props.push({
-    model: space('gate_complex'), at, yaw, scale: s, offset: SPACE_OFFSET, lift, hit: 'Clipped the ring!',
-    colliders: [
-      box(at, 0.5 * s, 0.25, 0, 0.15 * s), box(at, 0.32 * s, 0.08, 0.15 * s, 0.2 * s),
-      box(off(-0.385 * s), 0.115 * s, 0.08, 0.2 * s, 0.85 * s), box(off(0.385 * s), 0.115 * s, 0.08, 0.2 * s, 0.85 * s),
-      box(at, 0.32 * s, 0.08, 0.85 * s, 1.01 * s),
-    ],
+  // Sunk into the road to the top of the plinth, so the opening starts about 1 m up.
+  const lift = -0.2 * s;
+  const X: Vec2 = [Math.cos(yaw), Math.sin(yaw)], Z: Vec2 = [Math.cos(yaw - Math.PI / 2), Math.sin(yaw - Math.PI / 2)]; // model +Z in the world
+  const colliders: Collider[] = RING_BOXES.filter((b) => b.y1 * s + lift > 0).map((b) => {
+    const xm = ((b.x0 + b.x1) / 2) * s, zm = ((b.z0 + b.z1) / 2) * s;
+    return {
+      kind: 'box', c: [at[0] + X[0] * xm + Z[0] * zm, at[1] + X[1] * xm + Z[1] * zm], yaw,
+      hx: ((b.x1 - b.x0) / 2) * s, hy: ((b.z1 - b.z0) / 2) * s, z0: Math.max(0, b.y0 * s + lift), z1: b.y1 * s + lift, tag: 'ring',
+    };
   });
+  props.push({ model: space('gate_complex'), at, yaw, scale: s, offset: SPACE_OFFSET, lift, hit: 'Clipped the ring!', colliders });
 }
 /** Base, two fuel tanks and a nose cone: about 3.4 s tall. */
 function rocket(at: Vec2, s: number): void {

@@ -40,6 +40,9 @@ export async function loadProps(defs: PropDef[], trees: Tree[], base = '/models/
     // Recenter models authored off-origin (Kenney Space Kit sits at about (2, 0, 1.5)).
     if (d.offset) inner.position.set(-d.offset[0], -d.offset[1], -d.offset[2]);
     if (d.tint) tint(inner, d.tint);
+    // Sunk props: the ground doesn't write depth, so cut them off at ground level or the buried part
+    // draws over the road and looks solid where nothing collides.
+    if ((d.lift ?? 0) < 0) clipBelowGround(inner);
     const model = new THREE.Group();
     model.add(inner);
     // glTF is Y-up; the course is Z-up. Model −Z (its front) ends up along local +Y, then yaw.
@@ -135,6 +138,17 @@ function tint(root: THREE.Object3D, colors: Record<string, string>): void {
       return n;
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material);
+  });
+}
+
+const GROUND = [new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)];
+
+function clipBelowGround(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.material) return;
+    const clip = (m: THREE.Material) => { const n = m.clone(); n.clippingPlanes = GROUND; return n; };
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(clip) : clip(mesh.material);
   });
 }
 

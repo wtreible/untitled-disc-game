@@ -139,3 +139,93 @@ export function propKit(seed: number) {
 
   return { rng, R, pick, props, trees, solid, decor, tree };
 }
+
+// ---------- colliders from model geometry ----------
+/** Triangles of a GLB in model units (node translations applied; the kits use no rotation/scale). */
+export function triangles(model: string): [number, number, number][][] {
+  const b = readFileSync(`public/models/${model}`);
+  const len = b.readUInt32LE(12);
+  const j = JSON.parse(b.subarray(20, 20 + len).toString('utf8'));
+  const bin = 20 + len + 8; // the BIN chunk's data starts after its 8-byte header
+  const read = (ai: number): number[] => {
+    const a = j.accessors[ai], v = j.bufferViews[a.bufferView];
+    const n = a.count * ({ SCALAR: 1, VEC2: 2, VEC3: 3 } as Record<string, number>)[a.type];
+    const off = bin + (v.byteOffset ?? 0) + (a.byteOffset ?? 0);
+    const out: number[] = [];
+    for (let i = 0; i < n; i++) {
+      out.push(a.componentType === 5126 ? b.readFloatLE(off + i * 4) : a.componentType === 5125 ? b.readUInt32LE(off + i * 4) : b.readUInt16LE(off + i * 2));
+    }
+    return out;
+  };
+  const tris: [number, number, number][][] = [];
+  const visit = (ni: number, o: number[]) => {
+    const n = j.nodes[ni];
+    const t = n.translation ?? [0, 0, 0];
+    const at = [o[0] + t[0], o[1] + t[1], o[2] + t[2]];
+    if (n.mesh !== undefined) for (const pr of j.meshes[n.mesh].primitives) {
+      const pos = read(pr.attributes.POSITION);
+      const idx = read(pr.indices);
+      const P = (k: number): [number, number, number] => [pos[k * 3] + at[0], pos[k * 3 + 1] + at[1], pos[k * 3 + 2] + at[2]];
+      for (let i = 0; i + 2 < idx.length; i += 3) tris.push([P(idx[i]), P(idx[i + 1]), P(idx[i + 2])]);
+    }
+    for (const c of n.children ?? []) visit(c, at);
+  };
+  for (const r of j.scenes[j.scene ?? 0].nodes) visit(r, [0, 0, 0]);
+  return tris;
+}
+
+/**
+ * Boxes that follow a model's front outline (its X–Y silhouette, Y up), for shapes with holes you
+ * throw through. The silhouette is rasterized at `cell` units and cut into horizontal bands; each
+ * solid run in a band becomes a box as deep as the geometry in it. A column counts as solid in a
+ * band only if most of the band's rows are, so boxes never reach into the hole by more than half a
+ * band. Model units, relative to `center` (x, ·, z).
+ */
+export function silhouetteBoxes(model: string, center: [number, number, number], band = 0.04, cell = 0.005): { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number }[] {
+  const tris = triangles(model).map((t) => t.map(([x, y, z]) => [x - center[0], y, z - center[2]] as [number, number, number]));
+  const xs = tris.flat().map((p) => p[0]), ys = tris.flat().map((p) => p[1]);
+  const [xMin, xMax, yMin, yMax] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const nx = Math.ceil((xMax - xMin) / cell), ny = Math.ceil((yMax - yMin) / cell);
+  const solid = new Uint8Array(nx * ny);
+  const depth = Array.from({ length: ny }, () => [Infinity, -Infinity]);
+  for (const [a, b, c] of tris) {
+    const area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+    if (Math.abs(area) < 1e-12) continue; // edge-on to the front view
+    const i0 = Math.max(0, Math.floor((Math.min(a[0], b[0], c[0]) - xMin) / cell)), i1 = Math.min(nx - 1, Math.ceil((Math.max(a[0], b[0], c[0]) - xMin) / cell));
+    const k0 = Math.max(0, Math.floor((Math.min(a[1], b[1], c[1]) - yMin) / cell)), k1 = Math.min(ny - 1, Math.ceil((Math.max(a[1], b[1], c[1]) - yMin) / cell));
+    for (let k = k0; k <= k1; k++) {
+      const y = yMin + (k + 0.5) * cell;
+      for (let i = i0; i <= i1; i++) {
+        const x = xMin + (i + 0.5) * cell;
+        const w0 = (b[0] - x) * (c[1] - y) - (c[0] - x) * (b[1] - y);
+        const w1 = (c[0] - x) * (a[1] - y) - (a[0] - x) * (c[1] - y);
+        const w2 = (a[0] - x) * (b[1] - y) - (b[0] - x) * (a[1] - y);
+        if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+          solid[k * nx + i] = 1;
+          depth[k][0] = Math.min(depth[k][0], a[2], b[2], c[2]);
+          depth[k][1] = Math.max(depth[k][1], a[2], b[2], c[2]);
+        }
+      }
+    }
+  }
+  const out: { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number }[] = [];
+  const rowsPer = Math.max(1, Math.round(band / cell));
+  for (let k0 = 0; k0 < ny; k0 += rowsPer) {
+    const k1 = Math.min(ny, k0 + rowsPer);
+    const zs = depth.slice(k0, k1).filter((d) => d[0] <= d[1]);
+    if (zs.length === 0) continue;
+    const z0 = Math.min(...zs.map((d) => d[0])), z1 = Math.max(...zs.map((d) => d[1]));
+    let run = -1;
+    for (let i = 0; i <= nx; i++) {
+      let n = 0;
+      if (i < nx) for (let k = k0; k < k1; k++) n += solid[k * nx + i];
+      const on = i < nx && n * 2 > k1 - k0;
+      if (on && run < 0) run = i;
+      if (!on && run >= 0) {
+        out.push({ x0: xMin + run * cell, x1: xMin + i * cell, y0: yMin + k0 * cell, y1: yMin + k1 * cell, z0, z1 });
+        run = -1;
+      }
+    }
+  }
+  return out;
+}
