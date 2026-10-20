@@ -309,7 +309,7 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
   return {
     sport: 'disc',
     style: sparse ? 'vector' : 'photo',
-    branch_density: sparse ? 0.9 : 0.25,
+    branch_density: sparse ? 0.4 : 0.11,
     name: course.properties.name ?? 'Disc golf course',
     source: { osm_timestamp: opts.osmTimestamp, course_osm_id: opts.courseOsmId, attribution: opts.attribution },
     origin: frame.origin,

@@ -63,6 +63,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D39 | Roguelike is **Crazy mode**: a toggle that works on any course (plays the full course), not a separate menu item. | 2026-10-20 |
 | D40 | Main menu redesign (logo, course cards, players, round, settings) and a pause menu with the same settings form; prefs: units, first person, replays, FOV, flight speed, hints. | 2026-10-20 |
 | D41 | Broadcast-style graphics (after disc golf coverage like JomezPro): skewed result banner + name plate, event chips, hole bug, leaderboard, scorecard with birdie circles / bogey squares. | 2026-10-20 |
+| D42 | Fewer spit-outs (soft chain hits rattle in; gentler fast-putt penalty) and less branch collision (densities 0.9→0.4 simple/silly, 0.25→0.11 forest). | 2026-10-20 |
 
 ## Open questions
 

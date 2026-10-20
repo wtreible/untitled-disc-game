@@ -18,7 +18,7 @@ Per hole, seeded, 1–5 trees (more on longer holes):
 - **Mid-fairway**: 35–65% along, 1.5–4 m off the line, crown raised to 3–5 m (go under or around).
 - **Flank**: 20–90% along, 6–12 m off the line.
 - Never within 4 m of any tee, 2.5 m of any basket, 3 m of *another* hole's line, or in OB/water.
-- Branch density 0.9/m (lone feature trees are fully leafy), versus 0.25/m in the forest, where a higher value made every throw a pinball. Stored per course as `branch_density`.
+- Branch density 0.4/m on the simple course and Mini Golf Madness, 0.11/m in the forest (lowered 2026-10-20 from 0.9 / 0.25: a disc passing through a crown's middle is knocked down ~84% of the time instead of ~96%, ~50% instead of ~73% near the edge). Stored per course as `branch_density`.
 
 **2D and 3D are one world:** the top-down tree symbols (shadow, crown disc, trunk dot) are drawn from the same list and radii as the 3D trunks and crowns, and the vector ground meshes are the same in both cameras. A yellow beacon marks the current basket in first person.
 
@@ -65,7 +65,7 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 |---|---|
 | Trunk | Cylinder; reflect horizontal velocity, keep ~half the speed, disc "dies" (lift ×0.2, extra drag) |
 | Crown | Ellipsoid matching the 3D crown; branch-hit probability per meter traveled inside it, denser toward the middle; a hit kicks the disc in a random direction at 20–40% speed |
-| Basket chains | Entering the chain zone: catch probability from how centered the line is (perpendicular offset from the pole) and speed. Misses near the edge **cut through**; others **spit out** backward |
+| Basket chains | Entering the chain zone: catch probability from how centered the line is (perpendicular offset from the pole) and speed. Misses near the edge **cut through**; other misses usually **rattle in** (65%, less for firm putts over 8 m/s) and only otherwise **spit out** backward. Spit-outs are ~2% of putts (were ~10%, 2026-10-20) |
 | Top band / lid, tray (cage), pole | Bounce off with heavy speed loss. The disc is pushed back outside the surface it hit (without that it stuck to the cage and slid down it) |
 | Tray from above | A disc coming down inside the tray's footprint (a spit-out or band hit falling back) lands in the tray and counts, as in the PDGA rules |
 | Water / OB | +1, play from where the disc last crossed in (casual, D19) |

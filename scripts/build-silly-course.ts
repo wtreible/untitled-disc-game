@@ -234,7 +234,7 @@ for (let n = 0, tries = 0; n < 40 && tries < 3000; tries++) {
 const course: DiscCourseFile = {
   sport: 'disc',
   style: 'vector',
-  branch_density: 0.9,
+  branch_density: 0.4,
   name: 'Mini Golf Madness',
   source: { osm_timestamp: 'n/a (hand-designed)', course_osm_id: 'none', attribution: ['Models: Kenney (kenney.nl), CC0: Minigolf Kit, Cube Pets, Nature Kit'] },
   origin: { lat: 0, lon: 0 },

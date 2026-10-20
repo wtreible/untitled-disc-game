@@ -162,6 +162,15 @@ describe('basket', () => {
     expect(r.holed).toBe(true);
   });
 
+  it('spit-outs are rare: soft chain hits mostly rattle in', () => {
+    let spit = 0, n = 0;
+    for (const off of [0, 0.15, 0.3]) for (let sd = 1; sd <= 40; sd++) {
+      n++;
+      if (putt(off, sd).events.includes('spit')) spit++;
+    }
+    expect(spit / n).toBeLessThan(0.06);
+  });
+
   it('a putt a meter wide never goes in', () => {
     for (let s = 1; s <= 20; s++) expect(putt(1.0, s).holed).toBe(false);
   });
@@ -285,7 +294,9 @@ describe('designed trees (simple course)', () => {
 
   it('the built file is the vector style with the designed trees', () => {
     expect(c.style).toBe('vector');
-    expect(c.branch_density).toBeGreaterThan(0.5);
+    // Lone feature trees are leafier than a forest of thousands (where a high density is a pinball machine).
+    const forest: DiscCourseFile = JSON.parse(readFileSync('public/courses/tali.json', 'utf8'));
+    expect(c.branch_density!).toBeGreaterThan(forest.branch_density!);
     expect(c.canopy).toEqual([]);
     expect(decodeTrees(c.trees).length).toBeGreaterThan(0);
     // The file was built with seed 1 and OB/water avoidance, so it's a subset-or-equal of the raw design.
@@ -316,7 +327,7 @@ describe('designed trees (simple course)', () => {
     }
   });
 
-  it('a basket defender blocks most straight putts; a putt curved around it gets through', () => {
+  it('a basket defender blocks a good share of straight putts; a putt aimed wide gets through', () => {
     // Synthetic: basket 8 m north, a defender-shaped tree 4 m out, 0.6 m right of the line.
     const B: Vec2 = [0, 8];
     const defender: Tree = { x: 0.6, y: 4, h: 8, r: 2.4, b: 0.5, t: 0.2 };
@@ -328,7 +339,7 @@ describe('designed trees (simple course)', () => {
       }
       return blocked;
     };
-    expect(tries(0, 0)).toBeGreaterThan(10);
+    expect(tries(0, 0)).toBeGreaterThanOrEqual(7); // ≥ a third (branch density lowered 2026-10-20)
     // Wide left of the crown (it reaches 3 m left of its trunk at x=0.6) — flies clear.
     expect(tries(30, 0)).toBeLessThan(4);
   });

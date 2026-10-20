@@ -69,7 +69,7 @@ export const FLIGHT = {
   /** Putts use this fraction of the meter, so a full putt meter reaches ~35 m (circle-2 putts need ~20 m at chain height). */
   puttScale: 0.6,
   /** Branch hits per meter traveled inside a crown. */
-  branchDensity: 0.25,
+  branchDensity: 0.11,
   /** Skid deceleration after landing, m/s², by surface. */
   skid: { default: 7, trees: 11, path: 3.5, tee: 4, fairway: 6 } as Record<string, number>,
 };
@@ -93,11 +93,19 @@ export const BASKET = {
 export const CATCH = {
   base: 0.98,
   edgePenalty: 0.55,
-  speedPenalty: 0.03,
-  fastSpeed: 11,
+  speedPenalty: 0.015,
+  fastSpeed: 13,
   min: 0.08,
   /** Misses with the line this far out (0 center … 1 edge) cut through instead of spitting out. */
   cutEdge: 0.8,
+  /**
+   * A disc that hits the chains without a clean catch often rattles and drops into the tray
+   * anyway; real spit-outs are mostly firm putts. Rattle-in chance = rattle − rattlePerSpeed ·
+   * (speed − rattleSpeed)⁺, applied before a would-be spit-out.
+   */
+  rattle: 0.65,
+  rattlePerSpeed: 0.04,
+  rattleSpeed: 8,
 };
 
 export interface DiscWorld {
@@ -541,6 +549,9 @@ function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, eve
     events.push('chains');
     if (rng() < pCatch) return { holed: true, hit: false, inChains: true };
     if (edge > CATCH.cutEdge && o.cutToCatch > 0 && rng() < o.cutToCatch) return { holed: true, hit: false, inChains: true };
+    if (edge <= CATCH.cutEdge && rng() < CATCH.rattle - CATCH.rattlePerSpeed * Math.max(0, s - CATCH.rattleSpeed)) {
+      return { holed: true, hit: false, inChains: true }; // rattled in
+    }
     if (edge > CATCH.cutEdge) {
       // Cut through the edge of the chains: keep going, slower, pushed away from the pole.
       const side = Math.sign(v[0] * dy - v[1] * dx) || 1;
