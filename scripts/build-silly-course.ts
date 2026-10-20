@@ -12,22 +12,42 @@ import { CASTLE_SINK, castleColliders, windmillColliders, type Collider } from '
 import { parFromLength } from '../src/course/disc-build';
 
 // ---------- model sizes, read from the GLBs (Y-up, meters at scale 1) ----------
+/**
+ * Mesh bounds including node translations. (Nature Kit models sit under a parent shifted down
+ * 0.05; ignoring that made their colliders 0.05 × scale too tall.)
+ */
 function bbox(model: string): { min: number[]; max: number[] } {
   const b = readFileSync(`public/models/${model}`);
   const len = b.readUInt32LE(12);
   const j = JSON.parse(b.subarray(20, 20 + len).toString('utf8'));
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-  for (const m of j.meshes) for (const pr of m.primitives) {
-    const a = j.accessors[pr.attributes.POSITION];
-    for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], a.min[i]); max[i] = Math.max(max[i], a.max[i]); }
-  }
+  const visit = (ni: number, off: number[]) => {
+    const n = j.nodes[ni];
+    const t = n.translation ?? [0, 0, 0];
+    const o = [off[0] + t[0], off[1] + t[1], off[2] + t[2]];
+    if (n.mesh !== undefined) for (const pr of j.meshes[n.mesh].primitives) {
+      const a = j.accessors[pr.attributes.POSITION];
+      for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], a.min[i] + o[i]); max[i] = Math.max(max[i], a.max[i] + o[i]); }
+    }
+    for (const c of n.children ?? []) visit(c, o);
+  };
+  for (const r of j.scenes[j.scene ?? 0].nodes) visit(r, [0, 0, 0]);
   return { min, max };
 }
+
+/**
+ * Mushrooms are a narrow stem under a wide cap; one cylinder at cap width made the stem area solid.
+ * Profiles measured from the models (heights after the −0.05 parent offset, model units).
+ */
+const MUSHROOM_SHAPE: Record<string, { stemR: number; capZ0: number; capR: number; top: number }> = {
+  'nature/mushroom_redTall.glb': { stemR: 0.03, capZ0: 0.12, capR: 0.075, top: 0.2 },
+  'nature/mushroom_red.glb': { stemR: 0.068, capZ0: 0.06, capR: 0.105, top: 0.15 },
+};
 
 let seed = 12345;
 const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 const R = (a: number, b: number) => a + rng() * (b - a);
-const pick = <T>(xs: T[]) => xs[Math.floor(rng() * xs.length)];
+const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rng() * xs.length)];
 
 const props: PropDef[] = [];
 const trees: Tree[] = [];
@@ -121,7 +141,16 @@ solid('pets/animal-giraffe.glb', along(H[4], 0.5, -7), 4.2, { anim: 'eat', hit: 
 solid('pets/animal-elephant.glb', along(H[4], 0.93, -2.5), 3.4, { anim: 'idle', hit: 'Pawoo!', tag: 'elephant' });
 // 6. Mushroom Kingdom.
 for (const [f, lat, sc] of [[0.3, 6, 30], [0.45, -4, 26], [0.6, 3, 34], [0.75, -6, 28], [0.88, 2.5, 22]] as const) {
-  solid(pick(['nature/mushroom_redTall.glb', 'nature/mushroom_red.glb']), along(H[5], f, lat), sc, { hit: 'Boing! Mushroom', tag: 'mushroom', fit: 0.9 });
+  const model = pick(['nature/mushroom_redTall.glb', 'nature/mushroom_red.glb']);
+  const at = along(H[5], f, lat);
+  const m = MUSHROOM_SHAPE[model];
+  props.push({
+    model, at, yaw: R(0, Math.PI * 2), scale: sc, hit: 'Boing! Mushroom',
+    colliders: [
+      { kind: 'cyl', c: at, r: m.stemR * sc, z0: 0, z1: m.capZ0 * sc, tag: 'mushroom' },
+      { kind: 'cyl', c: at, r: m.capR * sc * 0.95, z0: m.capZ0 * sc, z1: m.top * sc, tag: 'mushroom' },
+    ],
+  });
 }
 // 7. Ball Pit: giant golf balls as boulders.
 for (const [f, lat] of [[0.35, 5], [0.5, -3], [0.62, 6], [0.75, -5], [0.86, 1.5]] as const) {

@@ -18,7 +18,8 @@ import { loadProps } from '../render/props';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen } from '../units';
-import { replaysOn } from '../settings';
+import { prefs, replaysOn } from '../settings';
+import { banner, chip, clearBroadcast, scoreTone, type Tone } from '../ui/broadcast';
 
 export const DISC_COURSES = {
   simple: '/courses/tali-simple.json',
@@ -26,7 +27,6 @@ export const DISC_COURSES = {
   silly: '/courses/silly.json',
 } as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
-const PLAYBACK = 1.5;
 /** Circle 2: inside this, switch to first-person putting. */
 const PUTT_RANGE = 20;
 /** First person: launch = view pitch + this, so a level view gives a putt's gentle arc… */
@@ -185,7 +185,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let pitch = 0;
   let power = 0;
   let chargeStart = 0;
-  let preferFP = true; // first person by default; C switches (persists across turns)
+  let preferFP = prefs().firstPerson; // C switches (persists across turns)
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   let flight: { result: ThrowResult; t0: number; speed: number; clock0: number } | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
@@ -205,7 +205,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function startHoleInfo(): void {
     const h = hole();
-    $('hole-info').innerHTML = `<b>${esc(course.name)}</b><br>Hole ${h.ref}${h.name ? ` · ${esc(h.name)}` : ''} · Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length"> (est.)</span>' : ''} · ${fmtLen(h.length_m)}`;
+    $('hole-info').innerHTML = `<div class="num">${esc(h.ref)}<small>HOLE</small></div><div class="info">
+      <div class="hname">${esc(h.name ?? course.name)}</div>
+      <div class="hmeta">Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length">*</span>' : ''} · ${fmtLen(h.length_m)}</div>
+      ${h.name ? `<div class="course">${esc(course.name)}${rogue ? ' · Crazy mode' : ''}</div>` : rogue ? '<div class="course">Crazy mode</div>' : ''}</div>`;
   }
 
   function startHole(): void {
@@ -273,7 +276,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!placing) return;
     const { player: me, kind } = placing;
     const res = place(kind, at, { hole: hole(), blocked, trees: treesFor(trees, removed, changes, me), rng: Math.random });
-    if (!res.ok) { toast(res.reason); return; }
+    if (!res.ok) { chip(res.reason, 'hot'); return; }
     if (res.kind === 'pond') changes.ponds.push({ ...res.pond, owner: me });
     else if (res.kind === 'clear-cut') changes.cleared[me].add(res.target);
     else changes.trees.push({ tree: res.tree, owner: me });
@@ -392,7 +395,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const twin = simulateThrow(input, world());
       if (outcomeScore(twin) < outcomeScore(result)) result = twin;
     }
-    flight = { result, t0: performance.now(), speed: puttStyle() ? 1 : PLAYBACK, clock0: gameClock };
+    flight = { result, t0: performance.now(), speed: puttStyle() ? 1 : prefs().playback, clock0: gameClock };
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
@@ -443,18 +446,31 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       courseVersion++;
     }
     const done = game().players[idx];
-    const propMsgs = (r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!');
-    let msg = [...propMsgs, ...r.events.map((e) => EVENT_TOASTS[e])].filter((m, i, a) => m && a.indexOf(m) === i).join(' · ');
-    if (done.holed) msg = `${r.events.includes('chains') ? 'Chains! ' : ''}${esc(done.name)}: ${scoreWord(done.strokes, hole().par)}`;
-    else if (done.pickedUp) msg = `${esc(done.name)} picks up (${done.strokes})`;
+    // Broadcast graphics: a chip per distinct event, a result banner when someone holes out.
+    const msgs = [...(r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!'), ...r.events.map((e) => EVENT_TOASTS[e])]
+      .filter((m, i, a): m is string => !!m && a.indexOf(m) === i);
+    const eventTone = (m: string): Tone => (/OB|Splash/.test(m) ? 'bogey' : /Saved|Magnet|Phased/.test(m) ? 'info' : 'hot');
+    if (!done.holed) for (const m of msgs) chip(m, eventTone(m));
+    let shown = msgs.length > 0;
+    if (done.holed) {
+      const par = hole().par;
+      banner({
+        word: scoreWord(done.strokes, par).toUpperCase(), tone: scoreTone(done.strokes, par), who: done.name, color: done.color,
+        what: `Hole ${hole().ref} · ${done.strokes} ${done.strokes === 1 ? 'throw' : 'throws'}`, score: fmtPar(liveToPar(idx)),
+      });
+      if (r.events.includes('chains')) chip('Chains', 'birdie');
+      shown = true;
+    } else if (done.pickedUp) {
+      banner({ word: 'PICKED UP', tone: 'double', who: done.name, color: done.color, what: `Hole ${hole().ref} · max ${done.strokes}`, score: fmtPar(liveToPar(idx)) });
+      shown = true;
+    }
     // Mulligan window: a few seconds to take the throw back (not after holing out).
     const canMull = rogue && !done.holed && mulligansLeft[idx] > 0;
-    if (canMull) msg = `${msg ? msg + '<br>' : ''}<small>M: mulligan (${mulligansLeft[idx]} left)</small>`;
+    if (canMull) chip('Press M for a mulligan', 'info', `${mulligansLeft[idx]} left`, 2600);
     else undo = null;
-    if (msg) toast(msg);
     phase = 'between';
     updateHud();
-    const wait = canMull ? 2600 : msg ? 1300 : 600;
+    const wait = canMull ? 2600 : done.holed ? 2200 : shown ? 1300 : 600;
     if (game().finished) {
       round.recordCurrent();
       updateHud();
@@ -474,8 +490,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     game().current = u.idx;
     mulligansLeft[u.idx]--;
     scene.popTrail();
-    toast('Mulligan!');
+    chip('Mulligan', 'info');
     startTurn();
+  }
+
+  /** To par over completed holes plus the current hole if this player has finished it. */
+  function liveToPar(i: number): number {
+    const q = game().players[i];
+    const recorded = round.scores[i][round.index] !== undefined;
+    return round.toPar(i) + (!recorded && (q.holed || q.pickedUp) ? q.strokes - hole().par : 0);
   }
 
   function scoreWord(strokes: number, par: number): string {
@@ -485,24 +508,35 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   // ---------- scorecard ----------
-  function showCard(): void {
+  /** Hole card, or (readOnly, from the pause menu) a mid-round look with just a Close button. */
+  function showCard(readOnly = false): void {
     const last = round.isLastHole;
     const idx = [...Array(round.count).keys()].map((k) => round.first + k);
-    const head = `<tr><th></th>${idx.map((i) => `<th>${course.holes[i].ref}</th>`).join('')}<th>Tot</th><th>±</th></tr>`;
-    const par = `<tr class="par"><td>Par</td>${idx.map((i) => `<td>${course.holes[i].par}</td>`).join('')}<td>${idx.reduce((s, i) => s + course.holes[i].par, 0)}</td><td></td></tr>`;
-    const rows = opts.names.map((n, p) => `<tr><td><span style="color:${PLAYER_COLORS[p]}">●</span> ${esc(n)}</td>${idx.map((i) => {
-      const v = round.scores[p][i];
-      const cls = v === undefined ? '' : v < course.holes[i].par ? 'under' : v > course.holes[i].par ? 'over' : '';
-      return `<td class="${cls}">${v ?? ''}</td>`;
-    }).join('')}<td>${round.total(p)}</td><td>${fmtPar(round.toPar(p))}</td></tr>`);
-    $('results-title').textContent = last ? 'Round complete' : `Hole ${hole().ref} complete`;
-    $('results-table').innerHTML = head + par + rows.join('');
-    $('next').hidden = last;
-    $('again').hidden = !last;
+    const head = `<thead><tr><th></th>${idx.map((i) => `<th>${course.holes[i].ref}</th>`).join('')}<th>TOT</th><th>±</th></tr></thead>`;
+    const par = `<tr class="par"><td class="player">Par</td>${idx.map((i) => `<td>${course.holes[i].par}</td>`).join('')}<td class="tot">${idx.reduce((s, i) => s + course.holes[i].par, 0)}</td><td></td></tr>`;
+    const mark = (v: number, p: number) => {
+      const d = v - p;
+      const cls = v === 1 || d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 1 ? 'bogey' : d >= 2 ? 'double' : '';
+      return `<span class="mk ${cls}">${v}</span>`;
+    };
+    const order = opts.names.map((_, p) => p).sort((a, b) => liveToPar(a) - liveToPar(b));
+    const rows = order.map((p) => {
+      const tp = liveToPar(p);
+      return `<tr><td class="player"><i style="background:${PLAYER_COLORS[p]}"></i>${esc(opts.names[p])}</td>${idx.map((i) => {
+        const v = round.scores[p][i];
+        return `<td>${v === undefined ? '' : mark(v, course.holes[i].par)}</td>`;
+      }).join('')}<td class="tot">${round.total(p) || ''}</td><td class="pm topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</td></tr>`;
+    });
+    $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
+    $('results-table').innerHTML = head + '<tbody>' + par + rows.join('') + '</tbody>';
+    $('next').hidden = readOnly || last;
+    $('again').hidden = readOnly || !last;
+    $('card-close').hidden = !readOnly;
     $('results').hidden = false;
-    $('hud').hidden = true;
-    $('toast').hidden = true;
+    if (!readOnly) { $('hud').hidden = true; clearBroadcast(); }
   }
+  $('card-close').addEventListener('click', () => { $('results').hidden = true; });
+  window.addEventListener('show-scorecard', () => showCard(true));
 
   $('next').addEventListener('click', () => {
     $('results').hidden = true;
@@ -524,7 +558,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const players = opts.names.length;
     let offer: Offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, rollTier(Math.random, starter ? STARTER_WEIGHTS : undefined), players);
     const render = () => {
-      $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: choose ${starter ? 'your starter augment' : 'a powerup'}`;
+      $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${starter ? 'pick your starter augment' : 'pick an augment'}`;
       $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
       $('draft-tier').className = `tier ${offer.tier}`;
       $('draft-cards').innerHTML = offer.cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
@@ -554,14 +588,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   $('again').addEventListener('click', () => location.reload());
 
   // ---------- HUD ----------
-  let toastTimer = 0;
-  function toast(msg: string): void {
-    const el = $('toast');
-    el.innerHTML = msg;
-    el.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => { el.hidden = true; }, 2200);
-  }
+
 
   function releaseLabel(): string {
     if (hyzer === 0) return 'Flat';
@@ -594,10 +621,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       ? 'Drag or arrows to aim (up/down = launch) · W/S target distance · scroll zoom · click minimap to aim · Q/E release angle · [ / ] disc · T forehand · C top-down · V view'
       : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
       .replace(vector ? ' · V view' : '\u0000', '');
-    $('scoreboard').innerHTML = game().players.map((q, i) => {
-      const toPar = round.toPar(i);
+    const lbOrder = game().players.map((_, i) => i).sort((a, b) => liveToPar(a) - liveToPar(b));
+    $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + lbOrder.map((i) => {
+      const q = game().players[i];
+      const tp = liveToPar(i);
       const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${fmtLen(dist(q.ball, pinOf(i)))} · ${LIE_LABELS[q.lie] ?? q.lie}`;
-      return `<div class="row ${i === game().current && !game().finished ? 'active' : ''}"><span class="dot" style="background:${q.color}"></span><span class="name">${esc(q.name)}</span><span class="strokes">${q.strokes}</span><span class="topar">${fmtPar(toPar)}</span></div><div class="state">${state}</div>`;
+      return `<div class="row ${i === game().current && !game().finished ? 'active' : ''}"><span class="bar" style="background:${q.color}"></span><span><div class="name">${esc(q.name)}</div><div class="state">${state}</div></span><span class="strokes">${q.strokes}</span><span class="topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</span></div>`;
     }).join('');
   }
 
@@ -757,6 +786,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; recomputeTick(); updateHud(); } });
 
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
+  window.addEventListener('prefschange', () => { scene.setFov(prefs().fov); $('help').hidden = !prefs().help; });
+  scene.setFov(prefs().fov);
+  $('help').hidden = !prefs().help;
 
   // ---------- frame loop ----------
   let lastFrame = performance.now();

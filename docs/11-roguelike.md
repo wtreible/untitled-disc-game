@@ -1,8 +1,8 @@
-# Roguelike run (separate mode)
+# Crazy mode (roguelike)
 
 Status: playable; augment list still open to changes (2026-10-20). Every augment below is implemented and tested.
 
-Selected as "Disc golf: Roguelike run (Tali simple)". **A run is always 18 holes.** The normal disc golf modes have no augments and show the full ghost line.
+Turned on with the **Crazy mode** switch on the main menu; works on any course and always plays the full course (18 holes at Tali, 9 at Mini Golf Madness). The normal disc golf modes have no augments and show the full ghost line.
 
 ## Draft
 

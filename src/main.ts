@@ -1,8 +1,8 @@
-// Setup screen: pick the game and players, then hand off to a mode. Modes own the page after that;
-// "Play again" reloads, which brings this screen back with the last names filled in.
+// Main menu: course, players, round (holes / Crazy mode) and settings, then hand off to the disc
+// golf mode. "Play again" / "Quit to main menu" reload, which brings the menu back with the last
+// choices filled in. (Golf still lives in src/modes/golf.ts but isn't on the menu: disc only for now.)
 import { PLAYER_COLORS } from './game/game';
-import { getUnits, setUnits, type Units } from './units';
-import { replaysOn, setReplays } from './settings';
+import { mountSettings } from './ui/settingsForm';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -13,92 +13,115 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
+type CourseId = 'simple' | 'silly' | 'forest';
+const COURSES: { id: CourseId; name: string; meta: string; holes: number; blurb: string; art: string }[] = [
+  {
+    id: 'simple', name: 'Tali', meta: 'Helsinki, Finland · the real layout, drawn clean', holes: 18,
+    blurb: 'The real Tali disc golf park layout from OpenStreetMap, drawn as a clean course: 1–5 trees per hole and a defender guarding every basket.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#3c4a37"/><path d="M8 58 C 20 40, 30 30, 50 8" stroke="#8cc063" stroke-width="12" fill="none" stroke-linecap="round"/><circle cx="20" cy="26" r="7" fill="#2f6a2f"/><circle cx="44" cy="40" r="6" fill="#2f6a2f"/><circle cx="50" cy="9" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'silly', name: 'Mini Golf Madness', meta: 'Windmills, castles, giant animals', holes: 9,
+    blurb: 'A full-size course themed like mini golf: thread the giant windmill’s tunnel past spinning blades, fly a castle gate, dodge cows, penguins and giant golf balls.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#4f8f45"/><rect x="0" y="40" width="64" height="24" fill="#2fb24c"/><path d="M26 44 L29 22 L35 22 L38 44 Z" fill="#c9a27a"/><g transform="translate(32 24)" stroke="#8a4b2e" stroke-width="4" stroke-linecap="round"><path d="M-12 -12 L12 12 M12 -12 L-12 12"/></g><circle cx="32" cy="24" r="2.5" fill="#999"/><circle cx="50" cy="50" r="5" fill="#e2504f"/></svg>`,
+  },
+  {
+    id: 'forest', name: 'Tali Forest', meta: 'Satellite imagery · 10k real-canopy trees', holes: 18,
+    blurb: 'The same Tali holes over live satellite imagery, with ~10,000 trees placed from Helsinki’s 2024 canopy data. Tight and woody.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#24391f"/>${Array.from({ length: 18 }, (_, i) => `<circle cx="${(i * 37) % 64}" cy="${(i * 23) % 64}" r="${5 + (i % 3)}" fill="${i % 2 ? '#2f5a2a' : '#3b6e33'}"/>`).join('')}<path d="M10 60 L54 6" stroke="#8a9a6a" stroke-width="5" stroke-dasharray="1 0" opacity=".7"/></svg>`,
+  },
+];
+
+const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean }>('sat-golf:menu', {});
+let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
+let players = Math.min(4, Math.max(1, last.players ?? 2));
 const savedNames = load<string[]>('sat-golf:names', []);
 
-function renderNameInputs(): void {
-  const n = parseInt($<HTMLSelectElement>('player-count').value, 10);
+// ---------- course cards ----------
+function renderCourses(): void {
+  $('course-cards').innerHTML = COURSES.map((c) => `
+    <button class="course-card ${c.id === course ? 'on' : ''}" data-id="${c.id}">
+      <span class="art">${c.art}</span>
+      <span><div class="name">${c.name}</div><div class="meta">${c.meta}</div></span>
+      <span class="holes">${c.holes}<small>HOLES</small></span>
+    </button>`).join('');
+  $('course-cards').querySelectorAll<HTMLButtonElement>('.course-card').forEach((b) => b.addEventListener('click', () => {
+    course = b.dataset.id as CourseId;
+    renderCourses();
+    renderHoles();
+  }));
+  $('setup-hole').textContent = COURSES.find((c) => c.id === course)!.blurb;
+}
+
+// ---------- holes ----------
+function renderHoles(): void {
+  const n = COURSES.find((c) => c.id === course)!.holes;
+  const opts = [
+    { v: `0:${n}`, label: `Full round (${n})` },
+    ...(n >= 18 ? [{ v: '0:9', label: 'Front 9' }, { v: '9:9', label: 'Back 9' }] : []),
+    ...Array.from({ length: n }, (_, i) => ({ v: `${i}:1`, label: `Hole ${i + 1} only` })),
+  ];
+  const sel = $<HTMLSelectElement>('holes');
+  const prev = sel.value || last.holes;
+  sel.innerHTML = opts.map((o) => `<option value="${o.v}">${o.label}</option>`).join('');
+  if (prev && opts.some((o) => o.v === prev)) sel.value = prev;
+}
+
+// ---------- players ----------
+function renderPlayers(): void {
+  $('player-seg').innerHTML = [1, 2, 3, 4].map((k) => `<button data-n="${k}" class="${k === players ? 'on' : ''}">${k} ${k === 1 ? 'player' : 'players'}</button>`).join('');
+  $('player-seg').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+    players = parseInt(b.dataset.n!, 10);
+    renderPlayers();
+  }));
   const box = $('player-names');
   const current = [...box.querySelectorAll('input')].map((i) => i.value);
   box.innerHTML = '';
-  for (let i = 0; i < n; i++) {
-    const input = document.createElement('input');
-    input.value = current[i] ?? savedNames[i] ?? `Player ${i + 1}`;
-    input.style.borderLeft = `6px solid ${PLAYER_COLORS[i]}`;
-    box.appendChild(input);
+  for (let i = 0; i < players; i++) {
+    const row = document.createElement('div');
+    row.className = 'pname';
+    row.innerHTML = `<i style="background:${PLAYER_COLORS[i]}"></i><input value="" maxlength="16" />`;
+    row.querySelector('input')!.value = current[i] ?? savedNames[i] ?? `Player ${i + 1}`;
+    box.appendChild(row);
   }
+  $<HTMLSelectElement>('player-count').value = String(players);
 }
 
-// Holes menu for disc golf: full round, nines, or any single hole.
-const holeOptions: { label: string; first: number; count: number }[] = [
-  { label: 'Full round (18)', first: 0, count: 18 },
-  { label: 'Front 9', first: 0, count: 9 },
-  { label: 'Back 9', first: 9, count: 9 },
-  ...Array.from({ length: 18 }, (_, i) => ({ label: `Hole ${i + 1} only`, first: i, count: 1 })),
-];
-$('holes').innerHTML = holeOptions.map((o, i) => `<option value="${i}">${o.label}</option>`).join('');
+// ---------- crazy mode ----------
+const crazy = $<HTMLInputElement>('crazy');
+crazy.checked = !!last.crazy;
+const syncCrazy = () => { $('holes-row').hidden = crazy.checked; }; // crazy runs play the full course
+crazy.addEventListener('change', syncCrazy);
 
-function syncMode(): void {
-  const mode = $<HTMLSelectElement>('mode').value;
-  $('holes-row').hidden = mode === 'golf' || mode === 'disc-rogue'; // runs are always 18 holes
-  $('setup-hole').textContent = {
-    'disc-simple': 'Tali disc golf park layout, drawn simply: 1–5 trees per hole, a defender guarding every basket. Starts in first person.',
-    'disc-forest': 'Tali disc golf park over satellite imagery: ~10k trees from HSY 2024 canopy data. Starts in first person.',
-    'disc-silly': 'A full-size disc golf course themed like mini golf: a giant windmill (thread the tunnel or dodge the blades), a castle gate, giant animals, mushrooms and golf balls.',
-    'disc-rogue': 'Roguelike run: 18 holes on the simple Tali course. Start with a starter augment, then draft 1 of 3 after every hole. Earn your ghost line; hex your friends.',
-    golf: 'The Country Club, Brookline MA: Main course hole 17, par 4.',
-  }[mode] ?? '';
-}
+renderCourses();
+renderHoles();
+renderPlayers();
+syncCrazy();
+mountSettings($('settings-menu-form'));
+mountSettings($('settings-game'));
 
-const last = load<{ mode?: string; holes?: string; players?: string }>('sat-golf:setup', {});
-// Saved modes from older versions ('disc') fall back to the default.
-if (last.mode && [...$<HTMLSelectElement>('mode').options].some((o) => o.value === last.mode)) $<HTMLSelectElement>('mode').value = last.mode;
-if (last.holes) $<HTMLSelectElement>('holes').value = last.holes;
-if (last.players) $<HTMLSelectElement>('player-count').value = last.players;
-$('mode').addEventListener('change', syncMode);
-$('player-count').addEventListener('change', renderNameInputs);
-syncMode();
-renderNameInputs();
-
-// Units: on the setup screen and in the in-game settings menu (⚙ / Esc).
-for (const id of ['units-setup', 'units-game']) {
-  const sel = $<HTMLSelectElement>(id);
-  sel.value = getUnits();
-  sel.addEventListener('change', () => setUnits(sel.value as Units));
-}
-window.addEventListener('unitschange', () => {
-  for (const id of ['units-setup', 'units-game']) $<HTMLSelectElement>(id).value = getUnits();
-});
-const replaysBox = $<HTMLInputElement>('replays');
-replaysBox.checked = replaysOn();
-replaysBox.addEventListener('change', () => setReplays(replaysBox.checked));
-const openSettings = (open: boolean) => { $('settings').hidden = !open; };
-$('settings-btn').addEventListener('click', () => openSettings(true));
-$('settings-close').addEventListener('click', () => openSettings(false));
+// ---------- pause menu (Esc / ⏸) ----------
+const openPause = (open: boolean) => { $('settings').hidden = !open; };
+$('settings-btn').addEventListener('click', () => openPause(true));
+$('settings-close').addEventListener('click', () => openPause(false));
 $('settings-menu').addEventListener('click', () => location.reload());
+$('pause-card').addEventListener('click', () => { openPause(false); window.dispatchEvent(new Event('show-scorecard')); });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && $('setup').hidden === true) openSettings($('settings').hidden === true);
+  if (e.key === 'Escape' && $('setup').hidden === true) openPause($('settings').hidden === true);
 });
 
+// ---------- start ----------
 $('start').addEventListener('click', async () => {
   const names = [...$('player-names').querySelectorAll('input')].map((i, k) => i.value.trim() || `Player ${k + 1}`);
-  const mode = $<HTMLSelectElement>('mode').value;
+  const holesV = $<HTMLSelectElement>('holes').value;
   save('sat-golf:names', names);
-  save('sat-golf:setup', { mode, holes: $<HTMLSelectElement>('holes').value, players: $<HTMLSelectElement>('player-count').value });
+  save('sat-golf:menu', { course, holes: holesV, players, crazy: crazy.checked });
   $('setup').hidden = true;
   $('settings-btn').hidden = false;
-  if (mode === 'golf') {
-    $('release').hidden = true;
-    const { startGolf } = await import('./modes/golf');
-    await startGolf(names);
-  } else {
-    const o = holeOptions[parseInt($<HTMLSelectElement>('holes').value, 10)];
-    $('fp-toggle').hidden = false;
-    const { startDisc } = await import('./modes/disc');
-    const rogue = mode === 'disc-rogue';
-    const course = mode === 'disc-forest' ? 'forest' : mode === 'disc-silly' ? 'silly' : 'simple';
-    // Mini Golf Madness has 9 holes: clamp the hole menu to it.
-    const n = course === 'silly' ? 9 : 18;
-    const first = rogue ? 0 : Math.min(o.first, n - 1);
-    await startDisc({ names, course, first, count: rogue ? 18 : Math.min(o.count, n - first), rogue });
-  }
+  $('fp-toggle').hidden = false;
+  const n = COURSES.find((c) => c.id === course)!.holes;
+  const [first, count] = crazy.checked ? [0, n] : holesV.split(':').map((x) => parseInt(x, 10));
+  $('pause-sub').textContent = `${COURSES.find((c) => c.id === course)!.name}${crazy.checked ? ' · Crazy mode' : ''}`;
+  const { startDisc } = await import('./modes/disc');
+  await startDisc({ names, course, first, count: Math.min(count, n - first), rogue: crazy.checked });
 });

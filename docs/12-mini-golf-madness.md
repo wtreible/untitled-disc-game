@@ -1,6 +1,6 @@
 # Mini Golf Madness (themed course)
 
-A full-size disc golf course (9 holes, 75–130 m) themed like mini golf, built from free CC0 models scaled up to be obstacles. Hand-designed, not from OSM. Build: `npm run silly-course` → `public/courses/silly.json`. Pick "Disc golf: Mini Golf Madness" on the setup screen.
+A full-size disc golf course (9 holes, 75–130 m) themed like mini golf, built from free CC0 models scaled up to be obstacles. Hand-designed, not from OSM. Build: `npm run silly-course` → `public/courses/silly.json`. Pick the Mini Golf Madness card on the main menu.
 
 ## Holes
 
@@ -28,13 +28,14 @@ Only the ~40 models used are copied (≈2 MB). Nature Kit materials set `metalli
 
 ## Props and collisions (`src/disc/props.ts`)
 
-Colliders are computed at build time from measured model geometry and stored in the course file, so physics never waits on model loading.
+Colliders are computed at build time from measured model geometry (including node transforms: Nature Kit models sit under a parent shifted down 0.05) and stored in the course file, so physics never waits on model loading.
 
 | Prop | Collider |
 |---|---|
 | Windmill | Tunnel-level walls and lintel, tapering tower slices, gabled roof (boxes); four **spinning blades** (rotating arms, swat the disc with the blade's own velocity) |
 | Castle | Two towers, the gate lintel, side rails (boxes); the model is sunk by its base tile so the gate floor is at ground level |
-| Animals, balls, mushrooms, rocks | Vertical cylinders from the model footprint |
+| Mushrooms | Two cylinders: a narrow stem under a wide cap (one cap-wide cylinder made the stem area solid) |
+| Animals, balls, rocks | Vertical cylinders from the model footprint |
 | Trees | The normal tree model (trunk + crown) sized from the model's bounding box |
 
 **Timing:** blade angle = phase + ω·t on a game clock. The physics evaluates the blades at release clock + flight time; the clock advances with flight playback speed, and replays rewind it to the throw's time, so the blades you see are the blades the disc meets.

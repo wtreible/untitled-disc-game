@@ -450,6 +450,13 @@ export class CourseScene {
     this.beacon.visible = Math.hypot(p[0] - this.beaconAt[0], p[1] - this.beaconAt[1]) > 15;
   }
 
+  /** Field of view from settings (scroll zoom adjusts from here). */
+  setFov(deg: number): void {
+    if (this.savedFov !== null) { this.savedFov = deg; return; } // mid-replay: apply after it
+    this.persp.fov = deg;
+    this.persp.updateProjectionMatrix();
+  }
+
   /** First-person zoom: scroll changes the field of view. */
   zoomFov(factor: number): void {
     this.persp.fov = Math.min(105, Math.max(25, this.persp.fov * factor));

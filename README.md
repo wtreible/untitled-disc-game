@@ -1,13 +1,15 @@
-# sat-golf
+# Untitled Disc Game
+
+*(repo: sat-golf)*
 
 Browser golf on real courses: geometry from OpenStreetMap, drawn over live Esri satellite imagery, local hot-seat for 1–4 players.
 
 - **Disc golf: Tali (simple), default.** The real Tali (Helsinki) layout drawn as a clean vector course with 1–5 trees per hole and a defender guarding every basket. Starts in first person; the top-down map (C) shows the same trees.
-- **Disc golf: Roguelike run.** 18 holes on the simple course: a starter augment, then a draft after every hole (common / epic / legendary). Earn your ghost line; hex your friends' course. See [docs/11-roguelike.md](docs/11-roguelike.md).
+- **Crazy mode** (a switch on the main menu, any course): draft augments after every hole: earn your ghost line, hex your friends' course. See [docs/11-roguelike.md](docs/11-roguelike.md).
 - **Disc golf: Mini Golf Madness.** A 9-hole full-size course themed like mini golf: thread a giant windmill's tunnel past spinning blades, throw through a castle gate, dodge giant animals, mushrooms and golf balls. See [docs/12-mini-golf-madness.md](docs/12-mini-golf-madness.md).
 - **Disc golf: Tali (forest).** The same holes over satellite imagery with ~10k trees from HSY canopy data.
 - Both: trunk/branch/chain collisions, full rounds with scorecard. See [docs/10-disc-golf.md](docs/10-disc-golf.md).
-- **Golf:** The Country Club (Brookline, MA), Main #17.
+- Golf (The Country Club #17) is still in the code (`src/modes/golf.ts`) but off the menu: disc only for now.
 
 Design docs and the decision log are in [`docs/`](docs/README.md).
 

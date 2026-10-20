@@ -3,106 +3,160 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sat-golf</title>
+    <title>Untitled Disc Game</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="stage"></div>
 
-    <header id="hole-info" class="panel"></header>
-    <aside id="scoreboard" class="panel"></aside>
+    <!-- In-game HUD -->
+    <header id="hole-info" class="bug"></header>
+    <aside id="scoreboard" class="leaderboard"></aside>
 
-    <footer id="hud" class="panel" hidden>
+    <footer id="hud" class="hud" hidden>
       <div class="hud-row">
         <div id="turn"></div>
         <div class="club">
-          <button id="club-prev" title="Previous club ( [ )">‹</button>
+          <button id="club-prev" class="icon" title="Previous disc ( [ )">‹</button>
           <div id="club-name"></div>
-          <button id="club-next" title="Next club ( ] )">›</button>
+          <button id="club-next" class="icon" title="Next disc ( ] )">›</button>
         </div>
-        <button id="release" title="Release angle (Q / E)"></button>
+        <button id="release" class="chip-btn" title="Release angle (Q / E)"></button>
         <div id="stats"></div>
       </div>
       <div class="hud-row" id="rogue-bar" hidden></div>
       <div class="hud-row">
         <div id="meter"><div id="meter-fill"></div><div id="meter-target"></div></div>
-        <button id="swing">Hold to swing <kbd>Space</kbd></button>
-        <button id="fp-toggle" title="First person / top-down (C)" hidden></button>
-        <button id="view-toggle" title="Toggle view (V)"></button>
+        <button id="swing" class="primary">Hold to swing <kbd>Space</kbd></button>
+        <button id="fp-toggle" class="chip-btn" title="First person / top-down (C)" hidden></button>
+        <button id="view-toggle" class="chip-btn" title="Toggle view (V)"></button>
       </div>
       <div class="help" id="help">Click to aim · ←/→ fine aim · [ / ] club · right-drag pan · scroll zoom · F re-frame · V view</div>
     </footer>
 
-    <div id="place-bar" class="panel" hidden><span id="place-text"></span> <button id="place-skip">Skip</button></div>
-    <div id="replay-bar" class="panel" hidden>▶ Replay · drag to orbit · scroll to zoom · <kbd>R</kbd> reset view · <kbd>Space</kbd> skip</div>
+    <div id="place-bar" class="hud" hidden><span id="place-text"></span> <button id="place-skip">Skip</button></div>
+    <div id="replay-bar" hidden><span class="rec"></span>REPLAY <span class="dim">drag orbit · scroll zoom · <kbd>R</kbd> reset · <kbd>Space</kbd> skip</span></div>
     <div id="reticle" hidden></div>
     <div id="minimap" hidden title="Click to aim here"></div>
-    <button id="settings-btn" title="Settings (Esc)" hidden>⚙</button>
-    <div id="settings" class="modal" hidden>
-      <div class="card">
-        <h1>Settings</h1>
-        <label>Units
-          <select id="units-game">
-            <option value="metric">Metric (m)</option>
-            <option value="imperial">Imperial (ft / yd)</option>
-          </select>
-        </label>
-        <label>Replay each throw
-          <input type="checkbox" id="replays">
-        </label>
-        <button id="settings-close" class="primary">Resume</button>
-        <button id="settings-menu">Quit to menu</button>
-      </div>
-    </div>
+    <button id="settings-btn" class="icon pause-btn" title="Menu (Esc)" hidden>
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M7 5h3v14H7zM14 5h3v14h-3z" fill="currentColor"/></svg>
+    </button>
+
+    <!-- Broadcast-style graphics (score banners and event chips) -->
+    <div id="bcast"></div>
+    <div id="chips"></div>
     <div id="toast" hidden></div>
     <div id="status"></div>
     <div id="attribution"></div>
 
-    <div id="setup" class="modal">
-      <div class="card">
-        <h1>sat-golf</h1>
-        <label>Game
-          <select id="mode">
-            <option value="disc-simple" selected>Disc golf: Tali (simple)</option>
-            <option value="disc-forest">Disc golf: Tali (forest, satellite)</option>
-            <option value="disc-silly">Disc golf: Mini Golf Madness (9 holes)</option>
-            <option value="disc-rogue">Disc golf: Roguelike run (Tali simple)</option>
-            <option value="golf">Golf: The Country Club #17</option>
-          </select>
-        </label>
-        <label id="holes-row">Holes
-          <select id="holes"></select>
-        </label>
-        <p id="setup-hole"></p>
-        <label>Units
-          <select id="units-setup">
-            <option value="metric">Metric (m)</option>
-            <option value="imperial">Imperial (ft / yd)</option>
-          </select>
-        </label>
-        <label>Players
-          <select id="player-count">
-            <option>1</option><option selected>2</option><option>3</option><option>4</option>
-          </select>
-        </label>
-        <div id="player-names"></div>
-        <button id="start" class="primary">Tee off</button>
+    <!-- Pause menu -->
+    <div id="settings" class="modal" hidden>
+      <div class="sheet pause">
+        <div class="sheet-head"><h2>Paused</h2><span class="dim" id="pause-sub"></span></div>
+        <div class="pause-grid">
+          <nav class="pause-actions">
+            <button id="settings-close" class="primary big">Resume</button>
+            <button id="pause-card" class="big">Scorecard</button>
+            <button id="settings-menu" class="big danger-outline">Quit to main menu</button>
+          </nav>
+          <section class="settings-pane"><h3>Settings</h3><div id="settings-game" class="settings-form"></div></section>
+        </div>
       </div>
     </div>
 
+    <!-- Main menu -->
+    <div id="setup" class="menu">
+      <div class="menu-bg"></div>
+      <div class="menu-shell">
+        <header class="brand">
+          <svg class="logo" viewBox="0 0 120 120" aria-hidden="true">
+            <defs>
+              <linearGradient id="lg-disc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9ff6b"/><stop offset="1" stop-color="#6fd43f"/></linearGradient>
+              <linearGradient id="lg-trail" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff7a45" stop-opacity="0"/><stop offset="1" stop-color="#ff7a45"/></linearGradient>
+            </defs>
+            <circle cx="60" cy="60" r="56" fill="#0f2233" stroke="#1f3b52" stroke-width="2"/>
+            <g stroke="#7f97ab" stroke-width="2.4" fill="none" stroke-linecap="round">
+              <path d="M44 44 h32"/><path d="M47 45 L56 70 M53 45 L58 70 M60 45 L60 70 M67 45 L62 70 M73 45 L64 70"/>
+              <path d="M44 72 h32 l-3 9 h-26 z" fill="#1f3b52"/><path d="M60 81 v16"/>
+            </g>
+            <path d="M8 86 C 30 60, 52 34, 86 30" stroke="url(#lg-trail)" stroke-width="5" fill="none" stroke-linecap="round"/>
+            <g transform="rotate(-18 88 30)">
+              <ellipse cx="88" cy="30" rx="17" ry="6.5" fill="url(#lg-disc)"/>
+              <ellipse cx="88" cy="28.5" rx="10" ry="3.2" fill="none" stroke="#3a7a22" stroke-width="1.4" opacity=".7"/>
+            </g>
+          </svg>
+          <div class="wordmark">
+            <span class="kicker">UNTITLED</span>
+            <span class="title">DISC GAME</span>
+            <span class="tag">Real courses · real flight numbers · a little bit silly</span>
+          </div>
+        </header>
+
+        <div class="menu-grid">
+          <div class="col">
+          <section class="panel-card courses">
+            <h3>Course</h3>
+            <div id="course-cards" class="course-cards"></div>
+          </section>
+
+          <div class="menu-foot">
+          <button id="start" class="primary huge">Tee off <span class="arrow">→</span></button>
+          <p class="credits">
+            Course data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> ·
+            Tree canopy © <a href="https://www.hsy.fi/en/environmental-information/open-data/" target="_blank" rel="noopener">HSY</a> ·
+            3D models by <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>
+            (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener">CC0</a>)
+          </p>
+          </div>
+          </div>
+          <div class="col">
+          <section class="panel-card players">
+            <h3>Players</h3>
+            <div class="seg" id="player-seg"></div>
+            <select id="player-count" hidden><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+            <div id="player-names"></div>
+          </section>
+
+          <section class="panel-card round">
+            <h3>Round</h3>
+            <label class="row" id="holes-row"><span>Holes</span><select id="holes"></select></label>
+            <label class="toggle crazy">
+              <input type="checkbox" id="crazy" />
+              <span class="switch"></span>
+              <span class="toggle-text"><b>Crazy mode</b><small>Draft augments after every hole: earn your ghost line, hex your friends' course. Plays the full course.</small></span>
+            </label>
+            <p id="setup-hole" class="course-blurb"></p>
+          </section>
+
+          <section class="panel-card settings">
+            <h3>Settings</h3>
+            <div id="settings-menu-form" class="settings-form"></div>
+          </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scorecard / round complete -->
     <div id="results" class="modal" hidden>
-      <div class="card">
-        <h1 id="results-title">Hole complete</h1>
-        <div class="table-wrap"><table id="results-table"></table></div>
-        <button id="next" class="primary" hidden>Next hole</button>
-        <button id="again" class="primary">Play again</button>
+      <div class="sheet card-sheet">
+        <div class="sheet-head"><h2 id="results-title">Hole complete</h2></div>
+        <div class="table-wrap"><table id="results-table" class="scorecard"></table></div>
+        <div class="sheet-actions">
+          <button id="next" class="primary big" hidden>Next hole →</button>
+          <button id="again" class="primary big">Play again</button>
+          <button id="card-close" class="big" hidden>Close</button>
+        </div>
       </div>
     </div>
 
+    <!-- Crazy mode draft -->
     <div id="draft" class="modal" hidden>
-      <div class="card draft-card">
-        <h1 id="draft-title"></h1>
-        <div id="draft-tier" class="tier"></div>
+      <div class="sheet draft-card">
+        <div class="sheet-head"><h2 id="draft-title"></h2><div id="draft-tier" class="tier"></div></div>
         <div id="draft-cards"></div>
         <div class="draft-actions"><button id="draft-reroll" hidden>Reroll</button><button id="draft-skip">Skip</button></div>
         <p id="draft-owned"></p>

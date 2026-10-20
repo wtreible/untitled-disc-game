@@ -59,6 +59,11 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D36 | Replay camera is player-controlled: drag orbits, scroll zooms, R resets; only Space skips. | 2026-10-20 |
 | D37 | New themed course "Mini Golf Madness": full-size disc golf, mini-golf theming via scaled-up Kenney CC0 models; prop colliders (incl. time-dependent windmill blades) precomputed at build time. | 2026-10-20 |
 
+| D38 | Product name for now: **Untitled Disc Game**. Disc only on the menu (golf code kept). | 2026-10-20 |
+| D39 | Roguelike is **Crazy mode**: a toggle that works on any course (plays the full course), not a separate menu item. | 2026-10-20 |
+| D40 | Main menu redesign (logo, course cards, players, round, settings) and a pause menu with the same settings form; prefs: units, first person, replays, FOV, flight speed, hints. | 2026-10-20 |
+| D41 | Broadcast-style graphics (after disc golf coverage like JomezPro): skewed result banner + name plate, event chips, hole bug, leaderboard, scorecard with birdie circles / bogey squares. | 2026-10-20 |
+
 ## Open questions
 
 - **Tali pars:** not in OSM; estimated from length. Real pars would need the course's own card (or tagging OSM).
