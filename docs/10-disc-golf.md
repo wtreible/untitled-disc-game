@@ -85,6 +85,10 @@ The basket is ~15% wider than a PDGA target (tray r 0.38 m, chains r 0.33 m, ban
 
 First person shows a top-down **minimap** of the current hole (bottom-left; click it to aim), **W/S** moves the target distance (Shift: 5 m), and the **scroll wheel zooms**. Inside 20 m (circle 2), after the tee throw, the camera switches to the thrower's eyes (1.65 m) with a putter selected. Drag/arrows aim; up/down sets launch angle (launch = view pitch + 7°). The power tick shows the power whose flight crosses the basket at mid-chain height. C toggles first person anywhere; the ghost arc shows the zero-error flight path in 3D.
 
+## Replays
+
+After each throw (except tap-ins and tiny putts), the throw replays from a camera 3.5 m behind and 1.2 m above the disc, at 1.25× speed with a fixed 55° lens. Space or a click skips; Settings (⚙ / Esc) turns replays off. The mulligan window and next turn start after the replay.
+
 ## Rules
 
 Stroke play, local hot-seat, away rule within a hole, **honors** on the next tee (lowest score on the previous hole first). Max 2 × par + 2 then pick up. Scorecard after each hole.

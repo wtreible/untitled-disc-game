@@ -53,6 +53,8 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D31 | Augments can change the course per player: "your course" ones only for the owner, hexes for everyone but the owner (placed before each hole). Each player throws against their own copy of the course. | 2026-10-20 |
 | D32 | Flight model: stall past ~26° angle of attack; per-disc default launch, release speed and meter curve (fixes too-long flat launches, backward-drifting high launches, and first person launching drivers too high). | 2026-10-20 |
 | D33 | Settings menu (⚙ / Esc) with metric (m) / imperial (ft for disc, yd for golf). | 2026-10-20 |
+| D34 | Disc golf replays every throw from a disc-chasing camera (skip: Space/click; toggle in Settings). First-person zoom-out up to 105°. | 2026-10-20 |
+| D35 | Common augments buffed ~50% (still below the epic version of the same effect). | 2026-10-20 |
 
 ## Open questions
 

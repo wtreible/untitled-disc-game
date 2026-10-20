@@ -30,31 +30,31 @@ Roguelike players start with **no ghost line** (the aim line, target ring and po
 
 | # | Name | Effect | Affects | |
 |---|---|---|---|---|
-| 1 | Grip Tape | +6% distance. | you | stacks |
-| 2 | Steady Hands | 20% less aim wobble. | you | stacks |
-| 3 | Fresh Plastic | +1 glide on every disc. | you | stacks |
-| 4 | Chain Magnet | +8% chance the chains catch. | you | stacks |
-| 5 | Soft Hands | Tap-in range +0.6 m (1 m → 1.6 m). | you | stacks |
-| 6 | Pine Sap | Branches are 20% less likely to grab your disc. | you | stacks |
-| 7 | Tee Pad Grip | +10% distance on tee throws. | you | stacks |
-| 8 | Skip Shot | Discs slide 50% farther after landing. | you | stacks |
-| 9 | Shot Shaper | Hyzer and anhyzer curve 25% more. | you | stacks |
-| 10 | Smooth Release | The power meter moves 20% slower. | you | stacks |
-| 11 | Putting Practice | Putts reach 15% farther and wobble 20% less. | you | stacks |
-| 12 | Beat-In Plastic | −0.5 fade on every disc: straighter finishes. | you | stacks |
-| 13 | Flippy Plastic | −0.5 turn on every disc: more turnover. | you | stacks |
-| 14 | Overstable Stamp | +0.5 turn and +0.5 fade: dependable fade. | you | stacks |
-| 15 | Reroll Token | +1 draft reroll. | you | stacks |
-| 16 | Glancing Blow | Trunk hits keep 40% more speed. | you | stacks |
-| 17 | Wide Chains | Baskets are 6% bigger for you. | you | stacks |
-| 18 | Run-Up | Throws past 90% power no longer add wobble. | you | unique |
-| 19 | Lucky Leaves | 15% of branch hits miss you. | you | stacks |
-| 20 | Second Wind | +2 throws before you must pick up. | you | stacks |
-| 21 | Scout's Eye | See the first 30% of your ghost flight line. | you | stacks |
-| 22 | Forward Tee | Your tee is 8 m closer on every hole (only for you). | your course | stacks |
-| 23 | Sapling | Before each hole, plant a bush near the basket. Opponents see and hit it; you never do. | **hex** | stacks |
-| 24 | Heckler | Opponents' power meters run 15% faster. | **hex** | stacks |
-| 25 | Back Tees | Opponents tee off 8 m farther back. | **hex** | stacks |
+| 1 | Grip Tape | +9% distance. | you | stacks |
+| 2 | Steady Hands | 30% less aim wobble. | you | stacks |
+| 3 | Fresh Plastic | +1.5 glide on every disc. | you | stacks |
+| 4 | Chain Magnet | +12% chance the chains catch. | you | stacks |
+| 5 | Soft Hands | Tap-in range +1 m (1 m → 2 m). | you | stacks |
+| 6 | Pine Sap | Branches are 30% less likely to grab your disc. | you | stacks |
+| 7 | Tee Pad Grip | +15% distance on tee throws. | you | stacks |
+| 8 | Skip Shot | Discs slide 80% farther after landing. | you | stacks |
+| 9 | Shot Shaper | Hyzer and anhyzer curve 40% more. | you | stacks |
+| 10 | Smooth Release | The power meter moves 30% slower. | you | stacks |
+| 11 | Putting Practice | Putts reach 25% farther and wobble 30% less. | you | stacks |
+| 12 | Beat-In Plastic | −0.75 fade on every disc: straighter finishes. | you | stacks |
+| 13 | Flippy Plastic | −0.75 turn on every disc: more turnover. | you | stacks |
+| 14 | Overstable Stamp | +0.75 turn and +0.75 fade: dependable fade. | you | stacks |
+| 15 | Reroll Token | +2 draft rerolls. | you | stacks |
+| 16 | Glancing Blow | Trunk hits keep 70% more speed. | you | stacks |
+| 17 | Wide Chains | Baskets are 10% bigger for you. | you | stacks |
+| 18 | Run-Up | +3% distance, and throws past 90% power no longer add wobble. | you | unique |
+| 19 | Lucky Leaves | 25% of branch hits miss you. | you | stacks |
+| 20 | Second Wind | +3 throws before you must pick up. | you | stacks |
+| 21 | Scout's Eye | See the first 40% of your ghost flight line. | you | stacks |
+| 22 | Forward Tee | Your tee is 12 m closer on every hole (only for you). | your course | stacks |
+| 23 | Sapling | Before each hole, plant a big bush near the basket. Opponents see and hit it; you never do. | **hex** | stacks |
+| 24 | Heckler | Opponents' power meters run 22% faster. | **hex** | stacks |
+| 25 | Back Tees | Opponents tee off 12 m farther back. | **hex** | stacks |
 
 ## Epic (20)
 

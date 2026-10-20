@@ -196,12 +196,12 @@ describe('per-player course changes', () => {
 
   it('Forward Tee / Back Tees / Short Pin move tees and baskets per player', () => {
     const all = [withPower('forward-tee'), withPower('back-tees'), neutralMods()];
-    expect(teeFor(hole, [withPower('forward-tee'), neutralMods()], 0)).toEqual([0, 8]); // forward tee alone
-    expect(backTeeFor(all, 0)).toBe(8);
-    // Player 0: +8 forward, −8 back from player 1 → back at 0. Player 2 only gets pushed back.
+    expect(teeFor(hole, [withPower('forward-tee'), neutralMods()], 0)).toEqual([0, 12]); // forward tee alone
+    expect(backTeeFor(all, 0)).toBe(12);
+    // Player 0: +12 forward, −12 back from player 1 → back at 0. Player 2 only gets pushed back.
     const p0 = teeFor(hole, all, 0), p2 = teeFor(hole, all, 2);
     expect(p0[1]).toBeCloseTo(0, 5);
-    expect(p2[1]).toBeCloseTo(-8, 5);
+    expect(p2[1]).toBeCloseTo(-12, 5);
     expect(teeFor(hole, all, 1)[1]).toBeCloseTo(0, 5); // owner of Back Tees unaffected
     expect(pinFor(hole, withPower('short-pin'))).toEqual([0, 80]);
     expect(pinFor(hole, neutralMods())).toEqual([0, 100]);
@@ -211,7 +211,7 @@ describe('per-player course changes', () => {
     const all = [withPower('heckler', 'shrink-ray'), neutralMods()];
     expect(effectiveMods(all, 0).meterSpeed).toBe(1);
     expect(effectiveMods(all, 0).basketScale).toBe(1);
-    expect(effectiveMods(all, 1).meterSpeed).toBeCloseTo(1.15);
+    expect(effectiveMods(all, 1).meterSpeed).toBeCloseTo(1.22);
     expect(effectiveMods(all, 1).basketScale).toBeCloseTo(0.6);
   });
 

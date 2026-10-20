@@ -17,6 +17,7 @@ import { CourseScene } from '../render/courseScene';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen } from '../units';
+import { replaysOn } from '../settings';
 
 export const DISC_COURSES = {
   simple: '/courses/tali-simple.json',
@@ -66,7 +67,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const fmtPar = (d: number) => (d === 0 ? 'E' : d > 0 ? `+${d}` : String(d));
 
-type Phase = 'aim' | 'charging' | 'flying' | 'between' | 'placing';
+type Phase = 'aim' | 'charging' | 'flying' | 'replay' | 'between' | 'placing';
 
 export interface DiscOptions {
   names: string[];
@@ -159,6 +160,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let preferFP = true; // first person by default; C switches (persists across turns)
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   let flight: { result: ThrowResult; t0: number; speed: number } | null = null;
+  /** Post-throw replay from a disc-chasing camera (skippable). */
+  let replay: { t0: number; heading: number; started: boolean } | null = null;
+  const REPLAY_SPEED = 1.25;
+  const REPLAY_MIN_SAMPLES = 40; // skip tap-ins and tiny putts
   let tick = 0; // meter tick (power to reach target)
 
   const game = () => round.game;
@@ -368,6 +373,29 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let pendingTimer = 0;
   let undo: { idx: number; ball: Vec2; lie: SurfaceClass; strokes: number; pickedUp: boolean; lastFrom?: Vec2; current: number } | null = null;
 
+  function startReplay(): void {
+    const s = flight!.result.samples;
+    if (!replaysOn() || s.length < REPLAY_MIN_SAMPLES) return finishThrow();
+    phase = 'replay';
+    replay = { t0: performance.now(), heading: yaw, started: false };
+    scene.setFirstPerson(true);
+    scene.minimapEnabled = false;
+    $('minimap').hidden = true;
+    $('reticle').hidden = true;
+    $('replay-bar').hidden = false;
+    $('hud').hidden = true;
+  }
+
+  function endReplay(): void {
+    if (!replay) return;
+    replay = null;
+    scene.endChase();
+    scene.minimapEnabled = true;
+    $('replay-bar').hidden = true;
+    $('hud').hidden = false;
+    finishThrow();
+  }
+
   function finishThrow(): void {
     const r = flight!.result;
     const idx = game().current;
@@ -559,6 +587,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
+    if (phase === 'replay') { endReplay(); return; }
     if (phase === 'placing') {
       if (e.button === 0) placeAt(scene.screenToWorld(e.clientX, e.clientY));
       else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
@@ -656,7 +685,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
-    if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) startCharge(); return; }
+    if (e.code === 'Space') { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) startCharge(); return; }
     const k = e.key.toLowerCase();
     if (k === '[') cycleDisc(-1);
     else if (k === ']') cycleDisc(1);
@@ -704,7 +733,21 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const q = g.players[i];
       scene.setDisc(i, q && !q.holed && !(flight && i === g.current) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
     });
-    if (flight) {
+    if (flight && replay) {
+      const s = flight.result.samples;
+      const k = Math.floor(((now - replay.t0) / 1000) * 60 * REPLAY_SPEED);
+      const kk = Math.max(0, Math.min(k, s.length - 1));
+      const a = s[Math.max(0, kk - 2)], b = s[Math.min(s.length - 1, kk + 2)];
+      // Keep the last real direction of travel once the disc stops (atan2(0, 0) would swing to east).
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.02) replay.heading = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      scene.setDisc(g.current, s[kk], flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      scene.chase(s[kk], replay.heading, !replay.started);
+      replay.started = true;
+      scene.setAim(null, [0, 0], '#fff');
+      scene.setTarget3d(null, [0, 0], '#fff');
+      scene.setPreview(null, '#fff');
+      if (k >= s.length + 30) endReplay();
+    } else if (flight) {
       const s = flight.result.samples;
       const k = Math.floor(((now - flight.t0) / 1000) * 60 * flight.speed);
       // rAF's timestamp can be slightly earlier than the performance.now() taken at release.
@@ -714,7 +757,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       if (isFP()) scene.lookToward(s[kk], 0.12);
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
-      if (k >= s.length + 25) finishThrow();
+      if (k >= s.length + 25 && phase === 'flying') startReplay();
     } else if (phase === 'aim' || phase === 'charging') {
       const p = player();
       scene.setAim(p.ball, aimTarget, p.color); // top-down line; also drawn in the first-person minimap

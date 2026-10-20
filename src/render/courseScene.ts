@@ -341,9 +341,43 @@ export class CourseScene {
     this.targetMat.color.set(color);
   }
 
+  /** Hide the minimap inset (e.g. during replays). */
+  minimapEnabled = true;
+  private savedFov: number | null = null;
+
+  /** Restore the player's field of view after a replay. */
+  endChase(): void {
+    if (this.savedFov !== null) {
+      this.persp.fov = this.savedFov;
+      this.persp.updateProjectionMatrix();
+      this.savedFov = null;
+    }
+  }
+
+  /**
+   * Replay chase camera: behind and above the disc, looking at it. `heading` is the direction of
+   * travel. Eased so bounces and tree kicks don't whip the camera around.
+   */
+  chase(p: Vec3, heading: number, reset = false): void {
+    const back = 3.5, up = 1.2;
+    const want = new THREE.Vector3(p[0] - Math.cos(heading) * back, p[1] - Math.sin(heading) * back, Math.max(1.0, p[2] + up));
+    if (reset) {
+      // The replay has its own lens; the player's scroll zoom is restored by endChase().
+      this.savedFov = this.persp.fov;
+      this.persp.fov = 55;
+      this.persp.updateProjectionMatrix();
+      this.persp.position.copy(want);
+    } else {
+      // Tight follow: at 0.12 the camera settled ~8 m back from a fast disc.
+      this.persp.position.lerp(want, 0.3);
+    }
+    this.persp.lookAt(p[0], p[1], p[2]);
+    this.beacon.visible = Math.hypot(p[0] - this.beaconAt[0], p[1] - this.beaconAt[1]) > 15;
+  }
+
   /** First-person zoom: scroll changes the field of view. */
   zoomFov(factor: number): void {
-    this.persp.fov = Math.min(80, Math.max(25, this.persp.fov * factor));
+    this.persp.fov = Math.min(105, Math.max(25, this.persp.fov * factor));
     this.persp.updateProjectionMatrix();
   }
 
@@ -527,6 +561,7 @@ export class CourseScene {
     this.previewMat.dashSize = 0.25;
     this.previewMat.gapSize = 0.18;
     this.renderer.render(this.scene, this.persp);
+    if (!this.minimapEnabled) return;
 
     const { x, y, w, h } = this.minimap;
     const size = this.size();

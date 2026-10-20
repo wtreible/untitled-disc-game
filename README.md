@@ -25,7 +25,7 @@ npm run dev        # http://localhost:5173
 | Action | Input |
 |---|---|
 | Aim (top-down) | Click / drag on the map; ←/→ to nudge (Shift for fine) |
-| Aim (first person) | Drag, or arrows; ↑/↓ sets launch angle; W/S target distance (Shift: 5 m); click the minimap to aim there; scroll to zoom |
+| Aim (first person) | Drag, or arrows; ↑/↓ sets launch angle; W/S target distance (Shift: 5 m); click the minimap to aim there; scroll to zoom (out to 105°) |
 | Disc | `[` / `]` or the ‹ › buttons (distance driver, fairway, midrange, putter) |
 | Release angle | Q (more hyzer, curves left) / E (more anhyzer, curves right), or click the release button |
 | Forehand / backhand | T (mirrors the curve) |
@@ -33,7 +33,8 @@ npm run dev        # http://localhost:5173
 | First person / top-down | C. Starts in first person; inside 20 m it's always first person unless you press C |
 | Pan / zoom / view / re-frame | Right-drag / scroll / V / F |
 | Roguelike | M: mulligan (if owned, right after a throw lands); P: arm Perfect Form; before a hole, click the map to place hexes / clear-cuts |
-| Settings | ⚙ button or Esc: metric / imperial units, quit to menu |
+| Replay | After each throw; Space or click to skip |
+| Settings | ⚙ button or Esc: metric / imperial units, replays on/off, quit to menu |
 
 ## Controls: golf
 

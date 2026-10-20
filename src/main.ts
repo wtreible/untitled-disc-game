@@ -2,6 +2,7 @@
 // "Play again" reloads, which brings this screen back with the last names filled in.
 import { PLAYER_COLORS } from './game/game';
 import { getUnits, setUnits, type Units } from './units';
+import { replaysOn, setReplays } from './settings';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -66,6 +67,9 @@ for (const id of ['units-setup', 'units-game']) {
 window.addEventListener('unitschange', () => {
   for (const id of ['units-setup', 'units-game']) $<HTMLSelectElement>(id).value = getUnits();
 });
+const replaysBox = $<HTMLInputElement>('replays');
+replaysBox.checked = replaysOn();
+replaysBox.addEventListener('change', () => setReplays(replaysBox.checked));
 const openSettings = (open: boolean) => { $('settings').hidden = !open; };
 $('settings-btn').addEventListener('click', () => openSettings(true));
 $('settings-close').addEventListener('click', () => openSettings(false));

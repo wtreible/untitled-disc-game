@@ -118,7 +118,7 @@ export function place(kind: PlaceKind, at: Vec2, c: PlaceContext): Placement {
   if (kind === 'sapling') {
     if (dPin < 4 || dPin > 15) return { ok: false, reason: 'Saplings go 4–15 m from the basket.' };
     const height = R(5, 8);
-    return { ok: true, kind, tree: { x: at[0], y: at[1], h: height, r: R(1.8, 2.6), b: R(0.3, 0.6), t: 0.15 } };
+    return { ok: true, kind, tree: { x: at[0], y: at[1], h: height, r: R(2.3, 3.0), b: R(0.3, 0.6), t: 0.15 } };
   }
   if (nearLine > 40) return { ok: false, reason: 'Must be within 40 m of the hole line.' };
   if (kind === 'thicket') {

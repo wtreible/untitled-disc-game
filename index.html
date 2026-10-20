@@ -34,6 +34,7 @@
     </footer>
 
     <div id="place-bar" class="panel" hidden><span id="place-text"></span> <button id="place-skip">Skip</button></div>
+    <div id="replay-bar" class="panel" hidden>▶ Replay · <kbd>Space</kbd> or click to skip</div>
     <div id="reticle" hidden></div>
     <div id="minimap" hidden title="Click to aim here"></div>
     <button id="settings-btn" title="Settings (Esc)" hidden>⚙</button>
@@ -45,6 +46,9 @@
             <option value="metric">Metric (m)</option>
             <option value="imperial">Imperial (ft / yd)</option>
           </select>
+        </label>
+        <label>Replay each throw
+          <input type="checkbox" id="replays">
         </label>
         <button id="settings-close" class="primary">Resume</button>
         <button id="settings-menu">Quit to menu</button>
