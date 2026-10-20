@@ -42,6 +42,9 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D21 | Trees for disc golf: individual trees planted inside HSY 2024 canopy polygons, trunk-free fairway lanes; trunk + crown + basket collisions. | 2026-10-19 |
 | D22 | First-person 3D putting inside 20 m; C toggles first person anywhere. | 2026-10-19 |
 | D23 | Disc golf plays full rounds (18 / front 9 / back 9 / single hole) with a scorecard and honors. | 2026-10-19 |
+| D24 | **Default course: Tali (simple)**, a vector drawing of the real layout with 1–5 designed trees per hole and a defender at every basket. The satellite forest version stays selectable. | 2026-10-19 |
+| D25 | Disc golf starts in first person; C toggles to the top-down map and the choice persists across turns. | 2026-10-19 |
+| D26 | Branch density is per course (simple 0.9/m, forest 0.25/m). | 2026-10-19 |
 
 ## Open questions
 

@@ -36,15 +36,18 @@ const holeOptions: { label: string; first: number; count: number }[] = [
 $('holes').innerHTML = holeOptions.map((o, i) => `<option value="${i}">${o.label}</option>`).join('');
 
 function syncMode(): void {
-  const disc = $<HTMLSelectElement>('mode').value === 'disc';
-  $('holes-row').hidden = !disc;
-  $('setup-hole').textContent = disc
-    ? 'Tali disc golf park: 18 holes in mixed forest, trees from HSY 2024 canopy data.'
-    : 'The Country Club, Brookline MA: Main course hole 17, par 4.';
+  const mode = $<HTMLSelectElement>('mode').value;
+  $('holes-row').hidden = mode === 'golf';
+  $('setup-hole').textContent = {
+    'disc-simple': 'Tali disc golf park layout, drawn simply: 1–5 trees per hole, a defender guarding every basket. Starts in first person.',
+    'disc-forest': 'Tali disc golf park over satellite imagery: ~10k trees from HSY 2024 canopy data. Starts in first person.',
+    golf: 'The Country Club, Brookline MA: Main course hole 17, par 4.',
+  }[mode] ?? '';
 }
 
 const last = load<{ mode?: string; holes?: string; players?: string }>('sat-golf:setup', {});
-if (last.mode) $<HTMLSelectElement>('mode').value = last.mode;
+// Saved modes from older versions ('disc') fall back to the default.
+if (last.mode && [...$<HTMLSelectElement>('mode').options].some((o) => o.value === last.mode)) $<HTMLSelectElement>('mode').value = last.mode;
 if (last.holes) $<HTMLSelectElement>('holes').value = last.holes;
 if (last.players) $<HTMLSelectElement>('player-count').value = last.players;
 $('mode').addEventListener('change', syncMode);
@@ -66,6 +69,6 @@ $('start').addEventListener('click', async () => {
     const o = holeOptions[parseInt($<HTMLSelectElement>('holes').value, 10)];
     $('fp-toggle').hidden = false;
     const { startDisc } = await import('./modes/disc');
-    await startDisc({ names, first: o.first, count: o.count });
+    await startDisc({ names, course: mode === 'disc-forest' ? 'forest' : 'simple', first: o.first, count: o.count });
   }
 });

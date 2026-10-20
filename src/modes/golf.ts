@@ -286,7 +286,7 @@ export async function startGolf(names: string[]): Promise<void> {
       if (flight) {
         const k = Math.floor(((now - flight.t0) / 1000) * 60 * PLAYBACK);
         const s = flight.result.samples;
-        const pos: Vec3 = s[Math.min(k, s.length - 1)];
+        const pos: Vec3 = s[Math.max(0, Math.min(k, s.length - 1))];
         scene.setBall(game.current, pos, true);
         scene.setAim(null, [0, 0], 0, '#fff');
         if (k >= s.length + 20) finishShot();

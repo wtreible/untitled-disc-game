@@ -1,5 +1,6 @@
 // Disc golf mode (default): a round at an OSM-mapped course with real tree canopy, local hot-seat.
 import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from '../course/geo';
+import { simplify } from '../course/disc-build';
 import { decodeTrees, type DiscCourseFile, type DiscHole } from '../course/disc-types';
 import { DISCS, PUTTER_DISC, suggestDisc, type Disc } from '../disc/discs';
 import { BASKET, simulateThrow, type DiscWorld, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
@@ -12,7 +13,10 @@ import { CourseScene } from '../render/courseScene';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 
-export const DISC_COURSE_URL = '/courses/tali.json';
+export const DISC_COURSES = {
+  simple: '/courses/tali-simple.json',
+  forest: '/courses/tali.json',
+} as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 const PLAYBACK = 1.5;
 /** Circle 2: inside this, switch to first-person putting. */
@@ -57,13 +61,14 @@ type Phase = 'aim' | 'charging' | 'flying' | 'between';
 
 export interface DiscOptions {
   names: string[];
+  course: keyof typeof DISC_COURSES;
   /** First hole index and number of holes. */
   first: number;
   count: number;
 }
 
 export async function startDisc(opts: DiscOptions): Promise<void> {
-  const course: DiscCourseFile = await (await fetch(DISC_COURSE_URL)).json();
+  const course: DiscCourseFile = await (await fetch(DISC_COURSES[opts.course])).json();
   const trees = decodeTrees(course.trees);
   const frame = new LocalFrame(course.origin);
   const grid = SurfaceGrid.fromHole({
@@ -72,7 +77,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }, 0.5);
   const treeIndex = new TreeIndex(trees);
   const round = new Round(course.holes, opts.names, opts.first, opts.count);
-  const world = (): DiscWorld => ({ grid, terrain: new FlatTerrain(), trees: treeIndex, basket: round.hole.pin });
+  const world = (): DiscWorld => ({ grid, terrain: new FlatTerrain(), trees: treeIndex, basket: round.hole.pin, branchDensity: course.branch_density });
   const hole = () => round.hole as DiscHole;
 
   // Expected full-power flat range per disc, for disc suggestions.
@@ -82,15 +87,21 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }));
 
   const scene = new CourseScene($('stage'), course, grid, trees, PLAYER_COLORS);
-  $('attribution').textContent = [ESRI_ATTRIBUTION, ...course.source.attribution].join(' · ');
-  $('status').textContent = 'Loading imagery…';
-  const maxTex = Math.min(8192, scene.renderer.capabilities.maxTextureSize);
-  loadImagery(frame, course.bounds, 19, maxTex)
-    .then((img) => {
-      scene.setImagery(img, course.imagery_offset_m);
-      $('status').textContent = img.failedTiles ? `${img.failedTiles} imagery tiles failed to load` : '';
-    })
-    .catch((e) => { $('status').textContent = `Imagery unavailable (${e.message}); showing classes`; });
+  const vector = scene.style === 'vector';
+  $('view-toggle').hidden = vector; // one look in vector style
+  if (vector) {
+    $('attribution').textContent = course.source.attribution.join(' · ');
+  } else {
+    $('attribution').textContent = [ESRI_ATTRIBUTION, ...course.source.attribution].join(' · ');
+    $('status').textContent = 'Loading imagery…';
+    const maxTex = Math.min(8192, scene.renderer.capabilities.maxTextureSize);
+    loadImagery(frame, course.bounds, 19, maxTex)
+      .then((img) => {
+        scene.setImagery(img, course.imagery_offset_m);
+        $('status').textContent = img.failedTiles ? `${img.failedTiles} imagery tiles failed to load` : '';
+      })
+      .catch((e) => { $('status').textContent = `Imagery unavailable (${e.message}); showing classes`; });
+  }
 
   // ---------- turn state ----------
   let phase: Phase = 'aim';
@@ -102,7 +113,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let pitch = 0;
   let power = 0;
   let chargeStart = 0;
-  let fpOverride: boolean | null = null; // user toggle for this turn
+  let preferFP = true; // first person by default; C switches (persists across turns)
+  let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   let flight: { result: ThrowResult; t0: number; speed: number } | null = null;
   let tick = 0; // meter tick (power to reach target)
 
@@ -110,7 +122,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const player = () => game().player;
   const toBasket = () => dist(player().ball, hole().pin);
   const autoFP = () => toBasket() <= PUTT_RANGE && player().strokes > 0;
-  const isFP = () => fpOverride ?? autoFP();
+  const isFP = () => fpOverride ?? (preferFP || autoFP());
   const puttStyle = () => isFP() && disc === PUTTER_DISC && toBasket() <= PUTT_RANGE + 5;
 
   function startHole(): void {
@@ -128,12 +140,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function defaultTarget(from: Vec2): Vec2 {
     const h = hole();
     const dB = dist(from, h.pin);
+    // OSM hole lines often trace the walking path; only real doglegs (> 8 m off straight) count.
+    const bends = simplify(h.routing, 8, 2).slice(1, -1);
     if (dB > PUTT_RANGE && distToPolyline(from, h.routing) > 6) {
       const along = closestAlong(from, h.routing) + 25;
       const total = polylineLength(h.routing);
       return along >= total ? h.pin : pointAlong(h.routing, along);
     }
-    for (const p of h.routing.slice(1, -1)) if (dist(p, h.pin) < dB - 20 && dist(from, p) > 30) return p;
+    for (const p of bends) if (dist(p, h.pin) < dB - 20 && dist(from, p) > 30) return p;
     return h.pin;
   }
 
@@ -296,9 +310,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('fp-toggle').textContent = isFP() ? '1st person' : 'Top-down';
     $('swing').toggleAttribute('disabled', phase !== 'aim' && phase !== 'charging');
     $('swing').innerHTML = `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>Space</kbd>`;
-    $('help').textContent = isFP()
+    $('help').textContent = (isFP()
       ? 'Drag or arrows to aim (up/down = launch) · Q/E release angle · [ / ] disc · T forehand · C top-down · V view'
-      : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · C 1st person · right-drag pan · scroll zoom · V view · F re-frame';
+      : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
+      .replace(vector ? ' · V view' : '\u0000', '');
     $('scoreboard').innerHTML = game().players.map((q, i) => {
       const toPar = round.toPar(i);
       const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${Math.round(dist(q.ball, hole().pin))} m · ${LIE_LABELS[q.lie] ?? q.lie}`;
@@ -377,7 +392,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function toggleFP(): void {
     if (phase !== 'aim') return;
-    fpOverride = !isFP();
+    if (autoFP()) fpOverride = !isFP();
+    else { preferFP = !preferFP; fpOverride = null; }
     applyCamera(true);
     recomputeTick();
     updateHud();
@@ -435,8 +451,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (flight) {
       const s = flight.result.samples;
       const k = Math.floor(((now - flight.t0) / 1000) * 60 * flight.speed);
-      const kk = Math.min(k, s.length - 1);
+      // rAF's timestamp can be slightly earlier than the performance.now() taken at release.
+      const kk = Math.max(0, Math.min(k, s.length - 1));
       scene.setDisc(g.current, s[kk], flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      // First person: turn the head to follow the disc.
+      if (isFP()) scene.lookToward(s[kk], 0.12);
       scene.setAim(null, [0, 0], '#fff');
       if (k >= s.length + 25) finishThrow();
     } else if (phase === 'aim' || phase === 'charging') {

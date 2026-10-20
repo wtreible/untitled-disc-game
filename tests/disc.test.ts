@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { distToPolyline, type Vec2 } from '../src/course/geo';
+import { dist, distToPolyline, type Vec2 } from '../src/course/geo';
 import { decodeTrees, type DiscCourseFile, type Tree } from '../src/course/disc-types';
-import { parFromLength, simplify } from '../src/course/disc-build';
+import { designTrees, parFromLength, simplify } from '../src/course/disc-build';
 import type { Rings } from '../src/course/types';
 import { DISCS, PUTTER_DISC } from '../src/disc/discs';
 import { BASKET, simulateThrow, type DiscWorld, type ThrowInput } from '../src/disc/flight';
@@ -59,10 +59,10 @@ describe('disc flight calibration', () => {
     expect(lh.rest[0]).toBeCloseTo(-hy.rest[0], 0);
   });
 
-  it('a full putt reaches ~20–28 m and stays low', () => {
+  it('a full putt reaches ~30–40 m and stays low', () => {
     const r = throwN({ start: [0, -140], aim: NORTH, power: 1, disc: PUTTER_DISC, hyzer: 0, style: 'putt' });
-    expect(r.rest[1] + 140).toBeGreaterThan(18);
-    expect(r.rest[1] + 140).toBeLessThan(30);
+    expect(r.rest[1] + 140).toBeGreaterThan(28);
+    expect(r.rest[1] + 140).toBeLessThan(42);
     expect(Math.max(...r.samples.map((s) => s[2]))).toBeLessThan(2);
   });
 });
@@ -251,5 +251,60 @@ describe('simplify', () => {
     for (let i = 0; i < 40; i++) stairs.push([i * 0.5, Math.floor(i / 2) * 0.5]);
     stairs.push([20, 0], [0, 0]);
     expect(simplify(stairs, 0.6).length).toBeLessThan(10);
+  });
+});
+
+describe('designed trees (simple course)', () => {
+  const c: DiscCourseFile = JSON.parse(readFileSync('public/courses/tali-simple.json', 'utf8'));
+  const designed = designTrees(c.holes, 1);
+
+  it('the built file is the vector style with the designed trees', () => {
+    expect(c.style).toBe('vector');
+    expect(c.branch_density).toBeGreaterThan(0.5);
+    expect(c.canopy).toEqual([]);
+    expect(decodeTrees(c.trees).length).toBeGreaterThan(0);
+    // The file was built with seed 1 and OB/water avoidance, so it's a subset-or-equal of the raw design.
+    expect(decodeTrees(c.trees).length).toBeLessThanOrEqual(designed.length);
+  });
+
+  it('places 1–5 trees per hole, every hole with a basket defender', () => {
+    const file = decodeTrees(c.trees);
+    for (const h of c.holes) {
+      const mine = designed.filter((t) => t.hole === h.ref);
+      expect(mine.length).toBeGreaterThanOrEqual(1);
+      expect(mine.length).toBeLessThanOrEqual(5);
+      const d = mine.find((t) => t.role === 'defender')!;
+      expect(d).toBeTruthy();
+      expect(dist([d.x, d.y], h.pin)).toBeLessThan(10);
+      expect(distToPolyline([d.x, d.y], h.routing)).toBeLessThan(2.6);
+      // And the defender actually made it into the built file.
+      expect(file.some((t) => Math.abs(t.x - d.x) < 0.02 && Math.abs(t.y - d.y) < 0.02)).toBe(true);
+    }
+  });
+
+  it('keeps tees, baskets and other holes\' lines clear', () => {
+    for (const t of decodeTrees(c.trees)) {
+      for (const h of c.holes) {
+        expect(dist([t.x, t.y], h.tee)).toBeGreaterThan(4);
+        expect(dist([t.x, t.y], h.pin)).toBeGreaterThan(2.5);
+      }
+    }
+  });
+
+  it('a basket defender blocks most straight putts; a putt curved around it gets through', () => {
+    // Synthetic: basket 8 m north, a defender-shaped tree 4 m out, 0.6 m right of the line.
+    const B: Vec2 = [0, 8];
+    const defender: Tree = { x: 0.6, y: 4, h: 8, r: 2.4, b: 0.5, t: 0.2 };
+    const tries = (aimOffsetDeg: number, hyzer: number) => {
+      let blocked = 0;
+      for (let s = 1; s <= 20; s++) {
+        const r = simulateThrow({ start: [0, 0], aim: NORTH + (aimOffsetDeg * Math.PI) / 180, power: 0.5, disc: PUTTER_DISC, hyzer, style: 'putt' }, { ...world([defender], B), branchDensity: c.branch_density }, mulberry32(s));
+        if (r.events.includes('branch') || r.events.includes('trunk')) blocked++;
+      }
+      return blocked;
+    };
+    expect(tries(0, 0)).toBeGreaterThan(10);
+    // Wide left of the crown (it reaches 3 m left of its trunk at x=0.6) — flies clear.
+    expect(tries(30, 0)).toBeLessThan(4);
   });
 });

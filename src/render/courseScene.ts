@@ -12,6 +12,7 @@ import { classCanvas } from './classTexture';
 import { basketModel, discMesh, treeMeshes } from './disc3d';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
+import { treeSymbols, vectorGround } from './vectorCourse';
 
 const OVERLAY_Z = 30; // above the tallest crowns, so top-down overlays aren't hidden by trees
 const EYE = 1.65;
@@ -27,8 +28,14 @@ export class CourseScene {
   up: Vec2 = [0, 1];
 
   private photo?: THREE.Mesh;
-  private readonly classes: THREE.Mesh;
-  private readonly overlayPlane: THREE.Mesh;
+  private readonly classes?: THREE.Mesh;
+  private readonly overlayPlane?: THREE.Mesh;
+  /** 'vector': flat drawn ground + tree symbols, no imagery. */
+  readonly style: 'photo' | 'vector';
+  private readonly vector?: THREE.Group;
+  private readonly symbols?: THREE.Group;
+  private readonly beacon: THREE.Mesh;
+  private beaconAt: Vec2 = [0, 0];
   private view: ViewMode = 'photo';
   private readonly trees3d: THREE.Group;
   private readonly overlays = new THREE.Group();
@@ -56,11 +63,24 @@ export class CourseScene {
     this.scene.add(sun);
     this.persp.up.set(0, 0, 1);
 
-    const gridMax: Vec2 = [grid.min[0] + grid.cols * grid.cell, grid.min[1] + grid.rows * grid.cell];
-    this.classes = this.groundPlane(classCanvas(grid, [0, 1]), [grid.min, gridMax], 0.01, 1);
-    this.overlayPlane = this.groundPlane(classCanvas(grid, [0, 1], 110), [grid.min, gridMax], 0.02, 2);
-    this.classes.visible = false;
-    this.overlayPlane.visible = false;
+    this.style = course.style ?? 'photo';
+    if (this.style === 'vector') {
+      this.vector = vectorGround(course);
+      this.scene.add(this.vector);
+      this.symbols = treeSymbols(trees, OVERLAY_Z - 5);
+      this.scene.add(this.symbols);
+    } else {
+      const gridMax: Vec2 = [grid.min[0] + grid.cols * grid.cell, grid.min[1] + grid.rows * grid.cell];
+      this.classes = this.groundPlane(classCanvas(grid, [0, 1]), [grid.min, gridMax], 0.01, 1);
+      this.overlayPlane = this.groundPlane(classCanvas(grid, [0, 1], 110), [grid.min, gridMax], 0.02, 2);
+      this.classes.visible = false;
+      this.overlayPlane.visible = false;
+    }
+
+    // First-person beacon over the current basket, so it can be found from the tee.
+    this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 16, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.55, fog: false }));
+    this.beacon.visible = false;
+    this.scene.add(this.beacon);
 
     this.trees3d = treeMeshes(trees);
     this.world3d.add(this.trees3d);
@@ -148,34 +168,54 @@ export class CourseScene {
     this.up = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
     this.teeMarker.position.set(h.tee[0], h.tee[1], OVERLAY_Z);
     this.basketMarker.position.set(h.pin[0], h.pin[1], OVERLAY_Z);
+    this.beaconAt = h.pin;
+    this.beacon.position.set(h.pin[0], h.pin[1], 1.6 + 8);
     this.updateOrtho();
   }
 
   private applyVisibility(): void {
     const v = this.view;
-    if (this.photo) this.photo.visible = v !== 'classes';
-    this.classes.visible = v === 'classes' || !this.photo;
-    this.overlayPlane.visible = v === 'overlay' && !this.fp;
     this.overlays.visible = !this.fp;
-    // Trees: always in first person; top-down only in the class view (the photo shows real ones).
-    this.trees3d.visible = this.fp || v === 'classes' || !this.photo;
+    if (this.style === 'vector') {
+      // One drawn world: flat symbols from above, the same trees in 3D at eye level.
+      this.symbols!.visible = !this.fp;
+      this.trees3d.visible = this.fp;
+    } else {
+      if (this.photo) this.photo.visible = v !== 'classes';
+      this.classes!.visible = v === 'classes' || !this.photo;
+      this.overlayPlane!.visible = v === 'overlay' && !this.fp;
+      // Trees: always in first person; top-down only in the class view (the photo shows real ones).
+      this.trees3d.visible = this.fp || v === 'classes' || !this.photo;
+    }
     for (const c of this.world3d.children) if (c !== this.trees3d) c.visible = this.fp;
-    this.scene.background = new THREE.Color(this.fp ? '#a9c8e8' : '#1d2419');
-    this.scene.fog = this.fp ? new THREE.Fog('#a9c8e8', 60, 420) : null;
+    const sky = this.style === 'vector' ? '#bcd9f2' : '#a9c8e8';
+    this.scene.background = new THREE.Color(this.fp ? sky : this.style === 'vector' ? '#3c4a37' : '#1d2419');
+    this.scene.fog = this.fp ? new THREE.Fog(sky, 80, 520) : null;
   }
 
   // ---------- cameras ----------
 
   setFirstPerson(on: boolean): void {
     this.fp = on;
+    if (!on) this.beacon.visible = false;
     this.applyVisibility();
   }
 
   /** Place the first-person eye at `at`, looking along yaw (CCW from +x) and pitch (up +). */
   setEye(at: Vec2, yaw: number, pitch: number): void {
     this.persp.position.set(at[0] - Math.cos(yaw) * 0.6, at[1] - Math.sin(yaw) * 0.6, EYE);
+    this.beacon.visible = this.fp && Math.hypot(at[0] - this.beaconAt[0], at[1] - this.beaconAt[1]) > 15;
     const d = new THREE.Vector3(Math.cos(yaw) * Math.cos(pitch), Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch));
     this.persp.lookAt(this.persp.position.clone().add(d));
+  }
+
+  /** First-person: keep the eye where it is and turn toward a world point (e.g. the disc in flight). */
+  lookToward(p: Vec3, smoothing = 0.15): void {
+    const cur = new THREE.Vector3();
+    this.persp.getWorldDirection(cur);
+    const want = new THREE.Vector3(p[0], p[1], p[2]).sub(this.persp.position).normalize();
+    cur.lerp(want, smoothing).normalize();
+    this.persp.lookAt(this.persp.position.clone().add(cur));
   }
 
   /** Fit points on screen (top-down). */
@@ -238,6 +278,8 @@ export class CourseScene {
     body.scale.setScalar(1 + lift / 25);
     shadow.visible = lift > 0.3;
     d3.position.set(p[0], p[1], Math.max(p[2], 0.012));
+    // Never smaller than a few pixels in first person: a 21 cm disc is sub-pixel past ~20 m.
+    d3.scale.setScalar(Math.max(1, this.persp.position.distanceTo(d3.position) / 8));
     // Tilt: bank about the direction of travel.
     d3.rotation.set(0, 0, 0);
     d3.rotateZ(heading);

@@ -46,8 +46,8 @@ export const FLIGHT = {
   fadeRate: 0.8,
   /** Release angle for hyzer = ±1. */
   maxReleaseBank: 0.35,
-  /** Putts use this fraction of the meter, so a full putt meter reaches ~25 m. */
-  puttScale: 0.42,
+  /** Putts use this fraction of the meter, so a full putt meter reaches ~35 m (circle-2 putts need ~20 m at chain height). */
+  puttScale: 0.6,
   /** Branch hits per meter traveled inside a crown. */
   branchDensity: 0.25,
   /** Skid deceleration after landing, m/s², by surface. */
@@ -71,6 +71,8 @@ export interface DiscWorld {
   terrain: Terrain;
   trees: TreeIndex;
   basket: Vec2;
+  /** Branch hits per meter inside a crown; defaults to FLIGHT.branchDensity. */
+  branchDensity?: number;
 }
 
 export interface ThrowInput {
@@ -278,7 +280,7 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
     const k = (dx * dx + dy * dy) / ((t.r + DISC_RADIUS) ** 2) + (dz * dz) / (hz * hz);
     if (k >= 1) continue;
     // Denser toward the crown's middle.
-    const lambda = FLIGHT.branchDensity * (1.4 - k);
+    const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * (1.4 - k);
     if (rng() < 1 - Math.exp(-lambda * ds)) {
       events.push('branch');
       // Kick in a random direction, mostly sideways/back, keep a third of the speed.

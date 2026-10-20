@@ -1,6 +1,26 @@
 # Disc golf (default mode)
 
-Implemented 2026-10-19. Golf (TCC #17) remains selectable on the setup screen.
+Implemented 2026-10-19. Two disc courses share the real Tali hole layout; golf (TCC #17) remains selectable.
+
+| Course | Look | Trees | File |
+|---|---|---|---|
+| **Tali (simple)**, default | Flat vector drawing: rough, mown fairway lanes (10 m), paths, roads/buildings (OB), water, tee pads | 1–5 designed trees per hole (54 total), every basket guarded by a defender | `public/courses/tali-simple.json` (`npm run disc-course -- --style simple --out tali-simple`) |
+| Tali (forest, satellite) | Live Esri imagery | ~10.5k trees planted in HSY canopy | `public/courses/tali.json` |
+
+Both start in **first person**; C switches to the top-down map (and back), and the choice carries across turns. Inside 20 m, first person turns on automatically.
+
+## Simple course: designed trees (`designTrees` in `src/course/disc-build.ts`)
+
+Per hole, seeded, 1–5 trees (more on longer holes):
+
+- **Defender** (every hole): low and bushy (6–10 m tall, branches from 0.3–0.8 m, crown radius 2–3 m), 4–9 m short of the basket, 0.5–1.8 m off the line. A straight run at the chains goes through foliage; curve around it. Tested: blocks most straight putts, a putt aimed wide gets through.
+- **Gate** pair: either side of the line 15–30 m from the tee, 4–7 m out.
+- **Mid-fairway**: 35–65% along, 1.5–4 m off the line, crown raised to 3–5 m (go under or around).
+- **Flank**: 20–90% along, 6–12 m off the line.
+- Never within 4 m of any tee, 2.5 m of any basket, 3 m of *another* hole's line, or in OB/water.
+- Branch density 0.9/m (lone feature trees are fully leafy), versus 0.25/m in the forest, where a higher value made every throw a pinball. Stored per course as `branch_density`.
+
+**2D and 3D are one world:** the top-down tree symbols (shadow, crown disc, trunk dot) are drawn from the same list and radii as the 3D trunks and crowns, and the vector ground meshes are the same in both cameras. A yellow beacon marks the current basket in first person.
 
 ## Course: Tali, Helsinki
 

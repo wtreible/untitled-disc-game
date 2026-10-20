@@ -31,6 +31,10 @@ export interface Tree {
 
 export interface DiscCourseFile {
   sport: 'disc';
+  /** 'photo': satellite imagery + dense canopy trees. 'vector': flat drawn course, few trees. */
+  style?: 'photo' | 'vector';
+  /** Branch hits per meter inside a crown. A forest needs it low; lone feature trees are fully leafy. */
+  branch_density?: number;
   name: string;
   source: { osm_timestamp: string; course_osm_id: string; attribution: string[] };
   origin: LatLon;
