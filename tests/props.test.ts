@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Rings } from '../src/course/types';
 import { DISCS } from '../src/disc/discs';
 import { simulateThrow, type DiscWorld, type ThrowInput } from '../src/disc/flight';
-import { castleColliders, windmillColliders, type Collider } from '../src/disc/props';
+import { castleColliders, collideProps, windmillColliders, type Collider } from '../src/disc/props';
 import { TreeIndex } from '../src/disc/trees';
 import { mulberry32 } from '../src/game/physics';
 import { SurfaceGrid } from '../src/game/surfaces';
@@ -87,5 +87,24 @@ describe('collider geometry', () => {
     const gap = Math.abs(l.c[0] - r.c[0]) - l.hx - r.hx;
     expect(gap).toBeCloseTo(4.5, 1);
     expect(lintel.z0).toBeCloseTo(2.1, 1);
+  });
+});
+
+describe('touching boxes', () => {
+  // Two wall tiles side by side (a castle wall, a hedge row): x from −2 to 0 and 0 to 2.
+  const tile = (x: number): Collider => ({ kind: 'box', c: [x, 40], yaw: 0, hx: 1, hy: 1, z0: 0, z1: 3, tag: 'wall' });
+  const wall = [tile(-1), tile(1)];
+
+  it('a disc on the seam is pushed off the wall, not into the next tile', () => {
+    const p: [number, number, number] = [0.05, 40.6, 2.9];
+    const v: [number, number, number] = [0, 0, -1];
+    expect(collideProps(p, v, [0.05, 40.6, 3.2], 0, wall)).toBe('wall');
+    expect(Math.abs(p[1] - 40)).toBeGreaterThan(1); // out past a long face (y), not along the wall (x)
+  });
+
+  it('a disc dropped onto the seam falls to the ground instead of hovering', () => {
+    const r = simulateThrow({ start: [0, 38.5], aim: NORTH, power: 0.05, disc: MR, hyzer: 0, perfect: true, launch: 1.2 }, world(wall), mulberry32(1));
+    expect(r.samples.length).toBeLessThan(600);
+    expect(r.samples[r.samples.length - 1][2]).toBeLessThan(0.1);
   });
 });

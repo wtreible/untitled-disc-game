@@ -51,15 +51,36 @@ export function vectorGround(course: DiscCourseFile): THREE.Group {
     ['ob', course.ob],
     ['tee', byClass(course, 'tee')],
   ];
-  layers.forEach(([name, polys], i) => {
+  const paint = (name: string, color: string, polys: Rings[], order: number) => {
     const geo = merged(polys);
     if (!geo) return;
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: colors[name], depthWrite: false }));
-    m.renderOrder = -20 + i;
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, depthWrite: false }));
+    m.renderOrder = order;
     m.name = name;
     g.add(m);
-  });
+  };
+  layers.forEach(([name, polys], i) => paint(name, colors[name], polys, -20 + i));
+  (course.decals ?? []).forEach((d, i) => paint(`decal/${i}`, d.color, d.rings, -20 + layers.length + i));
+  if (course.stars) g.add(groundStars(course, pad));
   return g;
+}
+
+/** Stars scattered over the void around the course; the road layers paint over them. */
+function groundStars(course: DiscCourseFile, pad: number): THREE.Points {
+  const [min, max] = course.bounds;
+  const n = course.stars!;
+  const pos = new Float32Array(n * 3);
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = min[0] - pad + rnd() * (max[0] - min[0] + 2 * pad);
+    pos[i * 3 + 1] = min[1] - pad + rnd() * (max[1] - min[1] + 2 * pad);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#ffffff', size: 2, sizeAttenuation: false, depthWrite: false, transparent: true, opacity: 0.8 }));
+  p.renderOrder = -19.5;
+  return p;
 }
 
 function byClass(course: DiscCourseFile, c: SurfaceClass): Rings[] {

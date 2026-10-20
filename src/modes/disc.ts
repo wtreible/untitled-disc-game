@@ -25,6 +25,8 @@ export const DISC_COURSES = {
   simple: '/courses/tali-simple.json',
   forest: '/courses/tali.json',
   silly: '/courses/silly.json',
+  fantasy: '/courses/fantasy.json',
+  rainbow: '/courses/rainbow.json',
 } as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 /** Circle 2: inside this, switch to first-person putting. */
@@ -447,9 +449,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
     const done = game().players[idx];
     // Broadcast graphics: a chip per distinct event, a result banner when someone holes out.
-    const msgs = [...(r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!'), ...r.events.map((e) => EVENT_TOASTS[e])]
+    const msgs = [...(r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!'), ...r.events.map((e) => course.toasts?.[e] ?? EVENT_TOASTS[e])]
       .filter((m, i, a): m is string => !!m && a.indexOf(m) === i);
-    const eventTone = (m: string): Tone => (/OB|Splash/.test(m) ? 'bogey' : /Saved|Magnet|Phased/.test(m) ? 'info' : 'hot');
+    const eventTone = (m: string): Tone => (/OB|Splash|\+1/.test(m) ? 'bogey' : /Saved|Magnet|Phased/.test(m) ? 'info' : 'hot');
     if (!done.holed) for (const m of msgs) chip(m, eventTone(m));
     let shown = msgs.length > 0;
     if (done.holed) {

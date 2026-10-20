@@ -3,37 +3,13 @@
 // Hand-designed (not from OSM). Writes public/courses/silly.json.
 //
 //   npm run silly-course
-import { readFileSync, writeFileSync } from 'node:fs';
-import type { DiscCourseFile, DiscHole, PropDef, Tree } from '../src/course/disc-types';
+import { writeFileSync } from 'node:fs';
+import type { DiscCourseFile } from '../src/course/disc-types';
 import { encodeTrees } from '../src/course/disc-types';
-import { dist, distToPolyline, polylineLength, type Vec2 } from '../src/course/geo';
+import { dist, distToPolyline, type Vec2 } from '../src/course/geo';
 import type { CourseFeature, Rings } from '../src/course/types';
 import { CASTLE_SINK, castleColliders, windmillColliders, type Collider } from '../src/disc/props';
-import { parFromLength } from '../src/course/disc-build';
-
-// ---------- model sizes, read from the GLBs (Y-up, meters at scale 1) ----------
-/**
- * Mesh bounds including node translations. (Nature Kit models sit under a parent shifted down
- * 0.05; ignoring that made their colliders 0.05 × scale too tall.)
- */
-function bbox(model: string): { min: number[]; max: number[] } {
-  const b = readFileSync(`public/models/${model}`);
-  const len = b.readUInt32LE(12);
-  const j = JSON.parse(b.subarray(20, 20 + len).toString('utf8'));
-  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-  const visit = (ni: number, off: number[]) => {
-    const n = j.nodes[ni];
-    const t = n.translation ?? [0, 0, 0];
-    const o = [off[0] + t[0], off[1] + t[1], off[2] + t[2]];
-    if (n.mesh !== undefined) for (const pr of j.meshes[n.mesh].primitives) {
-      const a = j.accessors[pr.attributes.POSITION];
-      for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], a.min[i] + o[i]); max[i] = Math.max(max[i], a.max[i] + o[i]); }
-    }
-    for (const c of n.children ?? []) visit(c, o);
-  };
-  for (const r of j.scenes[j.scene ?? 0].nodes) visit(r, [0, 0, 0]);
-  return { min, max };
-}
+import { along, circle, courseJson, facing, heading, makeHoles, propKit, strip, teeMat, type HoleSpec } from './course-kit';
 
 /**
  * Mushrooms are a narrow stem under a wide cap; one cylinder at cap width made the stem area solid.
@@ -44,42 +20,9 @@ const MUSHROOM_SHAPE: Record<string, { stemR: number; capZ0: number; capR: numbe
   'nature/mushroom_red.glb': { stemR: 0.068, capZ0: 0.06, capR: 0.105, top: 0.15 },
 };
 
-let seed = 12345;
-const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-const R = (a: number, b: number) => a + rng() * (b - a);
-const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rng() * xs.length)];
-
-const props: PropDef[] = [];
-const trees: Tree[] = [];
-
-/** Cylinder collider sized from the model's footprint (fraction `fit` of the half-width). */
-function solid(model: string, at: Vec2, scale: number, o: { yaw?: number; anim?: string; hit?: string; tag?: string; fit?: number } = {}): PropDef {
-  const { min, max } = bbox(model);
-  const r = (Math.max(max[0] - min[0], max[2] - min[2]) / 2) * scale * (o.fit ?? 0.8);
-  const p: PropDef = {
-    model, at, yaw: o.yaw ?? R(0, Math.PI * 2), scale, anim: o.anim, hit: o.hit,
-    colliders: [{ kind: 'cyl', c: at, r, z0: min[1] * scale, z1: max[1] * scale, tag: o.tag ?? model }],
-  };
-  props.push(p);
-  return p;
-}
-
-function decor(model: string, at: Vec2, scale: number, yaw = R(0, Math.PI * 2)): void {
-  props.push({ model, at, yaw, scale, colliders: [] });
-}
-
-/** A Kenney tree: rendered as the model, collides as a Tree (trunk + crown ellipsoid). */
-function tree(model: string, at: Vec2, scale: number): void {
-  const { min, max } = bbox(model);
-  const h = (max[1] - min[1]) * scale;
-  const r = (Math.max(max[0] - min[0], max[2] - min[2]) / 2) * scale * 0.9;
-  const palm = model.includes('palm');
-  trees.push({ x: at[0], y: at[1], h, r, b: h * (palm ? 0.7 : 0.3), t: 0.06 * scale });
-  props.push({ model, at, yaw: R(0, Math.PI * 2), scale, colliders: [], tree: trees.length - 1 });
-}
+const { rng, R, pick, props, trees, solid, decor, tree } = propKit(12345);
 
 // ---------- holes ----------
-type HoleSpec = { name: string; tee: Vec2; via?: Vec2[]; pin: Vec2 };
 const SPEC: HoleSpec[] = [
   { name: 'Windmill Way', tee: [0, 0], pin: [0, 100] },
   { name: 'Moo-ve Over', tee: [25, 112], via: [[60, 150]], pin: [108, 165] },
@@ -91,28 +34,7 @@ const SPEC: HoleSpec[] = [
   { name: 'Lion’s Den', tee: [38, 222], via: [[-10, 205]], pin: [-42, 160] },
   { name: 'Island Green', tee: [-48, 135], pin: [-30, 62] },
 ];
-const holes: DiscHole[] = SPEC.map((h, i) => {
-  const routing: Vec2[] = [h.tee, ...(h.via ?? []), h.pin];
-  const L = polylineLength(routing);
-  return { ref: String(i + 1), par: parFromLength(L), par_source: 'length', tee: h.tee, pin: h.pin, routing, length_m: L, warnings: [] };
-});
-const along = (h: DiscHole, f: number, lateral = 0): Vec2 => {
-  // Point at fraction f of the hole line, offset `lateral` m to the left.
-  let s = f * h.length_m;
-  for (let i = 1; i < h.routing.length; i++) {
-    const [a, b] = [h.routing[i - 1], h.routing[i]];
-    const L = dist(a, b);
-    if (s <= L || i === h.routing.length - 1) {
-      const t = Math.min(1, s / L), ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
-      return [a[0] + (b[0] - a[0]) * t - uy * lateral, a[1] + (b[1] - a[1]) * t + ux * lateral];
-    }
-    s -= L;
-  }
-  return h.pin;
-};
-const heading = (h: DiscHole, i = 0) => { const [a, b] = [h.routing[i], h.routing[i + 1]]; return Math.atan2(b[1] - a[1], b[0] - a[0]); };
-/** Yaw that points a model's local forward (model −Z) along direction `dir`. */
-const facing = (dir: number) => dir - Math.PI / 2;
+const holes = makeHoles(SPEC);
 const H = holes;
 
 // 1. Windmill Way: the windmill stands on the line, blades facing the tee; thread the tunnel.
@@ -169,24 +91,11 @@ solid('pets/animal-crab.glb', along(H[8], 0.97, -3), 2, { anim: 'walk', hit: 'Sn
 for (const lat of [-6, 6]) solid('pets/animal-chick.glb', along(H[8], 0.5, lat), 2, { anim: 'idle', hit: 'Cheep!', tag: 'chick' });
 
 // ---------- ground ----------
-const strip = (pts: Vec2[], half: number): Rings[] => {
-  const out: Rings[] = [];
-  for (let i = 1; i < pts.length; i++) {
-    const [a, b] = [pts[i - 1], pts[i]]; const L = dist(a, b) || 1;
-    const nx = (-(b[1] - a[1]) / L) * half, ny = ((b[0] - a[0]) / L) * half;
-    out.push([[[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]]]);
-  }
-  for (const p of pts) out.push([Array.from({ length: 20 }, (_, i): Vec2 => [p[0] + half * Math.cos((i / 20) * Math.PI * 2), p[1] + half * Math.sin((i / 20) * Math.PI * 2)])]);
-  return out;
-};
-const circle = (c: Vec2, r: number, n = 40): Vec2[] => Array.from({ length: n }, (_, i): Vec2 => [c[0] + r * Math.cos((i / n) * Math.PI * 2), c[1] + r * Math.sin((i / n) * Math.PI * 2)]);
 const features: CourseFeature[] = [];
 for (const h of H) for (const r of strip(h.routing, 6)) features.push({ class: 'fairway', osm_id: `fairway/${h.ref}`, rings: r });
 // Tee mats.
 for (const h of H) {
-  const a = heading(h); const u: Vec2 = [Math.cos(a), Math.sin(a)], v: Vec2 = [-u[1], u[0]];
-  const c = (su: number, sv: number): Vec2 => [h.tee[0] + u[0] * su + v[0] * sv, h.tee[1] + u[1] * su + v[1] * sv];
-  features.push({ class: 'tee', osm_id: `tee/${h.ref}`, rings: [[c(-1.5, -1), c(2.5, -1), c(2.5, 1), c(-1.5, 1)]] });
+  features.push({ class: 'tee', osm_id: `tee/${h.ref}`, rings: [teeMat(h)] });
 }
 // Island pond (water ring around an island with the basket).
 features.push({ class: 'water', osm_id: 'pond/island', rings: [circle(H[8].pin, 17), circle(H[8].pin, 6).reverse()] });
@@ -245,10 +154,10 @@ const course: DiscCourseFile = {
   canopy: [],
   ob: [],
   trees: encodeTrees(trees),
-  holes: holes.map((h, i) => ({ ...h, name: SPEC[i].name })),
+  holes,
   props,
   palette: { outside: '#4f8f45', rough: '#86d16a', fairway: '#2fb24c', path: '#f2dfa7', water: '#3fb8f0', tee: '#e2504f' },
   sky: '#9fd8ff',
 };
-writeFileSync('public/courses/silly.json', JSON.stringify(course, (k, v) => (typeof v === 'number' && k !== 'lat' && k !== 'lon' ? Math.round(v * 1000) / 1000 : v)));
+writeFileSync('public/courses/silly.json', courseJson(course));
 console.log(`Mini Golf Madness: ${holes.length} holes (${holes.map((h) => `${h.ref}:${Math.round(h.length_m)}m p${h.par}`).join(' ')}), ${props.length} props, ${trees.length} trees`);

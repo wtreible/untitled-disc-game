@@ -16,6 +16,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
 | [11-roguelike](11-roguelike.md) | Roguelike run mode: draft rules, augment kinds (self / your course / hex), full list |
 | [12-mini-golf-madness](12-mini-golf-madness.md) | Themed 9-hole course with Kenney CC0 models: windmill, castle, animals; prop colliders |
+| [13-fantasy-and-rainbow](13-fantasy-and-rainbow.md) | Arcade courses Fantasy Fairways (knight, castle, dragon) and Rainbow Runs (rainbow road in space); FBX, decals, stars |
 
 ## Decision log
 
@@ -64,6 +65,9 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D40 | Main menu redesign (logo, course cards, players, round, settings) and a pause menu with the same settings form; prefs: units, first person, replays, FOV, flight speed, hints. | 2026-10-20 |
 | D41 | Broadcast-style graphics (after disc golf coverage like JomezPro): skewed result banner + name plate, event chips, hole bug, leaderboard, scorecard with birdie circles / bogey squares. | 2026-10-20 |
 | D42 | Fewer spit-outs (soft chain hits rattle in; gentler fast-putt penalty) and less branch collision (densities 0.9→0.4 simple/silly, 0.25→0.11 forest). | 2026-10-20 |
+| D43 | Two new arcade courses: **Fantasy Fairways** (medieval; knight, castle-courtyard basket, dragon on 9) and **Rainbow Runs** (rainbow road in space, off the road is OB; parody nods only). Models: Kenney Castle/Fantasy Town/Space kits, KayKit Adventurers, Quaternius Animated Monsters, all CC0. | 2026-10-20 |
+| D44 | Main menu groups courses into **Real** (mapped: Tali, Tali Forest) and **Arcade** (themed: Mini Golf Madness, Fantasy Fairways, Rainbow Runs). | 2026-10-20 |
+| D45 | Box colliders push the disc out through a face that isn't inside another collider (touching boxes trapped ~1 in 2,000 throws in mid-air). | 2026-10-20 |
 
 ## Open questions
 

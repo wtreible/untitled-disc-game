@@ -10,7 +10,9 @@
     "test": "vitest run",
     "course": "tsx scripts/build-course.ts",
     "disc-course": "tsx scripts/build-disc-course.ts",
-    "silly-course": "tsx scripts/build-silly-course.ts"
+    "silly-course": "tsx scripts/build-silly-course.ts",
+    "fantasy-course": "tsx scripts/build-fantasy-course.ts",
+    "rainbow-course": "tsx scripts/build-rainbow-course.ts"
   },
   "dependencies": {
     "osmtogeojson": "^3.0.0-beta.5",

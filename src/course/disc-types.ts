@@ -42,8 +42,12 @@ export interface PropDef {
   scale: number;
   /** Animation clip to loop (Kenney animals: idle, eat, dance, walk…). */
   anim?: string;
-  /** Spin a named node about its local Z axis using the matching blades collider's clock. */
-  spin?: { node: string; omega: number; phase: number };
+  /** Spin a named node about its local axis (default Z, matching a blades collider's clock). */
+  spin?: { node: string; omega: number; phase: number; axis?: 'x' | 'y' | 'z' };
+  /** Material colors by material name (e.g. a red dragon). */
+  tint?: Record<string, string>;
+  /** Model-space point (Y-up, model units) moved to the origin, for models authored off-center. */
+  offset?: [number, number, number];
   /** Physics colliders in world space (see src/disc/props.ts). */
   colliders: Collider[];
   /** Index into the course's trees when this model *is* a tree (collision uses the tree model). */
@@ -61,6 +65,12 @@ export interface DiscCourseFile {
   /** Ground colors overriding the vector defaults (keys of VECTOR_COLORS). */
   palette?: Record<string, string>;
   sky?: string;
+  /** Flat colored shapes painted over the ground (Rainbow Runs' road stripes, checkered lines). */
+  decals?: { color: string; rings: Rings[] }[];
+  /** Star field over the void and in the sky, this many stars. */
+  stars?: number;
+  /** Throw-event toasts overriding the defaults (e.g. a themed OB message). */
+  toasts?: Record<string, string>;
   /** 'photo': satellite imagery + dense canopy trees. 'vector': flat drawn course, few trees. */
   style?: 'photo' | 'vector';
   /** Branch hits per meter inside a crown. A forest needs it low; lone feature trees are fully leafy. */

@@ -51,12 +51,17 @@ export function collideProps(p: Vec3, v: Vec3, prev: Vec3, t: number, colliders:
       const lx = dx * cs + dy * sn, ly = -dx * sn + dy * cs;
       const px = c.hx + R - Math.abs(lx), py = c.hy + R - Math.abs(ly);
       if (px <= 0 || py <= 0) continue;
-      // Push out along the shallower horizontal axis. (No landing on roofs: discs slide off.)
-      let nlx = 0, nly = 0;
-      if (px < py) { nlx = Math.sign(lx) || 1; p[0] += nlx * px * cs; p[1] += nlx * px * sn; }
-      else { nly = Math.sign(ly) || 1; p[0] += -nly * py * sn; p[1] += nly * py * cs; }
-      const nx = nlx * cs - nly * sn, ny = nlx * sn + nly * cs;
-      bounce(v, nx, ny);
+      // Push out through the nearest face (no landing on roofs: discs slide off), but not into a
+      // neighboring collider: wall tiles and hedge segments touch, and pushing a disc back and
+      // forth across a seam trapped it in the air.
+      const sx = Math.sign(lx) || 1, sy = Math.sign(ly) || 1;
+      const faces: [number, number, number][] = [[sx, 0, px], [0, sy, py], [-sx, 0, 2 * (c.hx + R) - px], [0, -sy, 2 * (c.hy + R) - py]];
+      faces.sort((a, b) => a[2] - b[2]);
+      const out = ([fx, fy, d]: [number, number, number]): Vec3 => [p[0] + (fx * cs - fy * sn) * (d + 0.005), p[1] + (fx * sn + fy * cs) * (d + 0.005), p[2]];
+      const face = faces.find((f) => !colliders.some((o) => o !== c && insideSolid(out(f), o))) ?? faces[0];
+      const q = out(face);
+      p[0] = q[0]; p[1] = q[1];
+      bounce(v, face[0] * cs - face[1] * sn, face[0] * sn + face[1] * cs);
       return c.tag ?? 'prop';
     }
     // Blades.
@@ -94,6 +99,16 @@ export function collideProps(p: Vec3, v: Vec3, prev: Vec3, t: number, colliders:
     return c.tag ?? 'windmill';
   }
   return null;
+}
+
+/** Does the disc overlap a static collider? (Blades move, so they don't count.) */
+function insideSolid(p: Vec3, c: Collider): boolean {
+  const R = DISC_RADIUS;
+  if (c.kind === 'blades' || p[2] < c.z0 - R || p[2] > c.z1 + R) return false;
+  const dx = p[0] - c.c[0], dy = p[1] - c.c[1];
+  if (c.kind === 'cyl') return Math.hypot(dx, dy) < c.r + R;
+  const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+  return Math.abs(dx * cs + dy * sn) < c.hx + R && Math.abs(-dx * sn + dy * cs) < c.hy + R;
 }
 
 function bounce(v: Vec3, nx: number, ny: number): void {

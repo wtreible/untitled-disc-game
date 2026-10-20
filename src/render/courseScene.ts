@@ -136,6 +136,7 @@ export class CourseScene {
     this.skyColor = new THREE.Color(sky);
     this.groundColor = new THREE.Color(course.palette?.outside ?? (this.style === 'vector' ? '#3c4a37' : '#1d2419'));
     this.fog = new THREE.Fog(sky, 80, 520);
+    if (course.stars) this.scene.add(skyStars(course));
 
     // Trees that a themed course draws as 3D models (props) aren't drawn again as generic trees.
     const modelTrees = new Set((course.props ?? []).filter((p) => p.tree !== undefined).map((p) => trees[p.tree!]));
@@ -632,10 +633,12 @@ export class CourseScene {
       this.aimMat.gapSize = this.previewMat.gapSize = dash * 0.7;
     };
     this.persp.layers.set(0);
+    this.persp.layers.enable(SKY_LAYER);
     if (!this.fp) {
       scalePixels(this.ppm);
       this.ortho.layers.enableAll();
       this.ortho.layers.disable(1);
+      this.ortho.layers.disable(SKY_LAYER);
       this.renderer.render(this.scene, this.ortho);
       return;
     }
@@ -718,4 +721,26 @@ function rect(w: number, h: number, color: string): THREE.Mesh {
 function rectOutline(w: number, h: number, color: string): THREE.LineLoop {
   const pts = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([x, y]) => new THREE.Vector3(x, y, 0.1));
   return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, transparent: true, depthTest: false }));
+}
+
+/** Sky objects only the first-person camera sees (not top-down or the minimap). */
+const SKY_LAYER = 2;
+
+/** A dome of stars around the course for first person (Rainbow Runs). */
+function skyStars(course: DiscCourseFile): THREE.Points {
+  const [min, max] = course.bounds;
+  const cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2;
+  const n = course.stars!;
+  const pos = new Float32Array(n * 3);
+  let seed = 11;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2, el = Math.asin(rnd() * 1.1 - 0.1), r = 1200;
+    pos.set([cx + r * Math.cos(el) * Math.cos(a), cy + r * Math.cos(el) * Math.sin(a), r * Math.sin(el)], i * 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#ffffff', size: 2, sizeAttenuation: false, fog: false }));
+  p.layers.set(SKY_LAYER);
+  return p;
 }
