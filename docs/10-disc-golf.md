@@ -87,7 +87,7 @@ First person shows a top-down **minimap** of the current hole (bottom-left; clic
 
 ## Replays
 
-After each throw (except tap-ins and tiny putts), the throw replays from a camera 3.5 m behind and 1.2 m above the disc, at 1.25× speed with a fixed 55° lens. Space or a click skips; Settings (⚙ / Esc) turns replays off. The mulligan window and next turn start after the replay.
+After each throw (except tap-ins and tiny putts), the throw replays from a camera riding ~4–5 m behind and 1.2 m above the disc, at 1.25× speed with a fixed 55° lens. The disc position is interpolated between flight samples and the camera eases its position and heading (frame-rate independent); snapping to raw samples made it shake. Space or a click skips; Settings (⚙ / Esc) turns replays off. The mulligan window and next turn start after the replay.
 
 ## Rules
 

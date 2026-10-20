@@ -358,8 +358,10 @@ export class CourseScene {
    * Replay chase camera: behind and above the disc, looking at it. `heading` is the direction of
    * travel. Eased so bounces and tree kicks don't whip the camera around.
    */
-  chase(p: Vec3, heading: number, reset = false): void {
-    const back = 3.5, up = 1.2;
+  chase(p: Vec3, heading: number, reset = false, dt = 1 / 60): void {
+    // Eased follow, frame-rate independent. `back` is the target offset; the easing lag adds
+    // ~2 m on a fast disc, so the camera rides ~4–5 m behind.
+    const back = 2.5, up = 1.2;
     const want = new THREE.Vector3(p[0] - Math.cos(heading) * back, p[1] - Math.sin(heading) * back, Math.max(1.0, p[2] + up));
     if (reset) {
       // The replay has its own lens; the player's scroll zoom is restored by endChase().
@@ -368,8 +370,8 @@ export class CourseScene {
       this.persp.updateProjectionMatrix();
       this.persp.position.copy(want);
     } else {
-      // Tight follow: at 0.12 the camera settled ~8 m back from a fast disc.
-      this.persp.position.lerp(want, 0.3);
+      // ≈ 0.15 per frame at 60 fps. Snapping harder (0.3) shook; softer (0.12) trailed ~8 m back.
+      this.persp.position.lerp(want, 1 - Math.exp(-dt * 9.75));
     }
     this.persp.lookAt(p[0], p[1], p[2]);
     this.beacon.visible = Math.hypot(p[0] - this.beaconAt[0], p[1] - this.beaconAt[1]) > 15;

@@ -41,6 +41,14 @@ const EVENT_TOASTS: Partial<Record<ThrowEvent, string>> = {
   phased: 'Phased through a tree', saved: 'Saved by Sticky Plastic', magnet: 'Magnet pull',
 };
 
+/** Position at fractional sample index t (60 Hz samples), linearly interpolated. */
+function sampleAt(s: Vec3[], t: number): Vec3 {
+  const i = Math.min(Math.floor(t), s.length - 1);
+  const j = Math.min(i + 1, s.length - 1);
+  const a = t - Math.floor(t);
+  return [s[i][0] + (s[j][0] - s[i][0]) * a, s[i][1] + (s[j][1] - s[i][1]) * a, s[i][2] + (s[j][2] - s[i][2]) * a];
+}
+
 function closestAlong(p: Vec2, line: Vec2[]): number {
   let best = Infinity, at = 0, acc = 0;
   for (let i = 1; i < line.length; i++) {
@@ -161,7 +169,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   let flight: { result: ThrowResult; t0: number; speed: number } | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
-  let replay: { t0: number; heading: number; started: boolean } | null = null;
+  let replay: { t0: number; heading: number; smoothHeading: number; started: boolean; last: number } | null = null;
   const REPLAY_SPEED = 1.25;
   const REPLAY_MIN_SAMPLES = 40; // skip tap-ins and tiny putts
   let tick = 0; // meter tick (power to reach target)
@@ -377,7 +385,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const s = flight!.result.samples;
     if (!replaysOn() || s.length < REPLAY_MIN_SAMPLES) return finishThrow();
     phase = 'replay';
-    replay = { t0: performance.now(), heading: yaw, started: false };
+    replay = { t0: performance.now(), heading: yaw, smoothHeading: yaw, started: false, last: performance.now() };
     scene.setFirstPerson(true);
     scene.minimapEnabled = false;
     $('minimap').hidden = true;
@@ -735,13 +743,21 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     });
     if (flight && replay) {
       const s = flight.result.samples;
-      const k = Math.floor(((now - replay.t0) / 1000) * 60 * REPLAY_SPEED);
-      const kk = Math.max(0, Math.min(k, s.length - 1));
+      const t = Math.max(0, ((now - replay.t0) / 1000) * 60 * REPLAY_SPEED);
+      const k = Math.floor(t);
+      const kk = Math.min(k, s.length - 1);
+      // Interpolate between samples: at 1.25× the frame advances 1 or 2 samples unevenly, which shook.
+      const pos = sampleAt(s, t);
       const a = s[Math.max(0, kk - 2)], b = s[Math.min(s.length - 1, kk + 2)];
       // Keep the last real direction of travel once the disc stops (atan2(0, 0) would swing to east).
       if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.02) replay.heading = Math.atan2(b[1] - a[1], b[0] - a[0]);
-      scene.setDisc(g.current, s[kk], flight.result.banks[kk] ?? 0, heading(s, kk), true);
-      scene.chase(s[kk], replay.heading, !replay.started);
+      // Ease the camera's heading so bounces and tree kicks don't whip it around.
+      const dt = Math.min(0.1, (now - replay.last) / 1000);
+      replay.last = now;
+      const dh = Math.atan2(Math.sin(replay.heading - replay.smoothHeading), Math.cos(replay.heading - replay.smoothHeading));
+      replay.smoothHeading += dh * (replay.started ? 1 - Math.exp(-dt * 5) : 1);
+      scene.setDisc(g.current, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      scene.chase(pos, replay.smoothHeading, !replay.started, dt);
       replay.started = true;
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
@@ -752,9 +768,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const k = Math.floor(((now - flight.t0) / 1000) * 60 * flight.speed);
       // rAF's timestamp can be slightly earlier than the performance.now() taken at release.
       const kk = Math.max(0, Math.min(k, s.length - 1));
-      scene.setDisc(g.current, s[kk], flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      const pos = sampleAt(s, Math.max(0, ((now - flight.t0) / 1000) * 60 * flight.speed));
+      scene.setDisc(g.current, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
       // First person: turn the head to follow the disc.
-      if (isFP()) scene.lookToward(s[kk], 0.12);
+      if (isFP()) scene.lookToward(pos, 0.12);
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
       if (k >= s.length + 25 && phase === 'flying') startReplay();
