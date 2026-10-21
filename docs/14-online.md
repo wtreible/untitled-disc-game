@@ -9,7 +9,8 @@ Friends play together from their own browsers: one hosts a room, the others open
 - **The round says what's next** (`DiscRound.stage`): drafting, need-hole, placing, playing or card. Each browser acts if it's one of its players (or the host, for starting a hole and continuing past a scorecard) and otherwise waits, showing who it's waiting for. Joining mid-game is the same: replay the log, then ask what's next.
 - **A room** (`server/src/index.ts`) is a Cloudflare Durable Object. It holds the lobby (host, course, holes, Crazy mode, which browser controls which player) and the event log in SQLite, and it relays events. It doesn't run the game. Each event names the log position it expects (its `seq`); a stale one is rejected, so two at once can't both land. Turns make that rare. When it happens, the losing browser reloads, rejoins and replays the room's log.
 - **Reconnects** get the full log; missed events are applied, and our own events the room didn't get are re-sent. A refresh rejoins as the same person (a client id kept in localStorage).
-- **A throw is committed when it lands,** so friends see it fly, then the leaderboard updates. Everyone waits out the same pause after a throw (including the mulligan window) before the next turn.
+- **A throw is sent the moment it's released,** so everyone watches it fly at the same time (measured: the watcher's flight starts ~50 ms after release, where it used to wait the thrower's whole flight and replay, ~8 s). Every browser, the thrower's included, applies it when it lands, so the leaderboard doesn't give the result away early. Everyone waits out the same pause after a throw (including the mulligan window) before the next turn.
+- **Live aim:** while a player lines up, their browser streams their aim about 10 times a second, only when something changes: direction, target, disc, release angle, forehand, and the meter while charging. The room relays it without storing it. Watchers see their aim line and target, the disc picker on their disc, their release angle and their meter. In first person you look where they look. A 20-second aim costs about 10 billed requests (incoming messages bill at 20:1), so a 4-player 18-hole round is a few thousand of the free plan's 100,000 a day.
 - **Rooms delete themselves** after a week idle.
 
 ## Free tier
@@ -31,4 +32,4 @@ Without `ROOMS_URL`, public builds hide "Play online".
 
 - Your name in a room is the one in the first name box when you join; to change it, leave and rejoin.
 - One player per browser online (no hot seat inside a room yet).
-- Watching shows the other player's position and their throw, not their aiming.
+- Live aim needs the room server from 2026-10-21 or later (`npm run server:deploy`). An older server refuses those messages, and the game ignores the refusal, so it still plays without live aim.

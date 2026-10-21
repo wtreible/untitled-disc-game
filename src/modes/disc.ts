@@ -97,6 +97,20 @@ export interface DiscOptions {
   net?: NetPlay;
 }
 
+/** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
+interface LiveAim {
+  player: number;
+  yaw: number;
+  pitch: number;
+  target: Vec2;
+  disc: string;
+  hyzer: number;
+  forehand: boolean;
+  fp: boolean;
+  /** Meter fill while charging, else 0. */
+  power: number;
+}
+
 export interface NetPlay {
   room: RoomClient;
   isHost: boolean;
@@ -136,6 +150,18 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent);
     if (net) { sent.set(known, e); net.room.sendEvent(known, e); }
     known++;
+  }
+  /**
+   * Online, our throw goes to the room the moment it's released, so everyone watches it fly at
+   * the same time. Like everyone else, we apply it when it lands.
+   */
+  function sendNow(e: RoundEvent): boolean {
+    if (!net) return false;
+    if (inbox.length) { resync(); return false; }
+    sent.set(known, e);
+    net.room.sendEvent(known, e);
+    known++;
+    return true;
   }
   /** Commit, then show it and move the round on. */
   function dispatch(e: RoundEvent): void {
@@ -225,7 +251,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let preferFP = prefs().firstPerson; // C switches (persists across turns)
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   /** A throw being shown (local or, later, another player's): the event is applied when it lands. */
-  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number; remote: boolean } | null = null;
+  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number; remote: boolean; sentEarly: boolean } | null = null;
+  /** Online: the current thrower's aim, as they last sent it (another player's turn only). */
+  let liveAim: LiveAim | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
   let replay: { t0: number; heading: number; smoothHeading: number; started: boolean; last: number } | null = null;
   const REPLAY_SPEED = 1.25;
@@ -321,6 +349,37 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
   function hideWait(): void {
     $('wait-bar').hidden = true;
+  }
+
+  // ---------- live aim (online): what the thrower is doing, before they throw ----------
+  let lastLive = '';
+  let lastLiveAt = 0;
+  /** Ours, while aiming or charging: on change, at most ~10 per second. */
+  function sendLiveAim(now: number): void {
+    if (!net || (phase !== 'aim' && phase !== 'charging') || !mine(game().current)) return;
+    const a: LiveAim = {
+      player: game().current, yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), target: [+aimTarget[0].toFixed(2), +aimTarget[1].toFixed(2)],
+      disc: disc.id, hyzer, forehand, fp: isFP(), power: phase === 'charging' ? +power.toFixed(2) : 0,
+    };
+    const key = JSON.stringify(a);
+    if (key === lastLive || now - lastLiveAt < 100) return;
+    lastLive = key;
+    lastLiveAt = now;
+    net.room.sendLive(a);
+  }
+
+  /** Theirs: their aim line and target, their disc and release angle, their meter, their view. */
+  function showLiveAim(): void {
+    const a = liveAim;
+    if (!a) return;
+    const p = player();
+    scene.setAim(p.ball, a.target, p.color);
+    scene.setTarget3d(isFP() ? p.ball : null, a.target, p.color);
+    if (isFP()) scene.setEye(p.ball, a.yaw, a.pitch);
+    const d = DISCS.find((x) => x.id === a.disc);
+    if (d) picker.update(d, a.forehand);
+    $('release').textContent = `${releaseLabel(a.hyzer)} · ${a.forehand ? 'Forehand' : 'Backhand'}`;
+    $('meter-fill').style.width = `${a.power * 100}%`;
   }
 
   // ---------- flow: the round's stage decides what happens next ----------
@@ -444,6 +503,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** The current player's turn: aim and throw if they're ours, else watch for their throw. */
   function startTurn(): void {
     phase = mine(game().current) ? 'aim' : 'watching';
+    liveAim = null;
+    lastLive = '';
     $('hud').hidden = false;
     power = 0;
     fpOverride = null;
@@ -533,13 +594,17 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const twin = simulateThrow(input, world());
       if (outcomeScore(twin) < outcomeScore(result)) result = twin;
     }
-    playThrow({ t: 'throw', player: me, perfect, result: st.wire(result) }, puttStyle() ? 1 : prefs().playback, false);
+    const e: Extract<RoundEvent, { t: 'throw' }> = { t: 'throw', player: me, perfect, result: st.wire(result) };
+    const early = sendNow(e);
+    playThrow(e, puttStyle() ? 1 : prefs().playback, false);
+    if (flight) flight.sentEarly = early;
   }
 
   /** Fly a throw event's disc (then replay it, then apply it). `remote`: another player's throw. */
   function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number, remote: boolean): void {
     hideWait();
-    flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock, remote };
+    flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock, remote, sentEarly: false };
+    liveAim = null;
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
@@ -575,13 +640,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   function finishThrow(): void {
-    const { e, remote } = flight!;
+    const { e, remote, sentEarly } = flight!;
     const r = e.result;
     const idx = e.player;
     scene.addTrail(r.samples, game().players[idx].color);
     flight = null;
     // The throw lands: strokes, lie, Lumberjack, the hole's score if it's over. Ours is sent now.
     if (remote) st.apply(e);
+    else if (sentEarly) st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent); // sent at release
     else dispatch(e);
     const done = game().players[idx];
     // Broadcast graphics: a chip per distinct event, a result banner when someone holes out.
@@ -733,10 +799,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // ---------- HUD ----------
 
 
-  function releaseLabel(): string {
-    if (hyzer === 0) return 'Flat';
-    const deg = Math.round(Math.abs(hyzer) * 20);
-    return `${hyzer > 0 ? 'Hyzer' : 'Anhyzer'} ${deg}°`;
+  function releaseLabel(h = hyzer): string {
+    if (h === 0) return 'Flat';
+    const deg = Math.round(Math.abs(h) * 20);
+    return `${h > 0 ? 'Hyzer' : 'Anhyzer'} ${deg}°`;
   }
 
   function updateHud(): void {
@@ -974,6 +1040,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const q = g.players[i];
       scene.setDisc(i, q && !q.holed && !(flight && i === g.current) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
     });
+    sendLiveAim(now);
+    if (phase === 'watching') showLiveAim();
     if (flight && replay) {
       const s = flight.result.samples;
       const t = Math.max(0, ((now - replay.t0) / 1000) * 60 * REPLAY_SPEED);
@@ -1024,7 +1092,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         }) : [];
         scene.setPreview(cut(ghost(pw).samples), p.color, spread);
       }
-    } else {
+    } else if (!(phase === 'watching' && liveAim)) {
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
       scene.setPreview(null, '#fff');
@@ -1037,7 +1105,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // Dev builds only: a handle for automated browser checks.
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__satgolf = {
-      scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log,
+      scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log, live: () => liveAim,
     };
   }
   // Joining (or rejoining) a room: replay its log, redraw this hole's throws, then carry on.
@@ -1060,6 +1128,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         pump();
       },
       reject: () => resync(),
+      live: (_from, s) => {
+        const a = s as LiveAim | null;
+        if (a && a.player === game().current && !mine(a.player) && phase === 'watching') liveAim = a;
+      },
       // Reconnected: pick up what we missed, resend what the room didn't get.
       welcome: (w) => {
         for (const x of w.log) if (x.seq >= known) { known++; inbox.push(x.e); }

@@ -10,10 +10,12 @@
 //   { type: 'lobby', lobby }        host only, before the start: course, holes, crazy, seats
 //   { type: 'start' }               host only: freeze the lobby; game events may follow
 //   { type: 'event', seq, e }       a game event, valid only if seq is the next log position
+//   { type: 'live', s }             passing state (the thrower's aim, power): relayed, not stored
 // Room → client:
 //   { type: 'welcome', you, host, lobby, started, log, members }   on connect (full catch-up)
 //   { type: 'lobby', lobby } · { type: 'started', lobby } · { type: 'members', members }
 //   { type: 'event', seq, from, e }  to everyone else · { type: 'ack', seq } to the sender
+//   { type: 'live', from, s }        someone's passing state
 //   { type: 'reject', seq, expected, reason }   seq was stale (someone else got there first)
 //   { type: 'error', reason }
 import { DurableObject } from 'cloudflare:workers';
@@ -42,6 +44,8 @@ interface Attachment {
 }
 
 const MAX_MESSAGE = 256 * 1024;
+/** Live aim updates are small; anything bigger isn't one. */
+const MAX_LIVE = 2048;
 const MAX_EVENTS = 20000;
 const MAX_SEATS = 4;
 /** Rooms delete themselves after a week without activity. */
@@ -130,6 +134,12 @@ export class Room extends DurableObject<Env> {
         this.sql.exec('INSERT INTO events (seq, client, body) VALUES (?, ?, ?)', next, me.client, body);
         ws.send(JSON.stringify({ type: 'ack', seq: next }));
         this.broadcast({ type: 'event', seq: next, from: me.client, e: msg.e }, ws);
+        return;
+      }
+      case 'live': {
+        // Relayed as-is to everyone else, never stored (it doesn't touch the log or the billing for storage).
+        if (raw.length > MAX_LIVE) return;
+        this.broadcast({ type: 'live', from: me.client, s: (msg as { s?: unknown }).s ?? null }, ws);
         return;
       }
       default:

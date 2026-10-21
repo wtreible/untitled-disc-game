@@ -68,6 +68,8 @@ export interface RoomHandlers {
   members?(m: Member[]): void;
   /** Someone else's event, at log position seq. */
   event?(seq: number, from: string, e: RoundEvent): void;
+  /** Someone's passing state (the thrower's live aim). Not part of the log. */
+  live?(from: string, s: unknown): void;
   /** One of ours was refused: someone else's landed first. The game should resync. */
   reject?(expected: number): void;
   status?(s: 'connecting' | 'open' | 'closed'): void;
@@ -104,7 +106,9 @@ export class RoomClient {
         case 'members': h.members?.(m.members as Member[]); break;
         case 'event': h.event?.(m.seq as number, m.from as string, m.e as RoundEvent); break;
         case 'reject': h.reject?.(m.expected as number); break;
-        case 'error': h.error?.(m.reason as string); break;
+        case 'live': h.live?.(m.from as string, m.s); break;
+        // A server from before live aim (not redeployed yet) refuses it: harmless, so say nothing.
+        case 'error': if (!/unknown message live/.test(String(m.reason))) h.error?.(m.reason as string); break;
       }
     });
     ws.addEventListener('close', () => {
@@ -132,6 +136,8 @@ export class RoomClient {
 
   setLobby(l: Lobby): void { this.send({ type: 'lobby', lobby: l }); }
   start(): void { this.send({ type: 'start' }); }
+  /** Passing state for the others (dropped if not connected; the next update replaces it). */
+  sendLive(s: unknown): void { this.send({ type: 'live', s }); }
   /** Our event at log position seq (the number of events before it). */
   sendEvent(seq: number, e: RoundEvent): void { this.send({ type: 'event', seq, e }); }
 }

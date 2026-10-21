@@ -77,6 +77,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D51 | Tali (simple) becomes **Tali Recreation**, the easy version: the real version's HSY trees, thinned back 3 m from fairways and greens (and from tees); Tali Forest is the real version. Replaces D24's designed trees. | 2026-10-20 |
 | D52 | The round is event-driven (`src/modes/discRound.ts`): hole starts (with wind), throws (with their computed flight), mulligans, drafts and placements are JSON events applied in order; replaying the log rebuilds the round. Groundwork for online play (a Cloudflare Durable Object room relaying events). | 2026-10-21 |
 | D53 | Online play: one Cloudflare Durable Object per room (free plan) stores the lobby and event log and relays events; browsers run the game. The round's `stage` decides who acts next; a stale event is rejected and that browser rejoins. Hot seat is the case where every player is local. | 2026-10-21 |
+| D54 | Online: throws are sent at release (applied on landing everywhere), and the thrower's aim, disc, release angle and meter stream live to watchers (relayed, not stored). | 2026-10-21 |
 
 ## Open questions
 
