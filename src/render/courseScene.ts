@@ -9,7 +9,8 @@ import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
 import type { Vec3 } from '../game/terrain';
 import { classCanvas } from './classTexture';
-import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
+import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreeSolidity, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
+import { BASKET } from '../disc/flight';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
@@ -366,8 +367,9 @@ export class CourseScene {
    * Show the course as one player plays it: which base trees exist for them, trees planted
    * against them, their ponds, their basket size and position, and their magnet radius.
    */
-  setViewer(v: { trees: Set<Tree>; extras: Tree[]; ponds: { c: Vec2; r: number }[]; basketScale: number; magnet: number; tee: Vec2; pin: Vec2 }): void {
+  setViewer(v: { trees: Set<Tree>; extras: Tree[]; ponds: { c: Vec2; r: number }[]; basketScale: number; magnet: number; tee: Vec2; pin: Vec2; fx?: FieldFx }): void {
     this.lastViewer = v;
+    this.setFieldFx(v.fx ?? {}, v.pin, v.basketScale);
     setTreesVisible(this.trees3d, (i) => v.trees.has(this.baseTrees[i]));
     if (this.props) for (const [t, obj] of this.props.treeObjects) obj.visible = v.trees.has(t);
     // Placed trees: rebuilt each time (a handful at most).
@@ -399,6 +401,68 @@ export class CourseScene {
     this.magnetRing.visible = v.magnet > 0;
     this.magnetRing.position.set(v.pin[0], v.pin[1], 0.06);
     this.magnetRing.scale.setScalar(Math.max(0.01, v.magnet));
+  }
+
+  // ---------- legendary augments you can see (Crazy mode) ----------
+  private readonly fx = new THREE.Group();
+  private fxMagnet?: THREE.Group;
+  private fxVortex?: THREE.Group;
+  private fxGimme?: THREE.Mesh;
+  private readonly stumps = new THREE.Group();
+  private readonly golden = new Set<number>();
+
+  /** The viewer's own legendary effects, drawn on their basket and course. */
+  private setFieldFx(f: FieldFx, pin: Vec2, basketScale: number): void {
+    if (!this.fx.parent) this.scene.add(this.fx, this.stumps);
+    const top = BASKET.bandTop * 1 + 0.05;
+    if (f.magnet && !this.fxMagnet) this.fxMagnet = magnetModel();
+    if (this.fxMagnet) {
+      this.fxMagnet.visible = !!f.magnet;
+      this.fxMagnet.position.set(pin[0], pin[1], top + 0.45);
+      if (!this.fxMagnet.parent) this.fx.add(this.fxMagnet);
+    }
+    if (f.blackHole && !this.fxVortex) this.fxVortex = vortexModel();
+    if (this.fxVortex) {
+      this.fxVortex.visible = !!f.blackHole;
+      this.fxVortex.position.set(pin[0], pin[1], (BASKET.trayTop + BASKET.chainTop) / 2);
+      this.fxVortex.scale.setScalar(basketScale);
+      if (!this.fxVortex.parent) this.fx.add(this.fxVortex);
+    }
+    if (f.gimme && !this.fxGimme) {
+      this.fxGimme = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 96), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
+      this.fxGimme.renderOrder = 3;
+      this.fx.add(this.fxGimme);
+    }
+    if (this.fxGimme) {
+      this.fxGimme.visible = (f.gimme ?? 0) > 0;
+      this.fxGimme.position.set(pin[0], pin[1], 0.07);
+      this.fxGimme.scale.setScalar(Math.max(0.01, f.gimme ?? 0));
+    }
+    setTreeSolidity(f.phase ? 0.35 : 1);
+  }
+
+  /** Lumberjack: stumps where cut trees stood (for everyone). */
+  setStumps(trees: Tree[]): void {
+    for (const c of [...this.stumps.children]) this.stumps.remove(c);
+    if (!this.stumps.parent) this.scene.add(this.stumps);
+    const mat = new THREE.MeshLambertMaterial({ color: '#7a5a3c' });
+    for (const t of trees) {
+      const r = Math.max(0.15, t.t * 1.3);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r, 0.45, 10).rotateX(Math.PI / 2), mat);
+      m.position.set(t.x, t.y, 0.22);
+      this.stumps.add(m);
+    }
+  }
+
+  /** Golden Arm: this player's disc is gold. */
+  setDiscGold(i: number, on: boolean): void {
+    if (on === this.golden.has(i)) return;
+    if (on) this.golden.add(i); else this.golden.delete(i);
+    const m = this.discs3d[i]?.material as THREE.MeshLambertMaterial | undefined;
+    if (!m) return;
+    if (!m.userData.base) m.userData.base = m.color.clone();
+    m.color.copy(on ? new THREE.Color('#ffc83d') : (m.userData.base as THREE.Color));
+    m.emissive.set(on ? '#7a5200' : '#000000');
   }
 
   /** Placement mode: rings for what's been placed so far (top-down), or null to clear. */
@@ -646,6 +710,10 @@ export class CourseScene {
   }
 
   render(): void {
+    // Legendary effects animate: the magnet bobs, the vortex spins.
+    const tt = performance.now() / 1000;
+    if (this.fxMagnet?.visible) { this.fxMagnet.rotation.z = tt * 0.8; this.fxMagnet.position.z = BASKET.bandTop + 0.5 + Math.sin(tt * 2.2) * 0.06; }
+    if (this.fxVortex?.visible) this.fxVortex.rotation.z = -tt * 2.5;
     const groups = [this.trees3d, ...(this.extras.children as THREE.Group[])];
     if (this.fp) {
       // Big forests draw tree models only near the eye and in view.
@@ -773,4 +841,50 @@ function skyStars(course: DiscCourseFile): THREE.Points {
   const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#ffffff', size: 2, sizeAttenuation: false, fog: false }));
   p.layers.set(SKY_LAYER);
   return p;
+}
+
+/** A viewer's visible legendary effects (setViewer). */
+export interface FieldFx {
+  /** Magnet Basket: a horseshoe magnet over the basket. */
+  magnet?: boolean;
+  /** Black Hole: a dark vortex in the chains. */
+  blackHole?: boolean;
+  /** Gimme Circle: a gold ring on the ground at this radius (m). */
+  gimme?: number;
+  /** Phase Disc: see through every tree. */
+  phase?: boolean;
+}
+
+/** A red horseshoe magnet with silver tips, poles down (for the top of a basket). */
+function magnetModel(): THREE.Group {
+  const g = new THREE.Group();
+  const arm = new THREE.Group(); // built in the x–z plane, turned upright
+  const red = new THREE.MeshLambertMaterial({ color: '#d9312b', emissive: '#3a0000' });
+  const steel = new THREE.MeshLambertMaterial({ color: '#d7dde3' });
+  const bend = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.07, 10, 24, Math.PI), red);
+  arm.add(bend);
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.22, 12), red);
+    leg.position.set(sx * 0.22, -0.11, 0);
+    arm.add(leg);
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.1, 12), steel);
+    tip.position.set(sx * 0.22, -0.27, 0);
+    arm.add(tip);
+  }
+  arm.rotation.x = Math.PI / 2; // y-up model → z-up world: the U opens downward onto the basket
+  g.add(arm);
+  return g;
+}
+
+/** A dark sphere wrapped in a spinning purple ring (Black Hole). */
+function vortexModel(): THREE.Group {
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 14), new THREE.MeshBasicMaterial({ color: '#07030f' }));
+  g.add(core);
+  for (const [r, w, c] of [[0.28, 0.035, '#a35cff'], [0.4, 0.02, '#5b2bd6'], [0.52, 0.012, '#c69bff']] as const) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, w, 8, 48), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85 }));
+    ring.rotation.x = (r - 0.28) * 0.9; // flat around the chains, each a little tilted
+    g.add(ring);
+  }
+  return g;
 }

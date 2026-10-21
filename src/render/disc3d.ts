@@ -187,25 +187,33 @@ interface TreeState {
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
+/** Every tree's most-visible dither (1 = solid). Phase Disc's player sees through trees at 0.35. */
+const TREE_SOLIDITY = { value: 1 };
+export function setTreeSolidity(v: number): void {
+  TREE_SOLIDITY.value = v;
+}
+
 /**
  * Dither-dissolve: each instance carries a 'dither' visibility (0…1); fragments above it on a 4×4
  * Bayer pattern are dropped. Opaque rendering stays (no sorting), and at 1 nothing changes.
  */
 function dithered<M extends THREE.Material>(m: M): M {
   m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTreeSolidity = TREE_SOLIDITY;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float dither;\nvarying float vDither;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDither = dither;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying float vDither;
+uniform float uTreeSolidity;
 float bayer4(vec2 p) {
   ivec2 q = ivec2(mod(p, 4.0));
   int i = q.x + q.y * 4;
   float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
   return (m[i] + 0.5) / 16.0;
 }`)
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vDither < 0.999 && bayer4(gl_FragCoord.xy) > vDither) discard;');
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat solid = min(vDither, uTreeSolidity);\nif (solid < 0.999 && bayer4(gl_FragCoord.xy) > solid) discard;');
   };
   m.customProgramCacheKey = () => 'tree-dither';
   return m;

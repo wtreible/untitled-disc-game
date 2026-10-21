@@ -11,7 +11,7 @@ import { TreeIndex } from '../src/disc/trees';
 import { mulberry32 } from '../src/game/physics';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
-import { BUMP_CHANCE, POWERUPS, STARTER_WEIGHTS, byId, drawOffer, rollTier, TIERS } from '../src/rogue/powerups';
+import { BUMP_CHANCE, CATEGORIES, POWERUPS, STARTER_WEIGHTS, byId, drawOffer, rollTier, TIERS } from '../src/rogue/powerups';
 
 const sq = (n: number): Rings => [[[-n, -n], [n, -n], [n, n], [-n, n]]];
 const rect = (x0: number, y0: number, x1: number, y1: number): Rings => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]];
@@ -29,9 +29,10 @@ const withPower = (...ids: string[]): Mods => { const m = neutralMods(); for (co
 const rate = (n: number, f: (seed: number) => boolean) => { let k = 0; for (let s = 1; s <= n; s++) if (f(s)) k++; return k / n; };
 
 describe('catalog', () => {
-  it('has 25 common, 20 epic, 12 legendary with unique ids', () => {
+  it('has 28 common, 22 epic, 15 legendary with unique ids, each in a category', () => {
     const count = (t: string) => POWERUPS.filter((p) => p.tier === t).length;
-    expect([count('common'), count('epic'), count('legendary')]).toEqual([25, 20, 12]);
+    expect([count('common'), count('epic'), count('legendary')]).toEqual([28, 22, 15]);
+    for (const p of POWERUPS) expect(CATEGORIES.map((c) => c.id)).toContain(p.category);
     expect(new Set(POWERUPS.map((p) => p.id)).size).toBe(POWERUPS.length);
   });
 
@@ -92,16 +93,16 @@ describe('effects in the flight model', () => {
     expect(throwIt(withPower('golden-arm'), world(), 1).rest[1]).toBeGreaterThan(base * 1.18);
   });
 
-  it('Phase Disc flies through a wall of trees; Ghost Disc passes exactly one', () => {
+  it('Phase Disc flies through a wall of trees; Ghost Disc passes exactly two', () => {
     const wall: Tree[] = Array.from({ length: 41 }, (_, i) => ({ x: -10 + i * 0.5, y: 20, h: 15, r: 0.01, b: 14.9, t: 0.3 }));
     expect(throwIt(neutralMods(), world(wall), 1).rest[1]).toBeLessThan(25);
     expect(throwIt(withPower('phase-disc'), world(wall), 1).rest[1]).toBeGreaterThan(50);
-    // Perfect Form (zero error) so the disc is guaranteed to run into two wide trunks dead ahead.
-    const two: Tree[] = [{ x: 0, y: 20, h: 15, r: 0.01, b: 14.9, t: 0.6 }, { x: 0, y: 30, h: 15, r: 0.01, b: 14.9, t: 0.6 }];
-    const g = throwIt(withPower('ghost-disc'), world(two), 1, { perfect: true });
-    expect(g.events.filter((e) => e === 'phased').length).toBe(1);
+    // Perfect Form (zero error) so the disc is guaranteed to run into three wide trunks dead ahead.
+    const three: Tree[] = [20, 27, 34].map((y) => ({ x: 0, y, h: 15, r: 0.01, b: 14.9, t: 0.6 }));
+    const g = throwIt(withPower('ghost-disc'), world(three), 1, { perfect: true });
+    expect(g.events.filter((e) => e === 'phased').length).toBe(2);
     expect(g.events).toContain('trunk');
-    expect(g.rest[1]).toBeLessThan(35);
+    expect(g.rest[1]).toBeLessThan(40);
   });
 
   it('OB Insurance: water costs nothing; Sticky Plastic saves a near miss', () => {
@@ -132,6 +133,36 @@ describe('effects in the flight model', () => {
     const mag = throwIt(withPower('magnet-basket'), world([], B), 2, { power: 0.5 });
     expect(mag.events).toContain('magnet');
     expect(Math.hypot(mag.rest[0] - B[0], mag.rest[1] - B[1])).toBeLessThan(2);
+  });
+
+  it('Magnet Basket (legendary) pulls from 6 m, up to 3 m', () => {
+    const short = throwIt(neutralMods(), world(), 2, { power: 0.5 }).rest;
+    const B: Vec2 = [short[0], short[1] + 5.5];
+    const mag = throwIt(withPower('magnet-basket'), world([], B), 2, { power: 0.5 });
+    expect(mag.events).toContain('magnet');
+    expect(Math.hypot(mag.rest[0] - B[0], mag.rest[1] - B[1])).toBeLessThan(3);
+  });
+
+  it('wind augments: Wind Cheater drifts less, Weather Control not at all; Crosswind hits opponents only', () => {
+    const drift = (m: Mods) => {
+      const calm = throwIt(m, world(), 1, { power: 1 }).rest[0];
+      const r = throwIt(m, { ...world(), wind: [5, 0] }, 1, { power: 1 }).rest[0];
+      return r - calm;
+    };
+    const base = drift(neutralMods());
+    expect(base).toBeGreaterThan(3);
+    expect(drift(withPower('wind-cheater'))).toBeLessThan(base * 0.8);
+    expect(Math.abs(drift(withPower('weather-control')))).toBeLessThan(0.01);
+    const all = [withPower('crosswind'), neutralMods()];
+    expect(effectiveMods(all, 0).windScale).toBe(1);
+    expect(effectiveMods(all, 1).windScale).toBeCloseTo(1.4);
+    expect(effectiveMods([withPower('weather-control'), neutralMods()], 1).windScale).toBeCloseTo(2);
+  });
+
+  it('Pinball Wizard: a branch kick keeps far more speed', () => {
+    const bush: Tree[] = [{ x: 0, y: 25, h: 12, r: 4, b: 0.2, t: 0.01 }];
+    const far = (m: Mods) => { let s = 0; for (let k = 1; k <= 20; k++) { const r = throwIt(m, world(bush), k, { power: 0.8 }); if (r.events.includes('branch')) s += Math.hypot(r.rest[0], r.rest[1]); } return s; };
+    expect(far(withPower('pinball-wizard'))).toBeGreaterThan(far(neutralMods()) * 1.3);
   });
 
   it('Homing Chains bends a wide throw toward the basket', () => {
@@ -196,14 +227,14 @@ describe('per-player course changes', () => {
 
   it('Forward Tee / Back Tees / Short Pin move tees and baskets per player', () => {
     const all = [withPower('forward-tee'), withPower('back-tees'), neutralMods()];
-    expect(teeFor(hole, [withPower('forward-tee'), neutralMods()], 0)).toEqual([0, 12]); // forward tee alone
-    expect(backTeeFor(all, 0)).toBe(12);
-    // Player 0: +12 forward, −12 back from player 1 → back at 0. Player 2 only gets pushed back.
+    expect(teeFor(hole, [withPower('forward-tee'), neutralMods()], 0)).toEqual([0, 15]); // forward tee alone
+    expect(backTeeFor(all, 0)).toBe(15);
+    // Player 0: +15 forward, −15 back from player 1 → back at 0. Player 2 only gets pushed back.
     const p0 = teeFor(hole, all, 0), p2 = teeFor(hole, all, 2);
     expect(p0[1]).toBeCloseTo(0, 5);
-    expect(p2[1]).toBeCloseTo(-12, 5);
+    expect(p2[1]).toBeCloseTo(-15, 5);
     expect(teeFor(hole, all, 1)[1]).toBeCloseTo(0, 5); // owner of Back Tees unaffected
-    expect(pinFor(hole, withPower('short-pin'))).toEqual([0, 80]);
+    expect(pinFor(hole, withPower('short-pin'))).toEqual([0, 75]);
     expect(pinFor(hole, neutralMods())).toEqual([0, 100]);
   });
 
@@ -211,8 +242,8 @@ describe('per-player course changes', () => {
     const all = [withPower('heckler', 'shrink-ray'), neutralMods()];
     expect(effectiveMods(all, 0).meterSpeed).toBe(1);
     expect(effectiveMods(all, 0).basketScale).toBe(1);
-    expect(effectiveMods(all, 1).meterSpeed).toBeCloseTo(1.22);
-    expect(effectiveMods(all, 1).basketScale).toBeCloseTo(0.6);
+    expect(effectiveMods(all, 1).meterSpeed).toBeCloseTo(1.28);
+    expect(effectiveMods(all, 1).basketScale).toBeCloseTo(0.55);
   });
 
   it('placement rules', () => {
@@ -230,7 +261,7 @@ describe('per-player course changes', () => {
 
   it('placement queue: clear-cut works solo; hexes only with opponents', () => {
     expect(placementQueue([withPower('clear-cut', 'sapling')]).map((q) => q.kind)).toEqual(['clear-cut']);
-    expect(placementQueue([withPower('thicket'), neutralMods()]).map((q) => q.kind)).toEqual(['thicket', 'thicket', 'thicket']);
+    expect(placementQueue([withPower('thicket'), neutralMods()]).map((q) => q.kind)).toEqual(['thicket', 'thicket', 'thicket', 'thicket']);
   });
 
   it('a hex pond is water for the thrower who has it', () => {

@@ -198,7 +198,18 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     return w;
   };
   /** World for the current player, with moving props evaluated from the game clock now. */
-  const world = () => { const w = worldFor(round.game.current); w.clock0 = gameClock; w.wind = st.wind; return w; };
+  const world = () => { const w = worldFor(round.game.current); w.clock0 = gameClock; w.wind = windFor(round.game.current); return w; };
+  /**
+   * The hole's wind as player i plays it: Personal Tailwind turns it toward their basket. (How
+   * strongly it moves their disc, windScale, is applied by the flight model.)
+   */
+  function windFor(i: number): Vec2 {
+    const w = st.wind;
+    if (!modsFor(i).tailwind) return w;
+    const sp = Math.hypot(w[0], w[1]), b = round.game.players[i].ball, pin = round.game.pins[i];
+    const a = Math.atan2(pin[1] - b[1], pin[0] - b[0]);
+    return [Math.cos(a) * sp, Math.sin(a) * sp];
+  }
   /** Mods acting on player i's throws: their own plus opponents' hexes. */
   const modsFor = (i: number) => effectiveMods(mods, i);
   const hole = () => st.hole;
@@ -276,8 +287,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       <div class="hmeta">Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length">*</span>' : ''} · ${fmtLen(h.length_m)}</div>
       ${h.name ? `<div class="course">${esc(course.name)}${rogue ? ' · Crazy mode' : ''}</div>` : rogue ? '<div class="course">Crazy mode</div>' : ''}</div>
       <div class="wind" title="Wind at 10 m (weaker near the ground). The arrow shows where it blows, turned to your view."><svg viewBox="-12 -12 24 24" width="26" height="26"><path d="M0 -10 L6 2 L1.5 0.5 L1.5 10 L-1.5 10 L-1.5 0.5 L-6 2 Z" fill="currentColor"/></svg>
-        <b>${Math.hypot(st.wind[0], st.wind[1]) < 0.5 ? 'Calm' : fmtSpeed(Math.hypot(st.wind[0], st.wind[1]))}</b><small>WIND</small></div>`;
+        <b></b><small>WIND</small></div>`;
     lastWindRot = NaN;
+    lastWindLabel = '';
   }
 
   /**
@@ -293,15 +305,22 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   /** Point the HUD wind arrow relative to the current view (up the screen = straight ahead). */
   let lastWindRot = NaN;
+  let lastWindLabel = '';
   function updateWindArrow(): void {
     const el = $('hole-info').querySelector<SVGElement>('.wind svg');
     if (!el) return;
-    const wind = st.wind;
+    // The current player's wind: turned by Personal Tailwind, scaled by Wind Cheater, Crosswind…
+    const i = round.game.current;
+    const wind = windFor(i);
+    const speed = Math.hypot(wind[0], wind[1]) * modsFor(i).windScale;
     const rot = Math.round((((scene.viewHeading() - Math.atan2(wind[1], wind[0])) * 180) / Math.PI) % 360);
-    if (rot === lastWindRot) return;
+    const label = speed < 0.5 ? 'Calm' : fmtSpeed(speed);
+    if (rot === lastWindRot && label === lastWindLabel) return;
     lastWindRot = rot;
+    lastWindLabel = label;
     el.style.transform = `rotate(${rot}deg)`;
-    el.parentElement!.classList.toggle('calm', Math.hypot(wind[0], wind[1]) < 0.5);
+    el.parentElement!.classList.toggle('calm', speed < 0.5);
+    el.parentElement!.querySelector('b')!.textContent = label;
   }
 
   // ---------- events from the room ----------
@@ -431,7 +450,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       ponds: pondsFor(st.changes, i),
       basketScale: m.basketScale, magnet: m.magnet,
       tee: teeFor(hole(), mods, i, blocked), pin: pinOf(i),
+      fx: { magnet: m.magnet > 0, blackHole: owned[i].includes('black-hole'), gimme: m.gimme, phase: m.phaseTrees === Infinity },
     });
+    scene.setStumps([...st.removed]);
+    opts.names.forEach((_, k) => scene.setDiscGold(k, owned[k].includes('golden-arm')));
   }
 
   // ---------- placement (Crazy mode, before each hole) ----------

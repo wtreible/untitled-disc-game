@@ -304,7 +304,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     } else {
       // Forces, from the disc's motion through the air (its velocity minus the wind). A headwind
       // means more airspeed (more lift, longer turn); a tailwind less (it fades sooner).
-      const w = world.wind ? windAt(world.wind, p[2] - ground) : null;
+      const w = world.wind && m.windScale > 0 ? windAt([world.wind[0] * m.windScale, world.wind[1] * m.windScale], p[2] - ground) : null;
       const air: Vec3 = w ? [v[0] - w[0], v[1] - w[1], v[2]] : v;
       const sa = w ? Math.hypot(air[0], air[1], air[2]) || 1e-6 : s;
       const q = sa / disc.v0; // airspeed relative to this disc's full-power release
@@ -357,7 +357,8 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
 
       if (!opt.ghost) {
         const hitTree = treeCollide(prev, p, v, world, near, tctx);
-        if (hitTree) { state = 'dead'; bank = (rng() - 0.5) * 1.2; }
+        // A tree hit usually kills the flight (tumbling). Pinball Wizard's disc keeps flying.
+        if (hitTree && !m.liveKicks) { state = 'dead'; bank = (rng() - 0.5) * 1.2; }
         if (world.props) {
           const tag = collideProps(p, v, prev, (world.clock0 ?? 0) + step * DT, world.props);
           if (tag) { state = 'dead'; bank = (rng() - 0.5) * 1.2; if (propHits[propHits.length - 1] !== tag) propHits.push(tag); events.push('prop'); }
@@ -424,8 +425,8 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     const d = Math.hypot(rest[0] - world.basket[0], rest[1] - world.basket[1]);
     if (d < m.gimme) return holedResult([...p], 'gimme');
     if (m.magnet > 0 && d < m.magnet && d > 0.4) {
-      // Magnet Basket: slide up to 1.5 m toward the basket.
-      const slide = Math.min(1.5, d - 0.3);
+      // Magnet Basket: slide up to magnetPull m toward the basket.
+      const slide = Math.min(m.magnetPull, d - 0.3);
       const ux = (world.basket[0] - rest[0]) / d, uy = (world.basket[1] - rest[1]) / d;
       for (let k = 1; k <= 30; k++) {
         const t = (k / 30) * slide;
@@ -448,6 +449,8 @@ interface TreeCtx {
   basket: Vec2;
   rng: Rng;
   events: ThrowEvent[];
+  /** Pinball Wizard: where the last kick was (no new kick within 3 m of it). */
+  lastKick?: Vec3;
 }
 
 /** True if the disc should ignore this tree (phasing through it). */
@@ -485,19 +488,27 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
       density = 1.4 - k; // denser toward the crown's middle
     }
     const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * m.branch * density;
+    // Pinball Wizard: one bounce per few meters, not a pinball machine inside one crown.
+    if (m.liveKicks && c.lastKick && Math.hypot(p[0] - c.lastKick[0], p[1] - c.lastKick[1], p[2] - c.lastKick[2]) < 3) continue;
     if (rng() < 1 - Math.exp(-lambda * ds)) {
       if (phases(t, c)) continue;
       if (m.branchPass > 0 && rng() < m.branchPass) continue;
       events.push('branch');
       if (!c.hits.includes(t)) c.hits.push(t);
       // Kick in a random direction (or toward the basket with Lucky Kicks), keep 20–40% of the speed.
-      const s = Math.hypot(v[0], v[1], v[2]) * (0.2 + rng() * 0.2);
+      const s = Math.hypot(v[0], v[1], v[2]) * Math.min(0.95, (0.2 + rng() * 0.2) * m.kickKeep);
       const yaw = m.kickToward
         ? Math.atan2(c.basket[1] - p[1], c.basket[0] - p[0]) + (rng() - 0.5) * 0.6
         : Math.atan2(v[1], v[0]) + (rng() - 0.5) * 2 * 2.2;
+      const vz = v[2];
       v[0] = Math.cos(yaw) * s;
       v[1] = Math.sin(yaw) * s;
       v[2] = (rng() - 0.6) * s;
+      if (m.liveKicks) {
+        // Bounced, not knocked down: same climb or fall, now heading for the basket.
+        v[2] = vz * 0.9;
+        c.lastKick = [p[0], p[1], p[2]];
+      }
       return true;
     }
   }

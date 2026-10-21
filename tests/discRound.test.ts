@@ -77,7 +77,7 @@ describe('event-driven round', () => {
     ap({ t: 'offer', player: 1, tier: 'common', cards: ['sapling', 'reroll-token'], bumped: null, starter: true });
     ap({ t: 'pick', player: 1, id: 'sapling' });
     ap({ t: 'grant', player: 1, id: 'clear-cut' });
-    expect(r.mods[1].rerolls).toBe(1);
+    expect(r.mods[1].rerolls).toBe(2); // Reroll Token: +3, one spent
 
     ap({ t: 'hole-start', wind: [2, 0] });
     // B: a clear-cut (personal) then a sapling (hex on A), in queue order.

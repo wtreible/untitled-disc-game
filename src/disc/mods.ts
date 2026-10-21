@@ -28,8 +28,9 @@ export interface Mods {
   tapIn: number;
   /** Anything that stops within this distance of the basket is holed (m). */
   gimme: number;
-  /** Discs stopping within this radius slide 1.5 m toward the basket (m, 0 = off). */
+  /** Discs stopping within this radius slide up to magnetPull m toward the basket (m, 0 = off). */
   magnet: number;
+  magnetPull: number;
   /** × branch hit density; probability a branch hit is ignored. */
   branch: number;
   branchPass: number;
@@ -39,6 +40,10 @@ export interface Mods {
   phaseTrees: number;
   /** Tree kicks go toward the basket instead of a random direction. */
   kickToward: boolean;
+  /** × speed kept by a branch kick (base 20–40%, at most 95%). */
+  kickKeep: number;
+  /** After a tree hit the disc keeps flying instead of tumbling (Pinball Wizard). */
+  liveKicks: boolean;
   /** × skid distance after landing; sticky = no skid and near-misses of OB/water are saved. */
   skid: number;
   sticky: boolean;
@@ -48,6 +53,10 @@ export interface Mods {
   puttRange: number;
   /** Late-flight steering toward the basket (0 = off). */
   homing: number;
+  /** × how much wind moves your disc (0 = none). */
+  windScale: number;
+  /** For you, the wind blows toward the basket (same strength). */
+  tailwind: boolean;
   // Turn/round-level effects, handled by the controller rather than the flight model:
   meterSpeed: number;
   pickupBonus: number;
@@ -81,18 +90,20 @@ export interface Mods {
   hexBackTee: number;
   /** × opponents' basket size. */
   hexShrink: number;
+  /** × wind for opponents. */
+  hexWind: number;
 }
 
 export function neutralMods(): Mods {
   return {
     distance: 1, teeDistance: 1, aimError: 1, puttAimError: 1, noOverpowerWobble: false,
     glide: 0, turn: 0, fade: 0, shape: 1,
-    catchBonus: 0, teeCatchBonus: 0, cutToCatch: 0, basketScale: 1, tapIn: 1, gimme: 0, magnet: 0,
-    branch: 1, branchPass: 0, trunkKeep: 1, phaseTrees: 0, kickToward: false,
-    skid: 1, sticky: false, obInsurance: false, puttRange: 1, homing: 0,
+    catchBonus: 0, teeCatchBonus: 0, cutToCatch: 0, basketScale: 1, tapIn: 1, gimme: 0, magnet: 0, magnetPull: 1.5,
+    branch: 1, branchPass: 0, trunkKeep: 1, phaseTrees: 0, kickToward: false, kickKeep: 1, liveKicks: false,
+    skid: 1, sticky: false, obInsurance: false, puttRange: 1, homing: 0, windScale: 1, tailwind: false,
     meterSpeed: 1, pickupBonus: 0, mulligans: 0, perfectForm: 0, clone: false, treeChopper: false, rerolls: 0, extraCard: 0,
     ghost: 1, ghostCone: false, teeForward: 0, pinCloser: 0, clearCut: 0,
-    hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1,
+    hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1, hexWind: 1,
   };
 }
 
@@ -111,6 +122,7 @@ export function effectiveMods(all: Mods[], player: number): Mods {
     if (i === player) return;
     m.meterSpeed *= o.hexMeter;
     m.basketScale *= o.hexShrink;
+    m.windScale *= o.hexWind;
   });
   return m;
 }
