@@ -31,7 +31,16 @@ export interface Welcome {
 }
 
 /** Rooms server: VITE_ROOMS_URL at build time (wss://…workers.dev), or the local `npm run server:dev`. */
-export const ROOMS_URL: string | null = import.meta.env.VITE_ROOMS_URL || (import.meta.env.DEV ? 'ws://127.0.0.1:8787' : null);
+export const ROOMS_URL: string | null = roomsUrl(import.meta.env.VITE_ROOMS_URL || (import.meta.env.DEV ? 'ws://127.0.0.1:8787' : ''));
+
+/**
+ * Tidy the configured address: a trailing slash made every request //room/CODE (which the server
+ * refuses, so the game reconnected forever), and an https:// address means wss://.
+ */
+export function roomsUrl(raw: string): string | null {
+  const u = raw.trim().replace(/\/+$/, '').replace(/^http(s?):\/\//, 'ws$1://');
+  return u || null;
+}
 
 /** This browser's id in rooms (kept, so a refresh rejoins as the same person). */
 export function clientId(): string {
