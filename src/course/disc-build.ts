@@ -1,6 +1,6 @@
 // OSM + HSY canopy GeoJSON → DiscCourseFile. Pure (no I/O). See docs/08-level-editor-and-disc-golf.md.
 import type { Feature, FeatureCollection, Geometry, Position } from 'geojson';
-import { LocalFrame, dist, distToPolyline, pointInRings, polylineLength, type Vec2 } from './geo';
+import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from './geo';
 import type { DiscCourseFile, DiscHole, Tree } from './disc-types';
 import { encodeTrees } from './disc-types';
 import type { CourseFeature, Rings } from './types';
@@ -21,12 +21,15 @@ export interface DiscBuildOptions {
   /** Playable corridor half-width around each hole line, added to the course polygon. */
   corridorM?: number;
   /**
-   * 'canopy': plant a forest inside HSY canopy polygons (photo style).
-   * 'sparse': a few designed trees per hole, including a basket defender (vector style).
+   * 'canopy': plant a forest inside HSY canopy polygons (photo style): the real version.
+   * 'recreation': the same real trees, thinned back from fairways, greens and tees (vector style).
    */
-  trees?: 'canopy' | 'sparse';
+  trees?: 'canopy' | 'recreation';
   margin?: number;
 }
+
+/** Tali Recreation's thinning: fairway half-width, green radius, and the gap kept beyond both. */
+export const RECREATION = { fairwayHalf: 5, greenR: 6, clear: 3 };
 
 const ROAD_HALF_WIDTH: Record<string, number> = {
   motorway: 12, motorway_link: 6, trunk: 10, trunk_link: 5, primary: 8, secondary: 7, tertiary: 6,
@@ -292,24 +295,27 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
       }
     }
   }
-  const sparse = opts.trees === 'sparse';
-  let trees: Tree[];
-  if (sparse) {
-    // Mown fairway lanes, drawn and used for lies.
-    for (const h of holes) for (const r of strip(h.routing, 5)) features.push({ class: 'fairway', osm_id: `fairway/${h.ref}`, rings: r });
-    const blocked = (p: Vec2) => ob.some((r) => pointInRings(p, r)) || features.some((f) => f.class === 'water' && pointInRings(p, f.rings));
-    trees = designTrees(holes, opts.seed ?? 1, blocked);
-  } else {
-    const keepClear = holes.flatMap((h) => [{ p: h.tee, r: 3 }, { p: h.pin, r: 2 }]);
-    // HSY canopy can't tell an overhanging crown from a trunk, so keep a lane along each hole line.
-    const lanes = holes.map((h) => ({ pts: h.routing, r: 3, lift: 3.5 }));
-    trees = plantTrees(canopy, bounds, keepClear, opts.seed ?? 1, lanes);
+  const recreation = opts.trees === 'recreation';
+  // The real forest: trees planted in the HSY canopy. HSY can't tell an overhanging crown from a
+  // trunk, so keep a lane along each hole line.
+  const keepClear = holes.flatMap((h) => [{ p: h.tee, r: 3 }, { p: h.pin, r: 2 }]);
+  const lanes = holes.map((h) => ({ pts: h.routing, r: 3, lift: 3.5 }));
+  let trees = plantTrees(canopy, bounds, keepClear, opts.seed ?? 1, lanes);
+  if (recreation) {
+    // The easy version: mown fairways, drawn and used for lies, and the same real trees thinned
+    // back so no crown comes within RECREATION.clear of a fairway, a green or a tee.
+    const { fairwayHalf, greenR, clear } = RECREATION;
+    for (const h of holes) for (const r of strip(h.routing, fairwayHalf)) features.push({ class: 'fairway', osm_id: `fairway/${h.ref}`, rings: r });
+    trees = trees.filter((t) => holes.every((h) =>
+      distToPolyline([t.x, t.y], h.routing) - t.r >= fairwayHalf + clear &&
+      dist([t.x, t.y], h.pin) - t.r >= greenR + clear &&
+      dist([t.x, t.y], h.tee) - t.r >= clear + 2));
   }
 
   return {
     sport: 'disc',
-    style: sparse ? 'vector' : 'photo',
-    branch_density: sparse ? 0.4 : 0.11,
+    style: recreation ? 'vector' : 'photo',
+    branch_density: 0.11,
     name: course.properties.name ?? 'Disc golf course',
     source: { osm_timestamp: opts.osmTimestamp, course_osm_id: opts.courseOsmId, attribution: opts.attribution },
     origin: frame.origin,
@@ -317,76 +323,10 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
     bounds,
     boundary,
     features,
-    canopy: canopy.map(({ rings, height_m }) => ({ rings, height_m })),
+    // Recreation: lies come from the drawn ground, not the canopy (whose edges the thinning moved).
+    canopy: recreation ? [] : canopy.map(({ rings, height_m }) => ({ rings, height_m })),
     ob,
     trees: encodeTrees(trees),
     holes,
   };
-}
-
-export type TreeRole = 'defender' | 'gate' | 'mid' | 'flank';
-
-/** Point along a polyline at arc length s, plus the unit direction there. */
-function along(line: Vec2[], s: number): { p: Vec2; u: Vec2 } {
-  for (let i = 1; i < line.length; i++) {
-    const [a, b] = [line[i - 1], line[i]];
-    const L = dist(a, b) || 1e-9;
-    if (s <= L || i === line.length - 1) {
-      const t = Math.max(0, Math.min(1, s / L));
-      return { p: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], u: [(b[0] - a[0]) / L, (b[1] - a[1]) / L] };
-    }
-    s -= L;
-  }
-  return { p: line[0], u: [0, 1] };
-}
-
-/**
- * 1–5 designed trees per hole (more on longer holes). Every hole gets a defender guarding the
- * basket: a low, bushy tree 4–9 m short of it and 0.5–1.8 m off the line, so a straight run at
- * the chains goes through foliage; curve around it. The rest are picked from: a gate pair near the tee, a mid-fairway tree with
- * a raised crown (go around or under), and flank trees framing the lane.
- */
-export function designTrees(holes: DiscHole[], seed: number, blocked: (p: Vec2) => boolean = () => false): (Tree & { hole: string; role: TreeRole })[] {
-  const out: (Tree & { hole: string; role: TreeRole })[] = [];
-  const allLines = holes.map((h) => h.routing);
-  const clearOf = (p: Vec2, own: Vec2[], t: number) =>
-    !blocked(p) &&
-    holes.every((h) => dist(p, h.tee) > 4 && dist(p, h.pin) > 2.5) &&
-    // Other holes' lines stay clear; this hole's line may be crowded on purpose.
-    allLines.every((l) => l === own || distToPolyline(p, l) > 3) &&
-    out.every((o) => dist(p, [o.x, o.y]) > o.r * 0.6 + t);
-  holes.forEach((h, hi) => {
-    const rng = mulberry32(seed * 1000 + hi + 1);
-    const R = (a: number, b: number) => a + rng() * (b - a);
-    const side = () => (rng() < 0.5 ? -1 : 1);
-    const L = polylineLength(h.routing);
-    const want = Math.max(1, Math.min(5, 1 + Math.round(L / 50) + Math.floor(rng() * 3) - 1));
-    const add = (role: TreeRole, s: number, lateral: number, o: { h: [number, number]; r: [number, number]; b: [number, number] }): boolean => {
-      const { p, u } = along(h.routing, Math.max(0, Math.min(L, s)));
-      const q: Vec2 = [p[0] - u[1] * lateral, p[1] + u[0] * lateral];
-      const height = R(...o.h);
-      const tree = { x: q[0], y: q[1], h: height, r: R(...o.r), b: Math.min(height - 1, R(...o.b)), t: 0.12 + 0.015 * height, hole: h.ref, role };
-      if (!clearOf(q, h.routing, tree.r * 0.6)) return false;
-      out.push(tree);
-      return true;
-    };
-    let n = 0;
-    // Defender: try a few placements before giving up.
-    // Low and bushy, so its crown is full at putting height (the crown is an ellipsoid from b to h).
-    for (let k = 0; k < 8 && n === 0; k++) if (add('defender', L - R(4, 9), side() * R(0.5, 1.8), { h: [6, 10], r: [2, 3], b: [0.3, 0.8] })) n++;
-    for (let tries = 0; n < want && tries < 30; tries++) {
-      const pick = rng();
-      if (pick < 0.3 && L > 60 && want - n >= 2) {
-        // Gate: a pair either side of the line, 15–30 m out, 4–7 m apart from the line.
-        const s0 = R(15, 30);
-        if (add('gate', s0, R(4, 7), { h: [10, 18], r: [2, 3.2], b: [1.5, 3] })) n++;
-        if (n < want && add('gate', s0 + R(-2, 2), -R(4, 7), { h: [10, 18], r: [2, 3.2], b: [1.5, 3] })) n++;
-      } else if (pick < 0.6 && L > 45) {
-        if (add('mid', L * R(0.35, 0.65), side() * R(1.5, 4), { h: [12, 20], r: [2.5, 3.8], b: [3, 5] })) n++;
-      } else {
-        if (add('flank', L * R(0.2, 0.9), side() * R(6, 12), { h: [8, 18], r: [2, 3.5], b: [1, 3] })) n++;
-      }
-    }
-  });
-  return out;
 }

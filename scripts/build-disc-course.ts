@@ -3,7 +3,7 @@
 //
 //   npm run disc-course                      # defaults: Tali, Helsinki
 //   npm run disc-course -- --course 40254405 --out tali [--refresh]
-//   npm run disc-course -- --style simple --out tali-simple   # vector course, few designed trees
+//   npm run disc-course -- --style simple --out tali-simple   # Tali Recreation: vector, thinned real trees
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import type { FeatureCollection } from 'geojson';
@@ -17,7 +17,7 @@ const { values: args } = parseArgs({
     out: { type: 'string', default: 'tali' },
     refresh: { type: 'boolean', default: false },
     'no-hsy': { type: 'boolean', default: false },
-    /** 'simple': vector course with a few designed trees per hole (no HSY). */
+    /** 'simple': Tali Recreation, a vector course with the real trees thinned back from fairways and greens. */
     style: { type: 'string', default: 'forest' },
   },
 });
@@ -105,7 +105,7 @@ const bbox = [Math.min(...lats) - 0.001, Math.min(...lons) - 0.002, Math.max(...
 
 const canopy: CanopyLayer[] = [];
 const simple = args.style === 'simple';
-if (!args['no-hsy'] && !simple) {
+if (!args['no-hsy']) {
   for (const l of HSY_LAYERS) {
     const fc = await cached<FeatureCollection>(`data/raw/hsy-${args.course}-${l.name}.json`, async () => {
       console.log(`fetching HSY ${l.name}…`);
@@ -133,7 +133,7 @@ function normalizeAxisOrder(fc: FeatureCollection): FeatureCollection {
 const course = buildDiscCourse(osm, canopy, {
   courseOsmId: `way/${args.course}`,
   osmTimestamp: raw.osm3s?.timestamp_osm_base ?? 'unknown',
-  trees: simple ? 'sparse' : 'canopy',
+  trees: simple ? 'recreation' : 'canopy',
   attribution: [
     'Course data © OpenStreetMap contributors (ODbL)',
     ...(canopy.length ? ['Tree canopy: HSY land cover 2024 (Helsingin seudun ympäristöpalvelut, CC BY 4.0)'] : []),

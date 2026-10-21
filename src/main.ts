@@ -23,8 +23,8 @@ const GROUPS: { id: Group; label: string; sub: string }[] = [
 ];
 const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: number; blurb: string; art: string }[] = [
   {
-    id: 'simple', group: 'real', name: 'Tali', meta: 'Helsinki, Finland · the real layout, drawn clean', holes: 18,
-    blurb: 'The real Tali disc golf park layout from OpenStreetMap, drawn as a clean course: 1–5 trees per hole and a defender guarding every basket.',
+    id: 'simple', group: 'real', name: 'Tali Recreation', meta: 'Helsinki, Finland · the easy version', holes: 18,
+    blurb: 'The real Tali disc golf park layout and its real trees, drawn clean, with the woods cut back a few meters from every fairway, green and tee. Tali Forest is the real thing.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#3c4a37"/><path d="M8 58 C 20 40, 30 30, 50 8" stroke="#8cc063" stroke-width="12" fill="none" stroke-linecap="round"/><circle cx="20" cy="26" r="7" fill="#2f6a2f"/><circle cx="44" cy="40" r="6" fill="#2f6a2f"/><circle cx="50" cy="9" r="3.5" fill="#f2c230"/></svg>`,
   },
   {

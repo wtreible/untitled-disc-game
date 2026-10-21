@@ -4,21 +4,18 @@ Implemented 2026-10-19. Two disc courses share the real Tali hole layout; golf (
 
 | Course | Look | Trees | File |
 |---|---|---|---|
-| **Tali (simple)**, default | Flat vector drawing: rough, mown fairway lanes (10 m), paths, roads/buildings (OB), water, tee pads | 1–5 designed trees per hole (54 total), every basket guarded by a defender | `public/courses/tali-simple.json` (`npm run disc-course -- --style simple --out tali-simple`) |
-| Tali (forest, satellite) | Live Esri imagery | ~10.5k trees planted in HSY canopy | `public/courses/tali.json` |
+| **Tali Recreation**, default (the easy version) | Flat vector drawing: rough, mown fairway lanes (10 m), paths, roads/buildings (OB), water, tee pads | The real forest's trees (9.2k), thinned: no crown within 3 m of a fairway edge, of a 6 m green around each basket, or within 5 m of a tee (`RECREATION` in `src/course/disc-build.ts`) | `public/courses/tali-simple.json` (`npm run disc-course -- --style simple --out tali-simple`) |
+| Tali Forest (the real version) | Live Esri imagery (dev builds) or the drawn classes | ~10.5k trees planted in HSY canopy | `public/courses/tali.json` |
 
 Both start in **first person**; C switches to the top-down map (and back), and the choice carries across turns. Inside 20 m, first person turns on automatically.
 
-## Simple course: designed trees (`designTrees` in `src/course/disc-build.ts`)
+## Tali Recreation: the real trees, thinned (2026-10-20)
 
-Per hole, seeded, 1–5 trees (more on longer holes):
+Tali Recreation plants exactly the real version's trees (same HSY canopy, same seed), then drops every tree whose crown comes within 3 m of a fairway edge (fairways are 5 m either side of the hole line), within 3 m of a 6 m green around each basket, or within 5 m of a tee. That removes 1,328 of 10,533 trees (9,205 left). The rest of the forest stands as mapped, so it plays like the real course with a forgiving lane. Same throw sweep as the tree-model numbers below: 21% of throws touch a tree (53% on Tali Forest). Lies come from the drawn ground (no canopy polygons), and branch density is the forest's 0.11/m.
 
-- **Defender** (every hole): low and bushy (6–10 m tall, branches from 0.3–0.8 m, crown radius 2–3 m), 4–9 m short of the basket, 0.5–1.8 m off the line. A straight run at the chains goes through foliage; curve around it. Tested: blocks most straight putts, a putt aimed wide gets through.
-- **Gate** pair: either side of the line 15–30 m from the tee, 4–7 m out.
-- **Mid-fairway**: 35–65% along, 1.5–4 m off the line, crown raised to 3–5 m (go under or around).
-- **Flank**: 20–90% along, 6–12 m off the line.
-- Never within 4 m of any tee, 2.5 m of any basket, 3 m of *another* hole's line, or in OB/water.
-- Branch density 0.4/m on the simple course and Mini Golf Madness, 0.11/m in the forest (lowered 2026-10-20 from 0.9 / 0.25: a disc passing through a crown's middle is knocked down ~84% of the time instead of ~96%, ~50% instead of ~73% near the edge). Stored per course as `branch_density`.
+(Until 2026-10-20 this course used 1–5 designed trees per hole with a defender at every basket; those are gone.)
+
+- Branch density 0.4/m on Mini Golf Madness and Fantasy Fairways, 0.11/m on both Talis (lowered 2026-10-20 from 0.9 / 0.25: a disc passing through a crown's middle is knocked down ~84% of the time instead of ~96%, ~50% instead of ~73% near the edge). Stored per course as `branch_density`.
 
 **2D and 3D are one world:** the top-down tree symbols (shadow, crown disc, trunk dot) are drawn from the same list and radii as the 3D trunks and crowns, and the vector ground meshes are the same in both cameras. A yellow beacon marks the current basket in first person.
 

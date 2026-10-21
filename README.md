@@ -4,12 +4,12 @@
 
 Browser golf on real courses: geometry from OpenStreetMap, drawn over live Esri satellite imagery, local hot-seat for 1–4 players.
 
-- **Disc golf: Tali (simple), default.** The real Tali (Helsinki) layout drawn as a clean vector course with 1–5 trees per hole and a defender guarding every basket. Starts in first person; the top-down map (C) shows the same trees.
+- **Disc golf: Tali Recreation, default.** The real Tali (Helsinki) layout and its real trees (HSY canopy) drawn as a clean vector course, with the woods cut back a few meters from every fairway, green and tee: the easy version. Starts in first person; the top-down map (C) shows the same trees.
 - **Crazy mode** (a switch on the main menu, any course): draft augments after every hole: earn your ghost line, hex your friends' course. See [docs/11-roguelike.md](docs/11-roguelike.md).
 - **Disc golf: Mini Golf Madness.** A 9-hole full-size course themed like mini golf: thread a giant windmill's tunnel past spinning blades, throw through a castle gate, dodge giant animals, mushrooms and golf balls. See [docs/12-mini-golf-madness.md](docs/12-mini-golf-madness.md).
 - **Disc golf: Fantasy Fairways.** Medieval: a giant knight on The Joust, a basket inside a castle courtyard, and a dragon over the last basket.
 - **Disc golf: Rainbow Runs.** A rainbow road in space where off the road is OB: mystery boxes, rings, asteroids, a gap to jump. See [docs/13-fantasy-and-rainbow.md](docs/13-fantasy-and-rainbow.md).
-- **Disc golf: Tali (forest).** The same holes over satellite imagery with ~10k trees from HSY canopy data.
+- **Disc golf: Tali Forest.** The real version: the same holes and ~10.5k trees with nothing cut back, over satellite imagery (dev builds) or its drawn ground.
 - Both: trunk/branch/chain collisions, full rounds with scorecard. See [docs/10-disc-golf.md](docs/10-disc-golf.md).
 - Golf (The Country Club #17) is still in the code (`src/modes/golf.ts`) but off the menu: disc only for now.
 
@@ -63,7 +63,7 @@ npm run dev        # http://localhost:5173
 
 | Command | What it does |
 |---|---|
-| `npm run disc-course -- --style simple --out tali-simple` | Rebuild the simple course (no HSY needed) |
+| `npm run disc-course -- --style simple --out tali-simple` | Rebuild Tali Recreation (uses the HSY canopy, like the forest) |
 | `npm run disc-course` | Rebuild `public/courses/tali.json` from OSM + HSY canopy (cached in `data/raw/`; HSY files are git-ignored and re-downloaded when missing). `-- --course <way id> --out <name>` for another course; `-- --no-hsy` outside Helsinki (no trees) |
 | `npm run silly-course` | Rebuild `public/courses/silly.json` (Mini Golf Madness) |
 | `npm run fantasy-course` | Rebuild `public/courses/fantasy.json` (Fantasy Fairways) |
