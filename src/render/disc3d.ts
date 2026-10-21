@@ -1,6 +1,7 @@
 // 3D models for disc golf: basket (to standard dimensions), instanced trees, disc.
 import * as THREE from 'three';
 import type { Tree } from '../course/disc-types';
+import type { Vec2 } from '../course/geo';
 import { DISC_RADIUS } from '../disc/discs';
 import { BASKET } from '../disc/flight';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -68,7 +69,8 @@ export function basketModel(): THREE.Group {
 /**
  * Course trees. Branched models (Quaternius, CC0) placed exactly as the physics places them
  * (src/disc/treeShapes.ts), with the old trunk + ellipsoid blobs standing in until the models load
- * and, on big forests, away from the first-person eye (see LOD).
+ * and, on big forests, away from the first-person eye (see LOD). A tree switching between the two
+ * dissolves over FADE_S (a screen-door dither, so no transparency sorting) instead of popping.
  */
 export function treeMeshes(trees: Tree[]): THREE.Group {
   const g = new THREE.Group();
@@ -76,9 +78,12 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
   const trunkGeo = new THREE.CylinderGeometry(1, 1.2, 1, 7);
   trunkGeo.rotateX(Math.PI / 2);
   trunkGeo.translate(0, 0, 0.5);
-  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: '#5b4632' }), n);
+  const blobDither = new THREE.InstancedBufferAttribute(new Float32Array(n).fill(1), 1);
+  trunkGeo.setAttribute('dither', blobDither);
+  const trunks = new THREE.InstancedMesh(trunkGeo, dithered(new THREE.MeshLambertMaterial({ color: '#5b4632' })), n);
   const crownGeo = new THREE.IcosahedronGeometry(1, 1);
-  const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), n);
+  crownGeo.setAttribute('dither', blobDither);
+  const crowns = new THREE.InstancedMesh(crownGeo, dithered(new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true })), n);
   const q = new THREE.Quaternion();
   const c = new THREE.Color();
   const trunkM: THREE.Matrix4[] = [], crownM: THREE.Matrix4[] = [];
@@ -95,16 +100,25 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
   });
   if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
   g.add(trunks, crowns);
-  const state: TreeState = { trees, trunks, crowns, trunkM, crownM, visible: () => true, lod: n > LOD_ALL, eye: null, models: null, quality: 'high' };
+  const state: TreeState = {
+    trees, trunks, crowns, trunkM, crownM, blobDither, visible: () => true, lod: n > LOD_ALL, eye: null, models: null, quality: 'high',
+    fade: new Float32Array(n), target: new Uint8Array(n), active: new Set(), last: 0, locked: false,
+  };
   g.userData = state;
   refresh(state);
   loadTreeModels().then((kinds) => {
-    // One instanced mesh per model part (bark, leaves), sized for every tree of that kind.
+    // One instanced mesh per model part (bark, leaves), sized for every tree of that kind, with
+    // its own per-instance dither (the part's vertex data is shared with other groups).
     const count = kinds.map(() => 0);
     const placed = trees.map((t) => treeShape(t));
     for (const p of placed) count[p.kind]++;
     const meshes = kinds.map((parts, k) => parts.map((part) => {
-      const im = new THREE.InstancedMesh(part.geo, part.mat, Math.max(1, count[k]));
+      const cap = Math.max(1, count[k]);
+      const geo = new THREE.BufferGeometry();
+      for (const [name, attr] of Object.entries(part.geo.attributes)) geo.setAttribute(name, attr);
+      geo.setIndex(part.geo.index);
+      geo.setAttribute('dither', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
+      const im = new THREE.InstancedMesh(geo, part.mat, cap);
       im.count = 0;
       im.frustumCulled = false; // instances span the course; the base geometry's bounds don't
       g.add(im);
@@ -120,7 +134,7 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
         .multiply(new THREE.Matrix4().makeTranslation(-info.axis[0], 0, -info.axis[1]));
     });
     state.models = { meshes, kindOf: placed.map((p) => p.kind), matrices };
-    refresh(state);
+    refresh(state); // the first models fade in too
   }).catch((e) => console.warn('Tree models failed to load; keeping simple trees', e));
   return g;
 }
@@ -130,6 +144,20 @@ const LOD_ALL = 1500;
 /** Big forests by graphics setting: model trees within this radius of the eye, at most this many. */
 const LOD: Record<TreeQuality, { radius: number; max: number }> = { low: { radius: 0, max: 0 }, medium: { radius: 60, max: 120 }, high: { radius: 90, max: 300 } };
 export type TreeQuality = 'low' | 'medium' | 'high';
+/** Blob ↔ model dissolve time. */
+const FADE_S = 0.45;
+/** Re-pick the model trees after the eye moves this far or turns this much. */
+const REPICK_M = 4;
+const REPICK_TURN = 0.14; // rad, ~8°
+/** Trees already drawn as models stay so until clearly out: farther, more behind, or outranked. */
+const KEEP_RADIUS = 1.15;
+const KEEP_BONUS_M = 12;
+/**
+ * Following a throw, the model set is locked to the trees nearest the flight path, this many times
+ * the usual count. In simulation (Tali Forest, Medium) that makes 80–100% of the trees within 25 m
+ * of the chase camera models, against 45–69% for the moving eye zone, with no changes mid-flight.
+ */
+const CORRIDOR_MULT = 1.5;
 
 interface TreeState {
   trees: Tree[];
@@ -137,6 +165,8 @@ interface TreeState {
   crowns: THREE.InstancedMesh;
   trunkM: THREE.Matrix4[];
   crownM: THREE.Matrix4[];
+  /** Blob visibility per tree (1 − its model fade), shared by trunks and crowns. */
+  blobDither: THREE.InstancedBufferAttribute;
   visible: (i: number) => boolean;
   lod: boolean;
   /** First-person eye position and unit view direction (x, y, dx, dy). */
@@ -144,45 +174,137 @@ interface TreeState {
   models: { meshes: THREE.InstancedMesh[][]; kindOf: number[]; matrices: THREE.Matrix4[] } | null;
   /** Low: no models anywhere. Medium / high: all models on small courses, LOD on big forests. */
   quality: TreeQuality;
+  /** Per tree: how far it has dissolved into its model (0 blob … 1 model), and where it's going. */
+  fade: Float32Array;
+  target: Uint8Array;
+  /** Trees that are models or on their way in or out (the only ones per-frame work touches). */
+  active: Set<number>;
+  /** Last tick time (ms). */
+  last: number;
+  /** Following a throw: the model set is fixed to its flight path (see lockTreeLod). */
+  locked: boolean;
 }
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
-function refresh(s: TreeState): void {
-  const fill = s.models?.meshes.map(() => 0);
-  // Big forests: models for the nearest LOD_MAX trees within LOD_RADIUS that are roughly in view
-  // (or within 15 m all round, for looking about).
-  let near: Set<number> | null = null;
-  if (s.lod || s.quality === 'low') {
-    near = new Set();
-    const { radius, max } = LOD[s.quality];
-    if (s.eye && max > 0) {
-      const cand: [number, number][] = [];
-      s.trees.forEach((t, i) => {
-        const dx = t.x - s.eye![0], dy = t.y - s.eye![1], d = Math.hypot(dx, dy);
-        if (s.visible(i) && (d < Math.min(15, radius) || (d < radius && (dx * s.eye![2] + dy * s.eye![3]) / d > 0.2))) cand.push([d, i]);
-      });
-      cand.sort((a, b) => a[0] - b[0]);
-      for (const [, i] of cand.slice(0, max)) near.add(i);
-    }
-  }
-  s.trees.forEach((_t, i) => {
-    const on = s.visible(i);
-    const model = on && (near === null || near.has(i)) && s.models !== null;
-    s.trunks.setMatrixAt(i, on && !model ? s.trunkM[i] : ZERO);
-    s.crowns.setMatrixAt(i, on && !model ? s.crownM[i] : ZERO);
-    if (model) {
-      const k = s.models!.kindOf[i];
-      for (const im of s.models!.meshes[k]) im.setMatrixAt(fill![k], s.models!.matrices[i]);
-      fill![k]++;
-    }
-  });
-  s.trunks.instanceMatrix.needsUpdate = true;
-  s.crowns.instanceMatrix.needsUpdate = true;
-  s.models?.meshes.forEach((parts, k) => { for (const im of parts) { im.count = fill![k]; im.instanceMatrix.needsUpdate = true; } });
+/**
+ * Dither-dissolve: each instance carries a 'dither' visibility (0…1); fragments above it on a 4×4
+ * Bayer pattern are dropped. Opaque rendering stays (no sorting), and at 1 nothing changes.
+ */
+function dithered<M extends THREE.Material>(m: M): M {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float dither;\nvarying float vDither;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDither = dither;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying float vDither;
+float bayer4(vec2 p) {
+  ivec2 q = ivec2(mod(p, 4.0));
+  int i = q.x + q.y * 4;
+  float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[i] + 0.5) / 16.0;
+}`)
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vDither < 0.999 && bayer4(gl_FragCoord.xy) > vDither) discard;');
+  };
+  m.customProgramCacheKey = () => 'tree-dither';
+  return m;
 }
 
-/** Show only the trees whose index is in `visible`. */
+/** Which trees should be models now (with hysteresis), then redraw everything. */
+function refresh(s: TreeState): void {
+  const n = s.trees.length;
+  const want = new Uint8Array(n);
+  if (s.models) {
+    if (!s.lod && s.quality !== 'low') want.fill(1);
+    else if (s.lod && s.eye && LOD[s.quality].max > 0) {
+      // Big forests: the nearest trees roughly in view (or within 15 m all round, for looking
+      // about). Trees already models get a head start, so the edge of the set doesn't flicker.
+      const { radius, max } = LOD[s.quality];
+      const [ex, ey, ux, uy] = s.eye;
+      const cand: [number, number][] = [];
+      for (let i = 0; i < n; i++) {
+        const t = s.trees[i];
+        const dx = t.x - ex, dy = t.y - ey, d = Math.hypot(dx, dy);
+        const ahead = d > 0 ? (dx * ux + dy * uy) / d : 1;
+        const was = s.target[i] === 1;
+        const ok = was
+          ? d < Math.min(18, radius) || (d < radius * KEEP_RADIUS && ahead > 0.0)
+          : d < Math.min(15, radius) || (d < radius && ahead > 0.2);
+        if (ok) cand.push([d - (was ? KEEP_BONUS_M : 0), i]);
+      }
+      cand.sort((a, b) => a[0] - b[0]);
+      for (const [, i] of cand.slice(0, max)) want[i] = 1;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (!s.visible(i)) want[i] = 0;
+    if (want[i] !== s.target[i]) { s.target[i] = want[i]; s.active.add(i); }
+  }
+  writeBlobs(s, null);
+  writeModels(s);
+}
+
+/** Blob matrices and dither, for all trees (null) or just these. */
+function writeBlobs(s: TreeState, only: Iterable<number> | null): void {
+  const d = s.blobDither.array as Float32Array;
+  const set = (i: number) => {
+    const on = s.visible(i) && s.fade[i] < 1;
+    s.trunks.setMatrixAt(i, on ? s.trunkM[i] : ZERO);
+    s.crowns.setMatrixAt(i, on ? s.crownM[i] : ZERO);
+    d[i] = 1 - s.fade[i];
+  };
+  if (only) for (const i of only) set(i);
+  else for (let i = 0; i < s.trees.length; i++) set(i);
+  s.trunks.instanceMatrix.needsUpdate = true;
+  s.crowns.instanceMatrix.needsUpdate = true;
+  s.blobDither.needsUpdate = true;
+}
+
+/** Pack every tree that's at least partly a model into its kind's instanced meshes. */
+function writeModels(s: TreeState): void {
+  if (!s.models) return;
+  const fill = s.models.meshes.map(() => 0);
+  for (const i of s.active) {
+    if (s.fade[i] <= 0 || !s.visible(i)) continue;
+    const k = s.models.kindOf[i];
+    for (const im of s.models.meshes[k]) {
+      im.setMatrixAt(fill[k], s.models.matrices[i]);
+      (im.geometry.getAttribute('dither').array as Float32Array)[fill[k]] = s.fade[i];
+    }
+    fill[k]++;
+  }
+  s.models.meshes.forEach((parts, k) => {
+    for (const im of parts) {
+      im.count = fill[k];
+      im.instanceMatrix.needsUpdate = true;
+      (im.geometry.getAttribute('dither') as THREE.BufferAttribute).needsUpdate = true;
+    }
+  });
+}
+
+/** Advance the dissolves (call every frame, any view). */
+export function tickTrees(g: THREE.Group, now: number): void {
+  const s = g.userData as TreeState;
+  const dt = s.last ? Math.min(0.1, (now - s.last) / 1000) : 0;
+  s.last = now;
+  if (!s.models || s.active.size === 0 || dt === 0) return;
+  const step = dt / FADE_S;
+  const moved: number[] = [];
+  for (const i of s.active) {
+    const goal = s.target[i];
+    const f = s.fade[i];
+    if (f === goal) { if (goal === 0) s.active.delete(i); continue; }
+    s.fade[i] = goal ? Math.min(1, f + step) : Math.max(0, f - step);
+    moved.push(i);
+    if (s.fade[i] === 0 && goal === 0) s.active.delete(i);
+  }
+  if (moved.length === 0) return;
+  writeBlobs(s, moved);
+  writeModels(s);
+}
+
+/** Show only the trees whose index is in `visible` (hidden trees go at once, no fade). */
 export function setTreesVisible(g: THREE.Group, visible: (i: number) => boolean): void {
   const s = g.userData as TreeState;
   s.visible = visible;
@@ -194,17 +316,17 @@ export function setTreeQuality(g: THREE.Group, q: TreeQuality): void {
   const s = g.userData as TreeState;
   if (s.quality === q) return;
   s.quality = q;
-  s.eye = null; // re-place on the next frame
+  s.eye = null; // re-pick on the next frame
   refresh(s);
 }
 
-/** Big forests: move the model zone with the first-person eye (re-placed every 10 m or 20° turn). */
+/** Big forests: move the model zone with the first-person eye (re-picked every few meters or degrees). */
 export function updateTreeLod(g: THREE.Group, x: number, y: number, dx: number, dy: number): void {
   const s = g.userData as TreeState;
-  if (!s.lod || !s.models) return;
+  if (!s.lod || !s.models || s.locked) return;
   const L = Math.hypot(dx, dy) || 1;
   const ux = dx / L, uy = dy / L;
-  if (s.eye && Math.hypot(x - s.eye[0], y - s.eye[1]) < 10 && ux * s.eye[2] + uy * s.eye[3] > Math.cos(0.35)) return;
+  if (s.eye && Math.hypot(x - s.eye[0], y - s.eye[1]) < REPICK_M && ux * s.eye[2] + uy * s.eye[3] > Math.cos(REPICK_TURN)) return;
   s.eye = [x, y, ux, uy];
   refresh(s);
 }
@@ -221,7 +343,7 @@ function loadTreeModels(): Promise<ModelPart[][]> {
     gltf.scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
+      const mat = dithered((mesh.material as THREE.MeshStandardMaterial).clone());
       mat.metalness = 0;
       mat.roughness = 1;
       parts.push({ geo: mesh.geometry.clone().applyMatrix4(mesh.matrixWorld), mat });
@@ -236,4 +358,38 @@ export function discMesh(color: string): THREE.Mesh {
   const geo = new THREE.CylinderGeometry(DISC_RADIUS * 0.92, DISC_RADIUS, 0.022, 28);
   geo.rotateX(Math.PI / 2);
   return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color }));
+}
+
+/**
+ * Big forests, while following a throw: models for the trees nearest its flight path (x, y points),
+ * fixed until unlocked, so nothing pops in or out as the chase camera flies along. null unlocks
+ * (the eye zone takes over again, dissolving as usual).
+ */
+export function lockTreeLod(g: THREE.Group, path: Vec2[] | null): void {
+  const s = g.userData as TreeState;
+  if (!s.lod) return;
+  if (!path) {
+    if (!s.locked) return;
+    s.locked = false;
+    s.eye = null;
+    return;
+  }
+  s.locked = true;
+  const max = Math.round(LOD[s.quality].max * CORRIDOR_MULT);
+  const want = new Uint8Array(s.trees.length);
+  if (s.models && max > 0) {
+    const pts = path.filter((_, k) => k % 15 === 0 || k === path.length - 1);
+    const ranked: [number, number][] = [];
+    s.trees.forEach((t, i) => {
+      if (!s.visible(i)) return;
+      let d = Infinity;
+      for (const q of pts) d = Math.min(d, Math.hypot(t.x - q[0], t.y - q[1]));
+      ranked.push([d, i]);
+    });
+    ranked.sort((a, b) => a[0] - b[0]);
+    for (const [, i] of ranked.slice(0, max)) want[i] = 1;
+  }
+  for (let i = 0; i < want.length; i++) if (want[i] !== s.target[i]) { s.target[i] = want[i]; s.active.add(i); }
+  writeBlobs(s, null);
+  writeModels(s);
 }

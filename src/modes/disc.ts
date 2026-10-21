@@ -604,6 +604,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number, remote: boolean): void {
     hideWait();
     flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock, remote, sentEarly: false };
+    scene.lockTrees(e.result.samples.map((q): Vec2 => [q[0], q[1]])); // no tree LOD changes while following it
     liveAim = null;
     phase = 'flying';
     scene.setPreview(null, '#fff');
@@ -641,6 +642,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function finishThrow(): void {
     const { e, remote, sentEarly } = flight!;
+    scene.lockTrees(null);
     const r = e.result;
     const idx = e.player;
     scene.addTrail(r.samples, game().players[idx].color);

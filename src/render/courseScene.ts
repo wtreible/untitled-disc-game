@@ -9,7 +9,7 @@ import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
 import type { Vec3 } from '../game/terrain';
 import { classCanvas } from './classTexture';
-import { basketModel, discMesh, setTreeQuality, setTreesVisible, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
+import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
@@ -297,6 +297,11 @@ export class CourseScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1));
     this.resize();
     for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) setTreeQuality(g, q);
+  }
+
+  /** Big forests: lock the model trees to a throw's flight path while it's followed (null releases). */
+  lockTrees(path: Vec2[] | null): void {
+    for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) lockTreeLod(g, path);
   }
 
   /** World angle (CCW from +x) that points up the screen: the look direction in first person. */
@@ -641,11 +646,14 @@ export class CourseScene {
   }
 
   render(): void {
+    const groups = [this.trees3d, ...(this.extras.children as THREE.Group[])];
     if (this.fp) {
       // Big forests draw tree models only near the eye and in view.
       const p = this.persp.position, d = this.persp.getWorldDirection(new THREE.Vector3());
-      for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) updateTreeLod(g, p.x, p.y, d.x, d.y);
+      for (const g of groups) updateTreeLod(g, p.x, p.y, d.x, d.y);
     }
+    const now = performance.now();
+    for (const g of groups) tickTrees(g, now); // blob ↔ model dissolves, in any view
     const rot = Math.atan2(this.up[1], this.up[0]) - Math.PI / 2;
     const scalePixels = (ppm: number) => {
       const k = 1 / ppm;
