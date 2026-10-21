@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { PropDef, Tree } from '../course/disc-types';
+import { asset } from '../assets';
 
 export interface PropsView {
   group: THREE.Group;
@@ -15,7 +16,7 @@ export interface PropsView {
   treeObjects: Map<Tree, THREE.Object3D>;
 }
 
-export async function loadProps(defs: PropDef[], trees: Tree[], base = '/models/'): Promise<PropsView> {
+export async function loadProps(defs: PropDef[], trees: Tree[], base = asset('models/')): Promise<PropsView> {
   const gltf = new GLTFLoader();
   const fbx = new FBXLoader();
   const cache = new Map<string, Promise<Loaded>>();

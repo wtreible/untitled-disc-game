@@ -7,9 +7,10 @@ import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { HoleScene, VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
+import { asset } from '../assets';
 import { fmtLen } from '../units';
 
-const COURSE_URL = '/courses/tcc-main-17.json';
+const COURSE_URL = asset('courses/tcc-main-17.json');
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 /** Shot playback speed vs real time; real hang time feels slow when passing the device around. */
 const PLAYBACK = 1.5;

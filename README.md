@@ -25,6 +25,13 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
+## Deploy
+
+`npm run build` writes a static site to `dist/` (about 13 MB, mostly models; each course loads only its own). Asset URLs are relative, so `dist/` works from any folder: a GitHub Pages project page, a Netlify or Cloudflare Pages site, or any static file server.
+
+- **Satellite imagery is off in public builds.** Esri World Imagery is licensed under Esri's Master License Agreement, which generally needs an ArcGIS account for public apps. Tali Forest shows its drawn surface classes instead. Once that's sorted, build with `VITE_ESRI_IMAGERY=on npm run build`. Dev builds always use it.
+- **Animated characters are slimmed** to the clips the courses use (`npm run slim-models`, after building courses). To use another KayKit clip, re-copy the original GLB first.
+
 ## Controls: disc golf
 
 | Action | Input |

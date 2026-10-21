@@ -16,6 +16,7 @@ import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
+import { IMAGERY, asset } from '../assets';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen } from '../units';
@@ -23,11 +24,11 @@ import { prefs, replaysOn } from '../settings';
 import { banner, chip, clearBroadcast, scoreTone, type Tone } from '../ui/broadcast';
 
 export const DISC_COURSES = {
-  simple: '/courses/tali-simple.json',
-  forest: '/courses/tali.json',
-  silly: '/courses/silly.json',
-  fantasy: '/courses/fantasy.json',
-  rainbow: '/courses/rainbow.json',
+  simple: 'courses/tali-simple.json',
+  forest: 'courses/tali.json',
+  silly: 'courses/silly.json',
+  fantasy: 'courses/fantasy.json',
+  rainbow: 'courses/rainbow.json',
 } as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 /** Circle 2: inside this, switch to first-person putting. */
@@ -93,7 +94,7 @@ export interface DiscOptions {
 }
 
 export async function startDisc(opts: DiscOptions): Promise<void> {
-  const course: DiscCourseFile = await (await fetch(DISC_COURSES[opts.course])).json();
+  const course: DiscCourseFile = await (await fetch(asset(DISC_COURSES[opts.course]))).json();
   const trees = decodeTrees(course.trees);
   const frame = new LocalFrame(course.origin);
   const grid = SurfaceGrid.fromHole({
@@ -169,6 +170,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   $('view-toggle').hidden = vector; // one look in vector style
   if (vector) {
     $('attribution').textContent = course.source.attribution.join(' · ');
+  } else if (!IMAGERY) {
+    // Public build without imagery rights: the drawn surface classes instead of the photo.
+    $('attribution').textContent = course.source.attribution.join(' · ');
+    $('view-toggle').hidden = true;
+    scene.setView('classes');
   } else {
     $('attribution').textContent = [ESRI_ATTRIBUTION, ...course.source.attribution].join(' · ');
     $('status').textContent = 'Loading imagery…';

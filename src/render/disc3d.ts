@@ -4,6 +4,7 @@ import type { Tree } from '../course/disc-types';
 import { DISC_RADIUS } from '../disc/discs';
 import { BASKET } from '../disc/flight';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { asset } from '../assets';
 import { TREE_KIND_NAMES, treeKindInfo, treeShape } from '../disc/treeShapes';
 
 export function basketModel(): THREE.Group {
@@ -201,7 +202,7 @@ let modelsPromise: Promise<ModelPart[][]> | null = null;
 /** The tree models, once per page: each kind's meshes as (geometry, material) pairs. */
 function loadTreeModels(): Promise<ModelPart[][]> {
   modelsPromise ??= Promise.all(TREE_KIND_NAMES.map(async (name) => {
-    const gltf = await new GLTFLoader().loadAsync(`/models/qtrees/${name}.gltf`);
+    const gltf = await new GLTFLoader().loadAsync(asset(`models/qtrees/${name}.gltf`));
     const parts: ModelPart[] = [];
     gltf.scene.updateMatrixWorld(true);
     gltf.scene.traverse((o) => {

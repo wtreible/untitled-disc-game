@@ -3,6 +3,7 @@
 // choices filled in. (Golf still lives in src/modes/golf.ts but isn't on the menu: disc only for now.)
 import { PLAYER_COLORS } from './game/game';
 import { mountSettings } from './ui/settingsForm';
+import { IMAGERY } from './assets';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -32,8 +33,8 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#4f8f45"/><rect x="0" y="40" width="64" height="24" fill="#2fb24c"/><path d="M26 44 L29 22 L35 22 L38 44 Z" fill="#c9a27a"/><g transform="translate(32 24)" stroke="#8a4b2e" stroke-width="4" stroke-linecap="round"><path d="M-12 -12 L12 12 M12 -12 L-12 12"/></g><circle cx="32" cy="24" r="2.5" fill="#999"/><circle cx="50" cy="50" r="5" fill="#e2504f"/></svg>`,
   },
   {
-    id: 'forest', group: 'real', name: 'Tali Forest', meta: 'Satellite imagery · 10k real-canopy trees', holes: 18,
-    blurb: 'The same Tali holes over live satellite imagery, with ~10,000 trees placed from Helsinki’s 2024 canopy data. Tight and woody.',
+    id: 'forest', group: 'real', name: 'Tali Forest', meta: `${IMAGERY ? 'Satellite imagery · ' : ''}10k real-canopy trees`, holes: 18,
+    blurb: `The same Tali holes${IMAGERY ? ' over live satellite imagery' : ''}, with ~10,000 trees placed from Helsinki’s 2024 canopy data. Tight and woody.`,
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#24391f"/>${Array.from({ length: 18 }, (_, i) => `<circle cx="${(i * 37) % 64}" cy="${(i * 23) % 64}" r="${5 + (i % 3)}" fill="${i % 2 ? '#2f5a2a' : '#3b6e33'}"/>`).join('')}<path d="M10 60 L54 6" stroke="#8a9a6a" stroke-width="5" stroke-dasharray="1 0" opacity=".7"/></svg>`,
   },
   {

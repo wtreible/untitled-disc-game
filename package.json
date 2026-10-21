@@ -13,13 +13,16 @@
     "silly-course": "tsx scripts/build-silly-course.ts",
     "fantasy-course": "tsx scripts/build-fantasy-course.ts",
     "rainbow-course": "tsx scripts/build-rainbow-course.ts",
-    "tree-shapes": "tsx scripts/build-tree-shapes.ts"
+    "tree-shapes": "tsx scripts/build-tree-shapes.ts",
+    "slim-models": "tsx scripts/slim-models.ts"
   },
   "dependencies": {
     "osmtogeojson": "^3.0.0-beta.5",
     "three": "^0.186.1"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^26.6.5",
     "@types/three": "^0.186.0",
