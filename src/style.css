@@ -179,8 +179,22 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .hud-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 #turn { font: 700 19px var(--head); letter-spacing: 0.02em; min-width: 110px; }
-.club { display: flex; align-items: center; gap: 6px; }
-#club-name { min-width: 168px; text-align: center; font: 700 17px var(--head); letter-spacing: 0.02em; }
+.disc-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.disc-card {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 6px; text-align: left; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04); border: 2px solid transparent; color: var(--text); min-width: 0;
+}
+.disc-card:hover { background: rgba(255, 255, 255, 0.08); }
+.disc-card:focus:not(:focus-visible) { outline: none; }
+.disc-card.on { border-color: var(--accent); background: linear-gradient(90deg, rgba(184, 242, 92, 0.12), rgba(255, 255, 255, 0.04)); }
+.disc-card .chart { flex: none; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
+.disc-card .chart .axis { stroke: rgba(255, 255, 255, 0.12); stroke-dasharray: 2 2; }
+.disc-card .chart .start { fill: rgba(255, 255, 255, 0.6); }
+.disc-picker.forehand .flip { transform: scaleX(-1); transform-origin: 50% 50%; transform-box: view-box; }
+.disc-card .txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.disc-card .txt b { font: 700 15px var(--head); letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.disc-card .nums { margin-left: 0; }
+.disc-card .range { font: 600 11px var(--body); color: var(--muted); }
 .nums { color: var(--muted); font: 600 12px var(--body); margin-left: 4px; font-variant-numeric: tabular-nums; }
 #stats { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 #stats b { color: var(--text); }

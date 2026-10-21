@@ -72,6 +72,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D47 | Shippable static build: relative asset URLs (any folder), three.js in its own cached chunk, KayKit GLBs slimmed to their used clip (3.6 → 0.4 MB each). Esri imagery only in dev or with `VITE_ESRI_IMAGERY=on` (Esri MLA; public use generally needs an ArcGIS account). | 2026-10-20 |
 | D48 | Settings → Graphics (Low / Medium default / High: pixel density and how many trees draw as models) and a frame-rate readout. Physics doesn't depend on it. | 2026-10-20 |
 | D49 | Wind (supersedes D18 "no wind in v1"): a random wind per hole, up to 5 m/s, mostly calm or breezy. Aerodynamics use airspeed, so headwinds turn discs over and tailwinds make them drop. Shown in the hole banner with an arrow relative to the view. | 2026-10-20 |
+| D50 | Disc picker at the bottom of the HUD with a flight chart per disc (from the physics, full-power flat, calm), replacing the ‹ › disc arrows. | 2026-10-20 |
 
 ## Open questions
 

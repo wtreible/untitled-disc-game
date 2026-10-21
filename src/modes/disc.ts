@@ -16,6 +16,7 @@ import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
+import { mountDiscPicker } from '../ui/discPicker';
 import { IMAGERY, asset } from '../assets';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
@@ -643,7 +644,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function updateHud(): void {
     const p = player();
     $('turn').innerHTML = `<span style="color:${p.color}">●</span> ${esc(p.name)}`;
-    $('club-name').innerHTML = `${disc.name} <span class="nums">${disc.speed} | ${disc.glide} | ${disc.turn} | ${disc.fade}</span>`;
+    picker.update(disc, forehand);
     $('release').textContent = `${releaseLabel()} · ${forehand ? 'Forehand' : 'Backhand'}`;
     const me = game().current;
     $('rogue-bar').hidden = !rogue;
@@ -768,6 +769,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.setEye(player().ball, yaw, pitch);
   });
 
+  const picker = mountDiscPicker($('disc-picker'), (d) => {
+    if (phase !== 'aim') return;
+    disc = d;
+    recomputeTick();
+    updateHud();
+  });
+
   function cycleDisc(dir: 1 | -1): void {
     if (phase !== 'aim') return;
     disc = DISCS[(DISCS.indexOf(disc) + dir + DISCS.length) % DISCS.length];
@@ -823,8 +831,6 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const swingBtn = $('swing');
   swingBtn.addEventListener('pointerdown', (e) => { swingBtn.setPointerCapture(e.pointerId); startCharge(); });
   swingBtn.addEventListener('pointerup', release);
-  $('club-prev').addEventListener('click', () => cycleDisc(-1));
-  $('club-next').addEventListener('click', () => cycleDisc(1));
   $('view-toggle').addEventListener('click', cycleView);
   $('fp-toggle').addEventListener('click', toggleFP);
   $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; recomputeTick(); updateHud(); } });
