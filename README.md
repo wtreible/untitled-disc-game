@@ -1,90 +1,86 @@
 # Untitled Disc Game
 
-*(repo: sat-golf)*
+Disc golf in the browser, on real and not-so-real courses, for 1–4 players on one computer (hot seat).
 
-Browser golf on real courses: geometry from OpenStreetMap, drawn over live Esri satellite imagery, local hot-seat for 1–4 players.
+**Play:** https://wtreible.github.io/untitled-disc-game/
 
-- **Disc golf: Tali Recreation, default.** The real Tali (Helsinki) layout and its real trees (HSY canopy) drawn as a clean vector course, with the woods cut back a few meters from every fairway, green and tee: the easy version. Starts in first person; the top-down map (C) shows the same trees.
-- **Crazy mode** (a switch on the main menu, any course): draft augments after every hole: earn your ghost line, hex your friends' course. See [docs/11-roguelike.md](docs/11-roguelike.md).
-- **Disc golf: Mini Golf Madness.** A 9-hole full-size course themed like mini golf: thread a giant windmill's tunnel past spinning blades, throw through a castle gate, dodge giant animals, mushrooms and golf balls. See [docs/12-mini-golf-madness.md](docs/12-mini-golf-madness.md).
-- **Disc golf: Fantasy Fairways.** Medieval: a giant knight on The Joust, a basket inside a castle courtyard, and a dragon over the last basket.
-- **Disc golf: Rainbow Runs.** A rainbow road in space where off the road is OB: mystery boxes, rings, asteroids, a gap to jump. See [docs/13-fantasy-and-rainbow.md](docs/13-fantasy-and-rainbow.md).
-- **Disc golf: Tali Forest.** The real version: the same holes and ~10.5k trees with nothing cut back, over satellite imagery (dev builds) or its drawn ground.
-- Both: trunk/branch/chain collisions, full rounds with scorecard. See [docs/10-disc-golf.md](docs/10-disc-golf.md).
-- Golf (The Country Club #17) is still in the code (`src/modes/golf.ts`) but off the menu: disc only for now.
+Real flight numbers (speed, glide, turn, fade) drive a physics flight model: discs turn and fade, stall when thrown nose-up, and catch the wind. You throw in first person or from a top-down map, then watch a chase-cam replay. Trees, chains, walls, windmills and dragons all collide.
 
-Design docs and the decision log are in [`docs/`](docs/README.md).
+## Courses
 
-## Run
+| Course | Holes | What it is |
+|---|---|---|
+| **Tali Recreation** | 18 | The real [Tali disc golf park](https://www.openstreetmap.org/way/40254405) (Helsinki) from OpenStreetMap, with its real trees from Helsinki's canopy data, cut back a few meters from every fairway, green and tee. The easy version. |
+| **Tali Forest** | 18 | The real thing: the same holes and all ~10,500 trees. |
+| **Mini Golf Madness** | 9 | Full-size disc golf themed like mini golf: a windmill with spinning blades, a castle gate, giant animals. |
+| **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
+| **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
 
-Node was installed user-locally at `~/.local/node` (no sudo). Put it on your PATH:
+**Crazy mode** (a switch on the main menu, any course): draft an augment after every hole. Earn your ghost line, or hex your friends' course.
+
+## How to play
+
+| | |
+|---|---|
+| Aim | First person: drag or arrow keys (↑/↓ launch angle), W/S target distance, scroll to zoom, click the minimap. Top-down: click or drag on the map. |
+| Disc | Click a card in the disc picker (its chart shows how that disc flies), or `[` / `]` |
+| Release angle | Q (hyzer, curves left) / E (anhyzer, curves right) |
+| Forehand / backhand | T |
+| Throw | Hold Space, let go at the power you want. The white tick on the meter reaches your target; the dashed line is the flight if you throw it perfectly. |
+| View | C: first person / top-down. In top-down: right-drag to pan, scroll to zoom, F to re-frame. |
+| Replay | Drag to orbit, scroll to zoom, R resets, Space skips |
+| Menu | Esc or ⏸: settings (units, replays, field of view, graphics quality, frame rate), scorecard, quit |
+
+The wind for each hole is in the top-left banner; its arrow turns with your view. A headwind turns discs over, a tailwind makes them drop, a crosswind pushes them sideways.
+
+## Run it locally
+
+Needs [Node.js](https://nodejs.org) 20 or newer.
 
 ```sh
-export PATH="$HOME/.local/node/bin:$PATH"   # add to ~/.bashrc to keep it
 npm install
 npm run dev        # http://localhost:5173
+npm test           # unit tests
+npm run build      # static site in dist/
 ```
 
-## Deploy
+Dev builds stream Esri satellite imagery under Tali Forest; public builds don't (see below).
 
-`npm run build` writes a static site to `dist/` (about 13 MB, mostly models; each course loads only its own). Asset URLs are relative, so `dist/` works from any folder: a GitHub Pages project page, a Netlify or Cloudflare Pages site, or any static file server.
+## Deploying (GitHub Pages)
 
-- **Satellite imagery is off in public builds.** Esri World Imagery is licensed under Esri's Master License Agreement, which generally needs an ArcGIS account for public apps. Tali Forest shows its drawn surface classes instead. Once that's sorted, build with `VITE_ESRI_IMAGERY=on npm run build`. Dev builds always use it.
-- **Animated characters are slimmed** to the clips the courses use (`npm run slim-models`, after building courses). To use another KayKit clip, re-copy the original GLB first.
+Every push to `main` builds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). One-time setup: in the repo on GitHub, **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
-## Controls: disc golf
+The build is a static site with relative asset URLs, so `dist/` also works on Netlify, Cloudflare Pages, or any file server, from any folder.
 
-| Action | Input |
-|---|---|
-| Aim (top-down) | Click / drag on the map; ←/→ to nudge (Shift for fine) |
-| Aim (first person) | Drag, or arrows; ↑/↓ sets launch angle; W/S target distance (Shift: 5 m); click the minimap to aim there; scroll to zoom (out to 105°) |
-| Disc | `[` / `]` or the ‹ › buttons (distance driver, fairway, midrange, putter) |
-| Release angle | Q (more hyzer, curves left) / E (more anhyzer, curves right), or click the release button |
-| Forehand / backhand | T (mirrors the curve) |
-| Throw | Hold Space, release at the power you want. The white tick reaches your target (putts: crosses the basket at chain height). The dashed ghost line is the error-free flight |
-| First person / top-down | C. Starts in first person; inside 20 m it's always first person unless you press C |
-| Pan / zoom / view / re-frame | Right-drag / scroll / V / F |
-| Roguelike | M: mulligan (if owned, right after a throw lands); P: arm Perfect Form; before a hole, click the map to place hexes / clear-cuts |
-| Replay | After each throw: drag to orbit around the disc, scroll to zoom, R resets the view, Space skips |
-| Settings | ⚙ button or Esc: metric / imperial units, replays on/off, quit to menu |
+- **Satellite imagery is off in public builds.** Esri World Imagery is licensed under Esri's Master License Agreement, which generally needs an ArcGIS account for public apps, so Tali Forest shows its drawn ground instead. If you have that sorted, build with `VITE_ESRI_IMAGERY=on`.
 
-## Controls: golf
-
-| Action | Input |
-|---|---|
-| Aim | Click / drag on the map; ←/→ to nudge (Shift for fine) |
-| Club | `[` / `]` or ↓/↑, or the ‹ › buttons |
-| Swing | Hold Space (or the Swing button), release at the power you want. The white tick marks the power that reaches your aim point |
-| Pan / zoom | Right- or middle-drag / scroll |
-| View | V cycles photo → photo + classes → classes |
-| Re-frame | F |
-
-## Scripts
+## Development
 
 | Command | What it does |
 |---|---|
-| `npm run disc-course -- --style simple --out tali-simple` | Rebuild Tali Recreation (uses the HSY canopy, like the forest) |
-| `npm run disc-course` | Rebuild `public/courses/tali.json` from OSM + HSY canopy (cached in `data/raw/`; HSY files are git-ignored and re-downloaded when missing). `-- --course <way id> --out <name>` for another course; `-- --no-hsy` outside Helsinki (no trees) |
-| `npm run silly-course` | Rebuild `public/courses/silly.json` (Mini Golf Madness) |
-| `npm run fantasy-course` | Rebuild `public/courses/fantasy.json` (Fantasy Fairways) |
-| `npm run rainbow-course` | Rebuild `public/courses/rainbow.json` (Rainbow Runs) |
-| `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes into `src/disc/treeShapes.data.ts` |
-| `npm run course` | Rebuild `public/courses/tcc-main-17.json` from cached OSM data (`data/raw/`). Add `-- --refresh` to re-query Overpass. Other holes: `-- --course <way id> --hole <ref> --links <name> --out <file>` |
-| `npm test` | Unit tests (geo, surfaces, shot physics, rules, the built course file) |
+| `npm run disc-course` | Rebuild Tali Forest (`public/courses/tali.json`) from OpenStreetMap + HSY canopy. Downloads are cached in `data/raw/`. `-- --course <way id> --out <name>` for another course. |
+| `npm run disc-course -- --style simple --out tali-simple` | Rebuild Tali Recreation |
+| `npm run silly-course` / `fantasy-course` / `rainbow-course` | Rebuild the themed courses |
+| `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |
+| `npm run slim-models` | Strip animations the courses don't use from the character models |
 | `npm run typecheck` | TypeScript |
-| `npm run build` | Typecheck + production build to `dist/` |
-
-## Layout
 
 ```
-scripts/build-course.ts       golf pipeline: Overpass → course.json
-scripts/build-disc-course.ts  disc pipeline: Overpass + HSY canopy → tali.json
-src/course/                   shared (offline + runtime): local frame, OSM → course models, tree planting
-src/game/                     surface grid, terrain interface, clubs, golf physics, turn/score rules, rounds
-src/disc/                     discs, flight model + collisions, tree spatial index
-src/render/                   Esri tiles, class texture, golf HoleScene, disc CourseScene (top-down + first person), 3D models
-src/modes/                    golf.ts / disc.ts controllers (input, HUD, loop)
-src/main.ts                   setup screen → mode
+scripts/        course builders (OpenStreetMap + canopy → course JSON, themed courses), model tools
+src/course/     course model, OSM → course, tree planting
+src/disc/       discs, flight model and collisions, trees, augments
+src/render/     three.js scenes, props, trees, imagery
+src/modes/      game controllers (disc.ts; golf.ts is an older mode, off the menu)
+src/ui/         menu, settings, disc picker, broadcast graphics
+public/         built courses and 3D models
+docs/           design notes and the decision log
 ```
 
-Attribution: imagery © Esri and its partners (streamed live, not stored); course data © OpenStreetMap contributors (ODbL); tree canopy © HSY land cover 2024; 3D models (all CC0) by Kenney (kenney.nl), Kay Lousberg (KayKit Adventurers) and Quaternius (Animated Monsters, Stylized Nature MegaKit trees).
+Design notes and every decision so far: [`docs/`](docs/README.md).
+
+## Credits
+
+- Course data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL)
+- Tree canopy: [HSY land cover 2024](https://www.hsy.fi/en/environmental-information/open-data/) (Helsingin seudun ympäristöpalvelut, CC BY 4.0)
+- Satellite imagery (dev builds): © Esri and its partners, streamed, not stored
+- 3D models, all [CC0](https://creativecommons.org/publicdomain/zero/1.0/): [Kenney](https://kenney.nl) (Minigolf, Cube Pets, Nature, Castle, Fantasy Town and Space kits), [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) by Kay Lousberg, and [Quaternius](https://quaternius.com) (Animated Monsters, Stylized Nature MegaKit). Each pack's license is next to its models in `public/models/`.
