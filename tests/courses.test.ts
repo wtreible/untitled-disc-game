@@ -158,3 +158,11 @@ describe('Fantasy Fairways', () => {
     expect(near('dragon', 8)).toBe(true);
   });
 });
+
+describe('menu course summary', () => {
+  it('public/courses/summary.json matches the course files (rerun npm run course-summary after rebuilding one)', async () => {
+    const { COURSE_FILES, summarize } = await import('../scripts/course-summary');
+    const summary = JSON.parse(readFileSync('public/courses/summary.json', 'utf8'));
+    for (const [id, f] of Object.entries(COURSE_FILES)) expect(summary[id], id).toEqual(summarize(load(f)));
+  });
+});

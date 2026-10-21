@@ -3,7 +3,8 @@
 // choices filled in. (Golf still lives in src/modes/golf.ts but isn't on the menu: disc only for now.)
 import { PLAYER_COLORS } from './game/game';
 import { mountSettings } from './ui/settingsForm';
-import { IMAGERY } from './assets';
+import { IMAGERY, asset } from './assets';
+import { fmtLen } from './units';
 import { ROOMS_URL, RoomClient, newRoomCode, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
@@ -75,7 +76,33 @@ function renderCourses(): void {
     pushLobby();
   }));
   $('setup-hole').textContent = COURSES.find((c) => c.id === course)!.blurb;
+  renderCourseInfo();
 }
+
+// ---------- course info card: name, description, par and stats for the holes being played ----------
+let summary: Record<string, { pars: number[]; lengths: number[] }> | null = null;
+fetch(asset('courses/summary.json')).then((r) => r.json()).then((s) => { summary = s; renderCourseInfo(); }).catch(() => { /* stats are optional */ });
+
+function renderCourseInfo(): void {
+  const c = COURSES.find((x) => x.id === course)!;
+  $('ci-name').textContent = c.name;
+  $('ci-meta').textContent = c.meta;
+  const s = summary?.[course];
+  if (!s) { $('ci-stats').innerHTML = ''; return; }
+  const [first, count] = holesFromMenu();
+  const idx = Array.from({ length: count }, (_, k) => first + k).filter((i) => i < s.pars.length);
+  const par = idx.reduce((a, i) => a + s.pars[i], 0);
+  const len = idx.reduce((a, i) => a + s.lengths[i], 0);
+  const stat = (v: string, label: string, note = '') => `<div class="ci-stat"><b>${v}</b><small>${label}</small>${note ? `<em>${note}</em>` : ''}</div>`;
+  const which = count === s.pars.length ? `${count} holes` : count === 1 ? `Hole ${first + 1}` : `Holes ${first + 1}–${first + count}`;
+  const stats = [stat(String(par), 'Par', which), stat(fmtLen(len), count === 1 ? 'Length' : 'Total length')];
+  if (count > 1) {
+    const longest = idx.reduce((a, i) => (s.lengths[i] > s.lengths[a] ? i : a), idx[0]);
+    stats.push(stat(fmtLen(s.lengths[longest]), 'Longest hole', `Hole ${longest + 1} · par ${s.pars[longest]}`));
+  }
+  $('ci-stats').innerHTML = stats.join('');
+}
+window.addEventListener('unitschange', renderCourseInfo);
 
 // ---------- holes ----------
 function renderHoles(): void {
@@ -89,6 +116,7 @@ function renderHoles(): void {
   const prev = sel.value || last.holes;
   sel.innerHTML = opts.map((o) => `<option value="${o.v}">${o.label}</option>`).join('');
   if (prev && opts.some((o) => o.v === prev)) sel.value = prev;
+  renderCourseInfo();
 }
 
 // ---------- players ----------
@@ -157,8 +185,8 @@ $('browse-augments').addEventListener('click', () => openAugmentBrowser());
 $('aug-close').addEventListener('click', closeAugmentBrowser);
 $('aug-browser').addEventListener('click', (e) => { if (e.target === $('aug-browser')) closeAugmentBrowser(); });
 renderRules();
-crazy.addEventListener('change', () => { syncCrazy(); pushLobby(); });
-$('holes').addEventListener('change', () => pushLobby());
+crazy.addEventListener('change', () => { syncCrazy(); pushLobby(); renderCourseInfo(); });
+$('holes').addEventListener('change', () => { pushLobby(); renderCourseInfo(); });
 
 renderCourses();
 renderHoles();
@@ -199,6 +227,7 @@ function leaveRoomLink(): void {
 function holesFromMenu(): [number, number] {
   const n = COURSES.find((c) => c.id === course)!.holes;
   const [first, count] = crazy.checked ? [0, n] : $<HTMLSelectElement>('holes').value.split(':').map((x) => parseInt(x, 10));
+  if (!Number.isFinite(first) || !Number.isFinite(count)) return [0, n]; // holes list not filled yet
   return [first, Math.min(count, n - first)];
 }
 

@@ -15,6 +15,7 @@
     "rainbow-course": "tsx scripts/build-rainbow-course.ts",
     "tree-shapes": "tsx scripts/build-tree-shapes.ts",
     "slim-models": "tsx scripts/slim-models.ts",
+    "course-summary": "tsx scripts/course-summary.ts",
     "server:dev": "wrangler dev --config server/wrangler.toml",
     "server:deploy": "wrangler deploy --config server/wrangler.toml",
     "server:typecheck": "tsc --noEmit -p server"
