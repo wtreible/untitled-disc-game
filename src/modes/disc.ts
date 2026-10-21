@@ -7,7 +7,10 @@ import { BASKET, simulateThrow, type DiscWorld, type ThrowEvent, type ThrowInput
 import { TreeIndex } from '../disc/trees';
 import { effectiveMods } from '../disc/mods';
 import { PLACE_TEXT, place, pondsFor, teeFor, treesFor } from '../rogue/course';
-import { byId, drawOffer, rollTier, STARTER_WEIGHTS, type Tier } from '../rogue/powerups';
+import { byId, drawOffer, rollTier, type Tier } from '../rogue/powerups';
+import { cleanRules, tierWeights, type CrazyRules } from '../rogue/rules';
+import { chipFor, openAugmentBrowser, renderSidePanel, stacked } from '../ui/augments';
+import { CATEGORIES } from '../rogue/powerups';
 import { PLAYER_COLORS } from '../game/game';
 import { DiscRound, type RoundEvent, type WireResult } from './discRound';
 import type { RoomClient } from '../net/room';
@@ -95,6 +98,8 @@ export interface DiscOptions {
   rogue?: boolean;
   /** Online: the room, which players this browser controls, and the log so far. */
   net?: NetPlay;
+  /** Crazy mode setup (the host's is the one used). */
+  rules?: CrazyRules;
 }
 
 /** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
@@ -370,6 +375,26 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('wait-bar').hidden = true;
   }
 
+  // ---------- Crazy mode side panel: the current player's augments ----------
+  let augKey = '';
+  function updateAugPanel(): void {
+    const el = $('aug-panel');
+    const show = rogue && !$('hud').hidden && $('results').hidden && $('draft').hidden;
+    if (!show) { el.hidden = true; return; }
+    const i = game().current;
+    const hexes = owned.flatMap((ids, k) => (k === i ? [] : ids.filter((id) => byId(id)?.kind === 'hex').map((id) => ({ id, by: opts.names[k] }))));
+    const key = JSON.stringify([i, owned[i], hexes]);
+    if (key !== augKey || el.hidden) {
+      augKey = key;
+      renderSidePanel(el, { name: opts.names[i], color: PLAYER_COLORS[i] }, owned[i], hexes);
+    }
+  }
+  $('pause-augments').hidden = !rogue;
+  $('pause-augments').addEventListener('click', () => {
+    $('settings').hidden = true;
+    openAugmentBrowser(opts.names.map((name, i) => ({ name, owned: owned[i] })));
+  });
+
   // ---------- live aim (online): what the thrower is doing, before they throw ----------
   let lastLive = '';
   let lastLiveAt = 0;
@@ -412,6 +437,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (st.stage !== 'placing') { $('place-bar').hidden = true; scene.setPlacementPreview(null); }
     if (st.stage !== 'drafting') $('draft').hidden = true;
     switch (st.stage) {
+      case 'need-rules':
+        if (isHost) dispatch({ t: 'rules', rules: cleanRules(opts.rules) });
+        else { $('hud').hidden = true; showWait('Waiting for the host…'); }
+        break;
       case 'drafting': draftStep(); break;
       case 'need-hole':
         if (isHost) startHole();
@@ -750,6 +779,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         return `<td>${v === undefined ? '' : mark(v, course.holes[i].par)}</td>`;
       }).join('')}<td class="tot">${round.total(p) || ''}</td><td class="pm topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</td></tr>`;
     });
+    // Crazy mode: everyone's augments under the card (hover a chip for what it does).
+    $('results-augs').hidden = !rogue;
+    if (rogue) {
+      $('results-augs').innerHTML = order.map((p) => `<div class="who"><b><i style="background:${PLAYER_COLORS[p]}"></i>${esc(opts.names[p])}</b>${
+        owned[p].length ? stacked(owned[p]).map(([q, n]) => chipFor(q, n)).join('') : '<span class="none">no augments yet</span>'}</div>`).join('');
+    }
     $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
     $('results-table').innerHTML = head + '<tbody>' + par + rows.join('') + '</tbody>';
     // Online, only the host moves everyone on to the next hole.
@@ -784,9 +819,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     renderDraft(pi);
   }
 
-  /** The cards are drawn here and travel in the 'offer' event. */
+  /**
+   * The cards are drawn here and travel in the 'offer' event. The tier is the group's: the first
+   * offer of a draft rolls it (from the rules' odds), everyone after gets the same.
+   */
   function deal(pi: number, tier?: Tier): void {
-    const o = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, tier ?? rollTier(Math.random, st.starter ? STARTER_WEIGHTS : undefined), opts.names.length);
+    const t = tier ?? st.draftTier ?? rollTier(Math.random, tierWeights(st.rules, st.starter));
+    const o = drawOffer(Math.random, owned[pi], st.rules.cards + mods[pi].extraCard, t, opts.names.length);
     dispatchQuiet({ t: 'offer', player: pi, tier: o.tier, cards: o.cards.map((c) => c.id), bumped: o.bumped, starter: st.starter });
   }
 
@@ -797,6 +836,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('draft-tier').className = `tier ${offer.tier}`;
     $('draft-cards').innerHTML = offer.cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
         <span class="ptier">${c.tier}${offer.bumped === i ? ' ★ bumped' : ''}</span>
+        <span class="pcat">${esc(CATEGORIES.find((k) => k.id === c.category)?.label ?? '')}</span>
         <b>${esc(c.name)}</b><span>${esc(convertText(c.text))}</span></button>`).join('');
     $('draft-reroll').hidden = mods[pi].rerolls <= 0;
     $('draft-reroll').textContent = `Reroll (${mods[pi].rerolls})`;
@@ -837,7 +877,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const me = game().current;
     $('rogue-bar').hidden = !rogue;
     if (rogue) {
-      const bits = [`⚡ ${owned[me].length} powerup${owned[me].length === 1 ? '' : 's'}`];
+      const bits = [`⚡ ${owned[me].length} augment${owned[me].length === 1 ? '' : 's'}`];
       if (mods[me].mulligans) bits.push(`Mulligans ${mulligansLeft[me]} (M)`);
       if (mods[me].perfectForm) bits.push(perfectArmed ? '<b>Perfect Form ARMED</b>' : `Perfect Form ${perfectLeft[me]} (P)`);
       $('rogue-bar').innerHTML = bits.join(' · ');
@@ -1039,6 +1079,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     lastFrame = now;
     fpsFrames++;
     updateWindArrow();
+    updateAugPanel();
     if (now - fpsSince >= 500) {
       if (!$('fps').hidden) $('fps').textContent = `${Math.round((fpsFrames * 1000) / (now - fpsSince))} fps`;
       fpsFrames = 0;

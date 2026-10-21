@@ -6,6 +6,8 @@ import { mountSettings } from './ui/settingsForm';
 import { IMAGERY } from './assets';
 import { ROOMS_URL, RoomClient, newRoomCode, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
+import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
+import { closeAugmentBrowser, openAugmentBrowser } from './ui/augments';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -112,7 +114,49 @@ function renderPlayers(): void {
 // ---------- crazy mode ----------
 const crazy = $<HTMLInputElement>('crazy');
 crazy.checked = !!last.crazy;
-const syncCrazy = () => { $('holes-row').hidden = crazy.checked; }; // crazy runs play the full course
+const syncCrazy = () => { $('holes-row').hidden = crazy.checked; $('crazy-rules').hidden = !crazy.checked; }; // crazy runs play the full course
+
+// ---------- Crazy mode rules ----------
+let rules: CrazyRules = cleanRules(load<Partial<CrazyRules> | null>('sat-golf:crazy-rules', null));
+const ODDS_PRESETS: [string, CrazyRules['odds']][] = [
+  ['Classic', { common: 70, epic: 25, legendary: 5 }],
+  ['Spicy', { common: 40, epic: 40, legendary: 20 }],
+  ['Wild', { common: 10, epic: 40, legendary: 50 }],
+  ['All legendary', { common: 0, epic: 0, legendary: 1 }],
+];
+function setRules(r: Partial<CrazyRules>): void {
+  rules = cleanRules({ ...rules, ...r, odds: { ...rules.odds, ...r.odds } });
+  save('sat-golf:crazy-rules', rules);
+  renderRules();
+}
+function renderRules(): void {
+  const seg = (id: string, opts: [number, string][], cur: number, set: (v: number) => void) => {
+    $(id).innerHTML = opts.map(([v, label]) => `<button data-v="${v}" class="${v === cur ? 'on' : ''}">${label}</button>`).join('');
+    $(id).querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => set(parseInt(b.dataset.v!, 10))));
+  };
+  const range = ([lo, hi]: readonly [number, number]) => Array.from({ length: hi - lo + 1 }, (_, i): [number, string] => [lo + i, String(lo + i)]);
+  seg('rule-cards', range(RULE_LIMITS.cards), rules.cards, (v) => setRules({ cards: v }));
+  seg('rule-picks', range(RULE_LIMITS.picks), rules.picks, (v) => setRules({ picks: v }));
+  seg('rule-every', [[1, 'Every hole'], [2, 'Every 2nd'], [3, 'Every 3rd']], rules.every, (v) => setRules({ every: v }));
+  $<HTMLInputElement>('rule-starter').checked = rules.starter;
+  for (const t of ['common', 'epic', 'legendary'] as const) {
+    const el = $<HTMLInputElement>(`odd-${t}`);
+    if (document.activeElement !== el) el.value = String(rules.odds[t]);
+  }
+  const w = tierWeights(rules, false);
+  $('odds-bar').innerHTML = (['common', 'epic', 'legendary'] as const).filter((t) => w[t] > 0)
+    .map((t) => `<span class="${t}" style="flex:${w[t]}" title="${t}: ${Math.round(w[t] * 100)}%">${w[t] >= 0.08 ? `${Math.round(w[t] * 100)}%` : ''}</span>`).join('');
+  $('odds-presets').innerHTML = ODDS_PRESETS.map(([n, o], i) => `<button data-i="${i}" class="${JSON.stringify(o) === JSON.stringify(rules.odds) ? 'on' : ''}">${n}</button>`).join('');
+  $('odds-presets').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => setRules({ odds: ODDS_PRESETS[parseInt(b.dataset.i!, 10)][1] })));
+}
+$('rule-starter').addEventListener('change', () => setRules({ starter: $<HTMLInputElement>('rule-starter').checked, starterBoost: $<HTMLInputElement>('rule-starter').checked }));
+for (const t of ['common', 'epic', 'legendary'] as const) {
+  $(`odd-${t}`).addEventListener('change', () => setRules({ odds: { ...rules.odds, [t]: Math.max(0, parseFloat($<HTMLInputElement>(`odd-${t}`).value) || 0) } }));
+}
+$('browse-augments').addEventListener('click', () => openAugmentBrowser());
+$('aug-close').addEventListener('click', closeAugmentBrowser);
+$('aug-browser').addEventListener('click', (e) => { if (e.target === $('aug-browser')) closeAugmentBrowser(); });
+renderRules();
 crazy.addEventListener('change', () => { syncCrazy(); pushLobby(); });
 $('holes').addEventListener('change', () => pushLobby());
 
@@ -130,6 +174,7 @@ $('settings-close').addEventListener('click', () => openPause(false));
 $('settings-menu').addEventListener('click', () => { leaveRoomLink(); location.reload(); });
 $('pause-card').addEventListener('click', () => { openPause(false); window.dispatchEvent(new Event('show-scorecard')); });
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('aug-browser').hidden === false) { closeAugmentBrowser(); return; }
   if (e.key === 'Escape' && $('setup').hidden === true) openPause($('settings').hidden === true);
 });
 
@@ -276,6 +321,7 @@ async function launch(l: Lobby): Promise<void> {
   await startDisc({
     names: l.seats.map((q) => q.name), course: id, first: l.first, count: l.count, rogue: l.crazy,
     net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog },
+    rules, // only the host's are used: they send them as the round's first event
   });
 }
 
@@ -299,5 +345,5 @@ $('start').addEventListener('click', async () => {
   const [first, count] = crazy.checked ? [0, n] : holesV.split(':').map((x) => parseInt(x, 10));
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === course)!.name}${crazy.checked ? ' · Crazy mode' : ''}`;
   const { startDisc } = await import('./modes/disc');
-  await startDisc({ names, course, first, count: Math.min(count, n - first), rogue: crazy.checked });
+  await startDisc({ names, course, first, count: Math.min(count, n - first), rogue: crazy.checked, rules });
 });

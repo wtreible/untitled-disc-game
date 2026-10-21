@@ -13,6 +13,7 @@ import { Round } from '../game/round';
 import type { Vec3 } from '../game/terrain';
 import { emptyChanges, pinFor, placementQueue, teeFor, type HoleChanges, type PlaceKind } from '../rogue/course';
 import { byId, type Tier } from '../rogue/powerups';
+import { cleanRules, DEFAULT_RULES, draftAfter, draftQueue, type CrazyRules } from '../rogue/rules';
 
 /** A tree: a course tree by index, or a tree placed this hole (Sapling, Thicket) by index. */
 export type TreeRef = number | { placed: number };
@@ -50,10 +51,14 @@ export type RoundEvent =
   /** Skip the next placement step. */
   | { t: 'place-skip'; player: number }
   /** The host closes the hole's scorecard: Crazy mode drafts follow, then the next hole. */
-  | { t: 'next' };
+  | { t: 'next' }
+  /** Crazy mode setup (the host's), the round's first event. */
+  | { t: 'rules'; rules: CrazyRules };
 
 /** What the round is waiting for (src/modes/disc.ts acts on it, or waits for whoever's turn it is). */
 export type Stage =
+  /** Crazy mode: the host's rules haven't arrived yet. */
+  | 'need-rules'
   /** A Crazy mode draft: drafting[0] picks an augment. */
   | 'drafting'
   /** The next hole to start (the host starts it). */
@@ -95,6 +100,14 @@ export class DiscRound {
   /** Crazy mode: players still to draft this round of drafts, in order; `starter` before hole 1. */
   drafting: number[] = [];
   starter = false;
+  /** Crazy mode setup (DEFAULT_RULES until the host's 'rules' event). */
+  rules: CrazyRules = DEFAULT_RULES;
+  /**
+   * The tier of the current draft, shared by the whole group: set by its first offer, so everyone
+   * drafting after gets the same tier.
+   */
+  draftTier: Tier | null = null;
+  private rulesSet = false;
   /** The host has closed this hole's scorecard. */
   private cardClosed = false;
   /** Every event applied so far, in order. */
@@ -122,11 +135,10 @@ export class DiscRound {
       return { tees: opts.names.map((_, i) => teeFor(h, this.mods, i, blocked)), pins: opts.names.map((_, i) => pinFor(h, this.mods[i])) };
     };
     this.round.restartHole();
-    // Crazy mode starts with everyone picking a starter augment.
-    if (opts.rogue) { this.drafting = opts.names.map((_, i) => i); this.starter = true; }
   }
 
   get stage(): Stage {
+    if (this.opts.rogue && !this.rulesSet) return 'need-rules';
     if (this.drafting.length) return 'drafting';
     if (!this.started) return 'need-hole';
     if (this.game.finished) return this.cardClosed && !this.round.isLastHole ? 'need-hole' : 'card';
@@ -172,11 +184,26 @@ export class DiscRound {
       case 'next': {
         if (!this.game.finished || this.cardClosed) return;
         this.cardClosed = true;
-        // Crazy mode: draft in order of this hole's score (best first) before the next hole.
-        if (this.opts.rogue && !this.round.isLastHole) {
+        // Crazy mode: draft in order of this hole's score (best first) before the next hole, on
+        // the holes the rules say.
+        const holesDone = this.round.index - this.round.first + 1;
+        if (this.opts.rogue && !this.round.isLastHole && draftAfter(this.rules, holesDone)) {
           const g = this.game;
-          this.drafting = g.players.map((_, i) => i).sort((a, b) => g.players[a].strokes - g.players[b].strokes);
+          this.drafting = draftQueue(g.players.map((_, i) => i).sort((a, b) => g.players[a].strokes - g.players[b].strokes), this.rules.picks);
           this.starter = false;
+          this.draftTier = null;
+        }
+        return;
+      }
+      case 'rules': {
+        if (this.rulesSet) return;
+        this.rulesSet = true;
+        this.rules = cleanRules(e.rules);
+        // Starter draft: everyone picks before hole 1.
+        if (this.opts.rogue && this.rules.starter) {
+          this.drafting = draftQueue(this.opts.names.map((_, i) => i), this.rules.picks);
+          this.starter = true;
+          this.draftTier = null;
         }
         return;
       }
@@ -215,6 +242,7 @@ export class DiscRound {
       }
       case 'offer':
         this.offer = e;
+        this.draftTier ??= e.tier; // the first offer of a draft sets everyone's tier
         return;
       case 'reroll':
         this.mods[e.player].rerolls--;

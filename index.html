@@ -35,6 +35,7 @@
 
     <div id="place-bar" class="hud" hidden><span id="place-text"></span> <button id="place-skip">Skip</button></div>
     <div id="wait-bar" hidden></div>
+    <aside id="aug-panel" class="aug-panel" hidden></aside>
     <div id="replay-bar" hidden><span class="rec"></span>REPLAY <span class="dim">drag orbit · scroll zoom · <kbd>R</kbd> reset · <kbd>Space</kbd> skip</span></div>
     <div id="reticle" hidden></div>
     <div id="minimap" hidden title="Click to aim here"></div>
@@ -58,6 +59,7 @@
           <nav class="pause-actions">
             <button id="settings-close" class="primary big">Resume</button>
             <button id="pause-card" class="big">Scorecard</button>
+            <button id="pause-augments" class="big" hidden>Augments</button>
             <button id="settings-menu" class="big danger-outline">Quit to main menu</button>
           </nav>
           <section class="settings-pane"><h3>Settings</h3><div id="settings-game" class="settings-form"></div></section>
@@ -139,8 +141,24 @@
             <label class="toggle crazy">
               <input type="checkbox" id="crazy" />
               <span class="switch"></span>
-              <span class="toggle-text"><b>Crazy mode</b><small>Draft augments after every hole: earn your ghost line, hex your friends' course. Plays the full course.</small></span>
+              <span class="toggle-text"><b>Crazy mode</b><small>Draft augments between holes: earn your ghost line, hex your friends' course. Plays the full course.</small></span>
             </label>
+            <div id="crazy-rules" class="crazy-rules" hidden>
+              <div class="row"><span>Cards per draft</span><div class="seg" id="rule-cards"></div></div>
+              <div class="row"><span>Picks per draft</span><div class="seg" id="rule-picks"></div></div>
+              <div class="row"><span>Draft after</span><div class="seg" id="rule-every"></div></div>
+              <label class="toggle small"><input type="checkbox" id="rule-starter" /><span class="switch"></span>
+                <span class="toggle-text"><b>Starter pick</b><small>Everyone picks before hole 1, with better odds</small></span></label>
+              <div class="row odds-row"><span>Tier odds</span>
+                <div class="odds">
+                  <label class="common">Common <input type="number" min="0" max="1000" step="1" id="odd-common" /></label>
+                  <label class="epic">Epic <input type="number" min="0" max="1000" step="1" id="odd-epic" /></label>
+                  <label class="legendary">Legendary <input type="number" min="0" max="1000" step="1" id="odd-legendary" /></label>
+                </div></div>
+              <div class="odds-bar" id="odds-bar"></div>
+              <div class="row presets"><span>Presets</span><div class="seg" id="odds-presets"></div></div>
+              <button id="browse-augments" class="chip-btn">Browse all augments</button>
+            </div>
             <p id="setup-hole" class="course-blurb"></p>
           </section>
 
@@ -158,12 +176,22 @@
       <div class="sheet card-sheet">
         <div class="sheet-head"><h2 id="results-title">Hole complete</h2></div>
         <div class="table-wrap"><table id="results-table" class="scorecard"></table></div>
+        <div id="results-augs" class="results-augs" hidden></div>
         <div class="sheet-actions">
           <button id="next" class="primary big" hidden>Next hole →</button>
           <button id="again" class="primary big">Play again</button>
           <button id="card-close" class="big" hidden>Close</button>
           <span id="card-wait" class="dim" hidden>Waiting for the host to continue…</span>
         </div>
+      </div>
+    </div>
+
+    <!-- Augment browser (menu and pause menu) -->
+    <div id="aug-browser" class="modal" hidden>
+      <div class="sheet aug-sheet">
+        <div class="sheet-head"><h2>Augments</h2><span class="dim aug-count"></span><button id="aug-close" class="icon" title="Close">✕</button></div>
+        <div class="seg aug-tiers"></div>
+        <div class="aug-body"></div>
       </div>
     </div>
 

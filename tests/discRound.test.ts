@@ -11,6 +11,7 @@ import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
 import { DiscRound, type RoundEvent, type RoundOptions } from '../src/modes/discRound';
 import { place, pondsFor, treesFor } from '../src/rogue/course';
+import { cleanRules, tierWeights } from '../src/rogue/rules';
 
 const course: DiscCourseFile = JSON.parse(readFileSync('public/courses/tali-simple.json', 'utf8'));
 const trees = decodeTrees(course.trees);
@@ -129,5 +130,66 @@ describe('event-driven round', () => {
     expect(hit).toBe(true);
     expect(r.removed.size).toBeGreaterThan(0);
     expect(snapshot(replayed(r, opts))).toBe(snapshot(r));
+  });
+});
+
+describe('Crazy mode rules', () => {
+  const opts: RoundOptions = { names: ['A', 'B', 'C'], first: 0, count: 6, rogue: true };
+  const fresh = () => new DiscRound(course.holes, trees, opts, blocked);
+  const finishHole = (r: DiscRound) => { for (let k = 0; k < 60 && !r.game.finished; k++) throwTurn(r, k + 1); };
+
+  it('waits for the rules; a starter draft follows them, picks times round', () => {
+    const r = fresh();
+    expect(r.stage).toBe('need-rules');
+    r.apply({ t: 'rules', rules: cleanRules({ picks: 2 }) });
+    expect(r.stage).toBe('drafting');
+    expect(r.drafting).toEqual([0, 1, 2, 0, 1, 2]);
+    // No starter draft: straight to the first hole.
+    const q = fresh();
+    q.apply({ t: 'rules', rules: cleanRules({ starter: false }) });
+    expect(q.stage).toBe('need-hole');
+  });
+
+  it('the first offer of a draft sets the tier for the whole group', () => {
+    const r = fresh();
+    r.apply({ t: 'rules', rules: cleanRules({}) });
+    expect(r.draftTier).toBeNull();
+    r.apply({ t: 'offer', player: 0, tier: 'epic', cards: ['mulligan', 'big-arm', 'hover'], bumped: null, starter: true });
+    r.apply({ t: 'pick', player: 0, id: 'big-arm' });
+    expect(r.draftTier).toBe('epic'); // player 1 and 2 are dealt epic too
+  });
+
+  it('drafts only after every Nth hole', () => {
+    const r = fresh();
+    r.apply({ t: 'rules', rules: cleanRules({ starter: false, every: 2 }) });
+    const drafts: boolean[] = [];
+    for (let h = 0; h < 4; h++) {
+      r.apply({ t: 'hole-start', wind: [0, 0] });
+      finishHole(r);
+      r.apply({ t: 'next' });
+      drafts.push(r.stage === 'drafting');
+      while (r.drafting.length) r.apply({ t: 'pick', player: r.drafting[0], id: null });
+    }
+    expect(drafts).toEqual([false, true, false, true]);
+  });
+
+  it('odds: legendary only means every draft is legendary; the starter boost is optional', () => {
+    const only = tierWeights(cleanRules({ odds: { common: 0, epic: 0, legendary: 1 } }), true);
+    expect(only).toEqual({ common: 0, epic: 0, legendary: 1 });
+    const w = tierWeights(cleanRules({}), false);
+    expect(w.common + w.epic + w.legendary).toBeCloseTo(1);
+    expect(w.legendary).toBeCloseTo(0.05);
+    expect(tierWeights(cleanRules({}), true).legendary).toBeGreaterThan(0.1);
+    expect(tierWeights(cleanRules({ starterBoost: false }), true).legendary).toBeCloseTo(0.05);
+    // Nonsense in, sane rules out.
+    expect(cleanRules({ cards: 99, picks: 0, every: -3, odds: { common: 0, epic: 0, legendary: 0 } })).toMatchObject({ cards: 5, picks: 1, every: 1, odds: { common: 70, epic: 25, legendary: 5 } });
+  });
+
+  it('rules replay like any other event', () => {
+    const r = fresh();
+    r.apply({ t: 'rules', rules: cleanRules({ picks: 2, every: 3, cards: 4 }) });
+    const again = DiscRound.replay(course.holes, trees, opts, blocked, JSON.parse(JSON.stringify(r.log)));
+    expect(again.rules).toEqual(r.rules);
+    expect(again.drafting).toEqual(r.drafting);
   });
 });
