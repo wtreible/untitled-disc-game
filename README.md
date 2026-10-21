@@ -16,6 +16,8 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
 | **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
 
+**Play online:** host a room from the Players panel and send friends the link; everyone plays from their own browser. See [docs/14-online.md](docs/14-online.md).
+
 **Crazy mode** (a switch on the main menu, any course): draft an augment after every hole. Earn your ghost line, or hex your friends' course.
 
 ## How to play
@@ -52,6 +54,7 @@ Every push to `main` builds the game and publishes it to GitHub Pages (`.github/
 
 The build is a static site with relative asset URLs, so `dist/` also works on Netlify, Cloudflare Pages, or any file server, from any folder.
 
+- **Online rooms** run on a Cloudflare Worker (free plan): `npx wrangler login`, then `npm run server:deploy`. Put the `wss://…workers.dev` address it prints in a repo variable named `ROOMS_URL` (Settings → Secrets and variables → Actions → Variables) and re-run the deploy. Until then "Play online" is hidden.
 - **Satellite imagery is off in public builds.** Esri World Imagery is licensed under Esri's Master License Agreement, which generally needs an ArcGIS account for public apps, so Tali Forest shows its drawn ground instead. If you have that sorted, build with `VITE_ESRI_IMAGERY=on`.
 
 ## Development
@@ -63,6 +66,8 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 | `npm run silly-course` / `fantasy-course` / `rainbow-course` | Rebuild the themed courses |
 | `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |
 | `npm run slim-models` | Strip animations the courses don't use from the character models |
+| `npm run server:dev` | Run the online room server locally (dev builds connect to it) |
+| `npm run server:deploy` | Deploy the room server to Cloudflare |
 | `npm run typecheck` | TypeScript |
 
 ```

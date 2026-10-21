@@ -4,6 +4,8 @@
 import { PLAYER_COLORS } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { IMAGERY } from './assets';
+import { ROOMS_URL, RoomClient, newRoomCode, type Lobby, type Member } from './net/room';
+import type { RoundEvent } from './modes/discRound';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -68,6 +70,7 @@ function renderCourses(): void {
     course = b.dataset.id as CourseId;
     renderCourses();
     renderHoles();
+    pushLobby();
   }));
   $('setup-hole').textContent = COURSES.find((c) => c.id === course)!.blurb;
 }
@@ -110,7 +113,8 @@ function renderPlayers(): void {
 const crazy = $<HTMLInputElement>('crazy');
 crazy.checked = !!last.crazy;
 const syncCrazy = () => { $('holes-row').hidden = crazy.checked; }; // crazy runs play the full course
-crazy.addEventListener('change', syncCrazy);
+crazy.addEventListener('change', () => { syncCrazy(); pushLobby(); });
+$('holes').addEventListener('change', () => pushLobby());
 
 renderCourses();
 renderHoles();
@@ -123,14 +127,167 @@ mountSettings($('settings-game'));
 const openPause = (open: boolean) => { $('settings').hidden = !open; };
 $('settings-btn').addEventListener('click', () => openPause(true));
 $('settings-close').addEventListener('click', () => openPause(false));
-$('settings-menu').addEventListener('click', () => location.reload());
+$('settings-menu').addEventListener('click', () => { leaveRoomLink(); location.reload(); });
 $('pause-card').addEventListener('click', () => { openPause(false); window.dispatchEvent(new Event('show-scorecard')); });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('setup').hidden === true) openPause($('settings').hidden === true);
 });
 
+// ---------- online rooms ----------
+// Host a room or join one by code (or link, #room=CODE). The host's course, holes and Crazy mode
+// setting are the room's; everyone connected gets a player (up to 4; more can watch).
+let room: RoomClient | null = null;
+let me = '';
+let host = '';
+let members: Member[] = [];
+let lobby: Lobby | null = null;
+let launched = false;
+/** The room's events so far. Handed to the game, which keeps appending until it takes over. */
+const roomLog: { seq: number; from: string; e: RoundEvent }[] = [];
+const amHost = () => !!room && me === host;
+const myName = () => $('player-names').querySelector('input')?.value.trim() || savedNames[0] || 'Player';
+const roomLink = (code: string) => `${location.origin}${location.pathname}#room=${code}`;
+function leaveRoomLink(): void {
+  if (location.hash.startsWith('#room=')) history.replaceState(null, '', location.pathname + location.search);
+}
+
+function holesFromMenu(): [number, number] {
+  const n = COURSES.find((c) => c.id === course)!.holes;
+  const [first, count] = crazy.checked ? [0, n] : $<HTMLSelectElement>('holes').value.split(':').map((x) => parseInt(x, 10));
+  return [first, Math.min(count, n - first)];
+}
+
+/** Host: the menu's setup and everyone connected (host first) become the room's lobby. */
+function pushLobby(): void {
+  if (!room || !amHost() || launched) return;
+  const [first, count] = holesFromMenu();
+  const order = [...members].sort((a, b) => (a.client === host ? -1 : b.client === host ? 1 : 0));
+  room.setLobby({ course, first, count, crazy: crazy.checked, seats: order.slice(0, 4).map((m) => ({ name: m.name, client: m.client })) });
+}
+
+/** Guests: show the host's setup. */
+function showLobby(l: Lobby): void {
+  if (COURSES.some((c) => c.id === l.course)) course = l.course as CourseId;
+  crazy.checked = l.crazy;
+  renderCourses();
+  renderHoles();
+  const sel = $<HTMLSelectElement>('holes');
+  if ([...sel.options].some((o) => o.value === `${l.first}:${l.count}`)) sel.value = `${l.first}:${l.count}`;
+  syncCrazy();
+}
+
+function renderRoom(): void {
+  const inRoom = !!room;
+  $('online-start').hidden = inRoom;
+  $('online-room').hidden = !inRoom;
+  $('player-seg').hidden = inRoom;
+  $('setup').classList.toggle('online-guest', inRoom && !amHost());
+  const rows = [...$('player-names').children] as HTMLElement[];
+  rows.forEach((r, i) => { r.hidden = inRoom && i > 0; });
+  const nameInput = $('player-names').querySelector('input');
+  if (nameInput) nameInput.disabled = inRoom;
+  const start = $<HTMLButtonElement>('start');
+  if (!room) { start.disabled = false; start.innerHTML = 'Tee off <span class="arrow">→</span>'; return; }
+  $('room-code').textContent = room.code;
+  const seats = lobby?.seats ?? members.map((m) => ({ name: m.name, client: m.client }));
+  const watching = members.filter((m) => !seats.some((q) => q.client === m.client));
+  $('room-members').innerHTML = [
+    ...seats.map((q, i) => `<div class="m"><i style="background:${PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${q.client === me ? 'you' : ''}${q.client === host ? `${q.client === me ? ' · ' : ''}host` : ''}${members.some((m) => m.client === q.client) ? '' : ' · away'}</small></div>`),
+    ...watching.map((m) => `<div class="m"><i style="background:#555"></i><span>${escapeHtml(m.name)}</span><small>watching</small></div>`),
+  ].join('');
+  $('room-note').textContent = amHost()
+    ? 'Send friends the link (or the code). Pick the course and round here; everyone in the room plays.'
+    : 'The host picks the course and starts the game.';
+  start.disabled = !amHost();
+  start.innerHTML = amHost() ? 'Start online game <span class="arrow">→</span>' : 'Waiting for the host…';
+}
+const escapeHtml = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function joinRoom(code: string): void {
+  room?.close();
+  const r = new RoomClient(code, myName());
+  room = r;
+  history.replaceState(null, '', `#room=${code}`);
+  r.on({
+    welcome: (w) => {
+      if (launched) return;
+      me = w.you; host = w.host; members = w.members; lobby = w.lobby;
+      roomLog.length = 0;
+      roomLog.push(...w.log);
+      if (lobby && !amHost()) showLobby(lobby);
+      renderRoom();
+      if (w.started && w.lobby) launch(w.lobby);
+      else pushLobby();
+    },
+    members: (m) => { members = m; if (!launched) { pushLobby(); renderRoom(); } },
+    lobby: (l) => { lobby = l; if (!launched) { if (!amHost()) showLobby(l); renderRoom(); } },
+    started: (l) => { lobby = l; launch(l); },
+    // Until the game takes over (it replaces this handler), keep the room's events for it.
+    event: (seq, from, e) => { if (seq === roomLog.length) roomLog.push({ seq, from, e }); },
+    status: (s) => { if (!launched) $('room-note').textContent = s === 'open' ? $('room-note').textContent : s === 'connecting' ? 'Connecting…' : 'Connection lost: reconnecting…'; },
+    error: (reason) => { if (!launched) $('room-note').textContent = reason; },
+  });
+  r.connect();
+  renderRoom();
+}
+
+$('online').hidden = !ROOMS_URL;
+$('host-room').addEventListener('click', () => joinRoom(newRoomCode()));
+$('join-room').addEventListener('click', () => {
+  const code = $<HTMLInputElement>('join-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length >= 4) joinRoom(code);
+});
+$('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join-room').click(); });
+$('copy-link').addEventListener('click', async () => {
+  if (!room) return;
+  try { await navigator.clipboard.writeText(roomLink(room.code)); $('copy-link').textContent = 'Copied!'; } catch { $('copy-link').textContent = room.code; }
+  setTimeout(() => { $('copy-link').textContent = 'Copy link'; }, 1500);
+});
+$('leave-room').addEventListener('click', () => {
+  room?.close();
+  room = null; lobby = null; members = [];
+  leaveRoomLink();
+  $('setup').classList.remove('online-guest');
+  renderPlayers();
+  renderRoom();
+});
+// A room link: join straight away (a started game resumes where it is). Also when a link is
+// pasted into a tab that's already open (only the #hash changes, so the page doesn't reload).
+const roomInHash = () => location.hash.match(/^#room=([A-Za-z0-9]{4,8})$/)?.[1].toUpperCase() ?? null;
+const linked = roomInHash();
+if (ROOMS_URL && linked) joinRoom(linked);
+window.addEventListener('hashchange', () => {
+  const code = roomInHash();
+  if (!ROOMS_URL || !code || launched || room?.code === code) return;
+  joinRoom(code);
+});
+
+/** Start (or rejoin) the room's game. */
+async function launch(l: Lobby): Promise<void> {
+  if (launched || !room) return;
+  launched = true;
+  const id = (COURSES.some((c) => c.id === l.course) ? l.course : 'simple') as CourseId;
+  $('setup').hidden = true;
+  $('settings-btn').hidden = false;
+  $('fp-toggle').hidden = false;
+  $('pause-sub').textContent = `${COURSES.find((c) => c.id === id)!.name}${l.crazy ? ' · Crazy mode' : ''} · Room ${room.code}`;
+  const r = room;
+  const { startDisc } = await import('./modes/disc');
+  await startDisc({
+    names: l.seats.map((q) => q.name), course: id, first: l.first, count: l.count, rogue: l.crazy,
+    net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog },
+  });
+}
+
 // ---------- start ----------
 $('start').addEventListener('click', async () => {
+  if (room) {
+    if (!amHost()) return;
+    save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked });
+    pushLobby();
+    room.start();
+    return;
+  }
   const names = [...$('player-names').querySelectorAll('input')].map((i, k) => i.value.trim() || `Player ${k + 1}`);
   const holesV = $<HTMLSelectElement>('holes').value;
   save('sat-golf:names', names);

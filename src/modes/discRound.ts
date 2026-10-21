@@ -48,7 +48,22 @@ export type RoundEvent =
   /** A hex or Clear-Cut placed before a hole: the next step of the placement queue. */
   | { t: 'place'; player: number; kind: PlaceKind; tree?: Tree; pond?: { c: Vec2; r: number }; target?: TreeRef }
   /** Skip the next placement step. */
-  | { t: 'place-skip'; player: number };
+  | { t: 'place-skip'; player: number }
+  /** The host closes the hole's scorecard: Crazy mode drafts follow, then the next hole. */
+  | { t: 'next' };
+
+/** What the round is waiting for (src/modes/disc.ts acts on it, or waits for whoever's turn it is). */
+export type Stage =
+  /** A Crazy mode draft: drafting[0] picks an augment. */
+  | 'drafting'
+  /** The next hole to start (the host starts it). */
+  | 'need-hole'
+  /** Hexes / Clear-Cuts to place before the hole: placing[0]. */
+  | 'placing'
+  /** The hole is being played: game.current throws. */
+  | 'playing'
+  /** The hole is over: its scorecard, until the host goes on (the final card stays). */
+  | 'card';
 
 interface Undo { idx: number; ball: Vec2; lie: SurfaceClass; strokes: number; pickedUp: boolean; lastFrom?: Vec2 }
 
@@ -77,6 +92,11 @@ export class DiscRound {
   offer: Extract<RoundEvent, { t: 'offer' }> | null = null;
   /** The last throw, while it can still be taken back. */
   undo: Undo | null = null;
+  /** Crazy mode: players still to draft this round of drafts, in order; `starter` before hole 1. */
+  drafting: number[] = [];
+  starter = false;
+  /** The host has closed this hole's scorecard. */
+  private cardClosed = false;
   /** Every event applied so far, in order. */
   readonly log: RoundEvent[] = [];
   private started = false;
@@ -102,6 +122,20 @@ export class DiscRound {
       return { tees: opts.names.map((_, i) => teeFor(h, this.mods, i, blocked)), pins: opts.names.map((_, i) => pinFor(h, this.mods[i])) };
     };
     this.round.restartHole();
+    // Crazy mode starts with everyone picking a starter augment.
+    if (opts.rogue) { this.drafting = opts.names.map((_, i) => i); this.starter = true; }
+  }
+
+  get stage(): Stage {
+    if (this.drafting.length) return 'drafting';
+    if (!this.started) return 'need-hole';
+    if (this.game.finished) return this.cardClosed && !this.round.isLastHole ? 'need-hole' : 'card';
+    if (this.placing.length) return 'placing';
+    return 'playing';
+  }
+
+  get holeStarted(): boolean {
+    return this.started;
   }
 
   /** A fresh round with the same setup, then every event of `log`: what a joining player does. */
@@ -131,7 +165,19 @@ export class DiscRound {
         this.version++;
         this.wind = [e.wind[0], e.wind[1]];
         this.undo = null;
+        this.cardClosed = false;
         this.placing = this.opts.rogue ? placementQueue(this.mods) : [];
+        return;
+      }
+      case 'next': {
+        if (!this.game.finished || this.cardClosed) return;
+        this.cardClosed = true;
+        // Crazy mode: draft in order of this hole's score (best first) before the next hole.
+        if (this.opts.rogue && !this.round.isLastHole) {
+          const g = this.game;
+          this.drafting = g.players.map((_, i) => i).sort((a, b) => g.players[a].strokes - g.players[b].strokes);
+          this.starter = false;
+        }
         return;
       }
       case 'throw': {
@@ -175,6 +221,7 @@ export class DiscRound {
         return;
       case 'pick':
         this.offer = null;
+        if (this.drafting[0] === e.player) this.drafting.shift();
         if (e.id) this.grant(e.player, e.id);
         return;
       case 'grant':

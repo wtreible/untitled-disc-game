@@ -17,6 +17,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [11-roguelike](11-roguelike.md) | Roguelike run mode: draft rules, augment kinds (self / your course / hex), full list |
 | [12-mini-golf-madness](12-mini-golf-madness.md) | Themed 9-hole course with Kenney CC0 models: windmill, castle, animals; prop colliders |
 | [13-fantasy-and-rainbow](13-fantasy-and-rainbow.md) | Arcade courses Fantasy Fairways (knight, castle, dragon) and Rainbow Runs (rainbow road in space); FBX, decals, stars |
+| [14-online](14-online.md) | Online play: event-log rounds, the Cloudflare Durable Object room, lobby, rejoining, free tier |
 
 ## Decision log
 
@@ -75,6 +76,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D50 | Disc picker at the bottom of the HUD with a flight chart per disc (from the physics, full-power flat, calm), replacing the ‹ › disc arrows. | 2026-10-20 |
 | D51 | Tali (simple) becomes **Tali Recreation**, the easy version: the real version's HSY trees, thinned back 3 m from fairways and greens (and from tees); Tali Forest is the real version. Replaces D24's designed trees. | 2026-10-20 |
 | D52 | The round is event-driven (`src/modes/discRound.ts`): hole starts (with wind), throws (with their computed flight), mulligans, drafts and placements are JSON events applied in order; replaying the log rebuilds the round. Groundwork for online play (a Cloudflare Durable Object room relaying events). | 2026-10-21 |
+| D53 | Online play: one Cloudflare Durable Object per room (free plan) stores the lobby and event log and relays events; browsers run the game. The round's `stage` decides who acts next; a stale event is rejected and that browser rejoins. Hot seat is the case where every player is local. | 2026-10-21 |
 
 ## Open questions
 

@@ -34,6 +34,7 @@
     </footer>
 
     <div id="place-bar" class="hud" hidden><span id="place-text"></span> <button id="place-skip">Skip</button></div>
+    <div id="wait-bar" hidden></div>
     <div id="replay-bar" hidden><span class="rec"></span>REPLAY <span class="dim">drag orbit · scroll zoom · <kbd>R</kbd> reset · <kbd>Space</kbd> skip</span></div>
     <div id="reticle" hidden></div>
     <div id="minimap" hidden title="Click to aim here"></div>
@@ -117,6 +118,19 @@
             <div class="seg" id="player-seg"></div>
             <select id="player-count" hidden><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
             <div id="player-names"></div>
+            <div class="online" id="online">
+              <div class="online-start" id="online-start">
+                <span class="online-label">Play online</span>
+                <button id="host-room">Host a room</button>
+                <input id="join-code" maxlength="8" placeholder="CODE" autocomplete="off" spellcheck="false" />
+                <button id="join-room">Join</button>
+              </div>
+              <div class="online-room" id="online-room" hidden>
+                <div class="online-head"><span>Room <b id="room-code"></b></span><button id="copy-link" class="chip-btn">Copy link</button><button id="leave-room" class="chip-btn">Leave</button></div>
+                <div id="room-members" class="room-members"></div>
+                <p id="room-note" class="course-blurb"></p>
+              </div>
+            </div>
           </section>
 
           <section class="panel-card round">
@@ -148,6 +162,7 @@
           <button id="next" class="primary big" hidden>Next hole →</button>
           <button id="again" class="primary big">Play again</button>
           <button id="card-close" class="big" hidden>Close</button>
+          <span id="card-wait" class="dim" hidden>Waiting for the host to continue…</span>
         </div>
       </div>
     </div>

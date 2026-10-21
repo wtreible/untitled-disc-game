@@ -10,6 +10,7 @@ import { PLACE_TEXT, place, pondsFor, teeFor, treesFor } from '../rogue/course';
 import { byId, drawOffer, rollTier, STARTER_WEIGHTS, type Tier } from '../rogue/powerups';
 import { PLAYER_COLORS } from '../game/game';
 import { DiscRound, type RoundEvent, type WireResult } from './discRound';
+import type { RoomClient } from '../net/room';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
@@ -81,7 +82,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const fmtPar = (d: number) => (d === 0 ? 'E' : d > 0 ? `+${d}` : String(d));
 
-type Phase = 'aim' | 'charging' | 'flying' | 'replay' | 'between' | 'placing';
+/** idle: between steps; watching: another player's turn (online). */
+type Phase = 'aim' | 'charging' | 'flying' | 'replay' | 'between' | 'placing' | 'watching' | 'idle';
 
 export interface DiscOptions {
   names: string[];
@@ -91,6 +93,15 @@ export interface DiscOptions {
   count: number;
   /** Roguelike run: draft a powerup after every hole. */
   rogue?: boolean;
+  /** Online: the room, which players this browser controls, and the log so far. */
+  net?: NetPlay;
+}
+
+export interface NetPlay {
+  room: RoomClient;
+  isHost: boolean;
+  mine: (player: number) => boolean;
+  log: { seq: number; from: string; e: RoundEvent }[];
 }
 
 export async function startDisc(opts: DiscOptions): Promise<void> {
@@ -107,8 +118,32 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const rogue = !!opts.rogue;
   const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue }, blocked);
   const { round, mods, owned, mulligansLeft, perfectLeft } = st;
-  /** Apply an event. It goes through JSON first, exactly as one from another player would arrive. */
-  const dispatch = (e: RoundEvent) => st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent);
+  const net = opts.net ?? null;
+  /** Players this browser controls (all of them in hot seat). */
+  const mine = (p: number) => !net || net.mine(p);
+  const isHost = !net || net.isHost;
+  /** Events this browser knows of, ours and the room's: the next one's log position. */
+  let known = net ? net.log.length : 0;
+  const sent = new Map<number, RoundEvent>();
+  /** Other players' events waiting their turn (one arriving mid-flight waits for the landing). */
+  const inbox: RoundEvent[] = [];
+  /**
+   * Apply one of our events and send it to the room. It goes through JSON first, exactly as
+   * another player's arrives, so everyone applies the same thing.
+   */
+  function commit(e: RoundEvent): void {
+    if (inbox.length) return resync(); // someone else's event got in first: start over from the room's log
+    st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent);
+    if (net) { sent.set(known, e); net.room.sendEvent(known, e); }
+    known++;
+  }
+  /** Commit, then show it and move the round on. */
+  function dispatch(e: RoundEvent): void {
+    commit(e);
+    react(e);
+  }
+  /** Commit without moving on (a draft offer is part of the draft step). */
+  const dispatchQuiet = commit;
   let perfectArmed = false; // local: arming Perfect Form for the next throw
   // Themed props: colliders for physics; hit toasts by collider tag.
   const propColliders = (course.props ?? []).flatMap((p) => p.colliders);
@@ -190,7 +225,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let preferFP = prefs().firstPerson; // C switches (persists across turns)
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   /** A throw being shown (local or, later, another player's): the event is applied when it lands. */
-  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number } | null = null;
+  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number; remote: boolean } | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
   let replay: { t0: number; heading: number; smoothHeading: number; started: boolean; last: number } | null = null;
   const REPLAY_SPEED = 1.25;
@@ -241,16 +276,90 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     el.parentElement!.classList.toggle('calm', Math.hypot(wind[0], wind[1]) < 0.5);
   }
 
+  // ---------- events from the room ----------
+  /** After an event is applied (ours or theirs): show it, then do what the round needs next. */
+  function react(e: RoundEvent): void {
+    if (e.t === 'throw') return; // finishThrow shows it, and moves on after a pause
+    if (e.t === 'hole-start') presentHole();
+    if (e.t === 'mulligan') presentMulligan();
+    if (e.t === 'place') { if (e.target !== undefined) refreshViewer(e.player); showPlacementPreview(e.player); }
+    advance();
+  }
+
+  /** Another player's event, in log order. Their throw flies here before it's applied. */
+  function receive(e: RoundEvent): void {
+    if (e.t === 'throw') return playThrow(e, e.result.samples.length < 150 ? 1 : prefs().playback, true);
+    st.apply(e);
+    react(e);
+  }
+
+  let pumping = false;
+  /** Take waiting events while nothing is in the air (a mulligan may land during the pause). */
+  function pump(): void {
+    if (pumping) return;
+    pumping = true;
+    try {
+      while (inbox.length) {
+        const busy = phase === 'flying' || phase === 'replay' || phase === 'charging' || (phase === 'between' && inbox[0].t !== 'mulligan');
+        if (busy) break;
+        receive(inbox.shift()!);
+      }
+    } finally {
+      pumping = false;
+    }
+  }
+
+  /** Our copy has diverged from the room's: reload, which rejoins and replays the room's log. */
+  function resync(): void {
+    $('status').textContent = 'Out of step with the room: rejoining…';
+    setTimeout(() => location.reload(), 600);
+  }
+
+  function showWait(text: string): void {
+    $('wait-bar').textContent = text;
+    $('wait-bar').hidden = false;
+  }
+  function hideWait(): void {
+    $('wait-bar').hidden = true;
+  }
+
+  // ---------- flow: the round's stage decides what happens next ----------
+  /**
+   * Do whatever the round is waiting for: our draft, placement or throw, or (when it's someone
+   * else's) wait for their event. Called after every event and when a pause ends. In hot seat
+   * every player is ours, so this just runs the game.
+   */
+  function advance(): void {
+    hideWait();
+    if (st.stage !== 'placing') { $('place-bar').hidden = true; scene.setPlacementPreview(null); }
+    if (st.stage !== 'drafting') $('draft').hidden = true;
+    switch (st.stage) {
+      case 'drafting': draftStep(); break;
+      case 'need-hole':
+        if (isHost) startHole();
+        else { $('hud').hidden = true; showWait('Waiting for the host to start the next hole'); }
+        break;
+      case 'placing': placeStep(); break;
+      case 'playing': startTurn(); break;
+      case 'card': showCard(); break;
+    }
+    pump();
+  }
+
   /** Start the next hole (the first, the first time): its wind travels in the event. */
   function startHole(): void {
     dispatch({ t: 'hole-start', wind: drawWind() });
+  }
+
+  /** A hole has started (ours or the host's event): set the scene for it. */
+  function presentHole(): void {
+    $('results').hidden = true;
     scene.setHole(hole());
     scene.clearTrails();
     startHoleInfo();
     // Every hole starts from a flat backhand; startTurn picks the suggested disc.
     hyzer = 0;
     forehand = false;
-    runPlacements(startTurn);
   }
 
   /** Show the course as player i plays it. */
@@ -266,20 +375,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     });
   }
 
-  // ---------- placement (roguelike, before each hole) ----------
-  /** Called when the placement queue (st.placing) runs out. */
-  let placingDone: (() => void) | null = null;
-
-  function runPlacements(done: () => void): void {
+  // ---------- placement (Crazy mode, before each hole) ----------
+  function placeStep(): void {
     const step = st.placing[0];
-    if (!step) {
-      placingDone = null;
-      $('place-bar').hidden = true;
-      scene.setPlacementPreview(null);
-      $('hud').hidden = false;
-      return done();
-    }
-    placingDone = done;
     phase = 'placing';
     $('hud').hidden = true;
     // Top-down over the hole, as the placer sees it.
@@ -289,6 +387,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     refreshViewer(step.player);
     scene.frame([hole().tee, hole().pin, ...hole().routing], 90, 12);
     showPlacementPreview(step.player);
+    if (!mine(step.player)) {
+      $('place-bar').hidden = true;
+      showWait(`${opts.names[step.player]} is placing a ${step.kind === 'clear-cut' ? 'Clear-Cut' : 'hex'}`);
+      return;
+    }
     const left = st.placing.filter((q) => q.player === step.player && q.kind === step.kind).length;
     $('place-text').innerHTML = `<span style="color:${PLAYER_COLORS[step.player]}">●</span> <b>${esc(opts.names[step.player])}</b>: ${convertText(PLACE_TEXT[step.kind])} <small>(${left} left; click the map)</small>`;
     $('place-bar').hidden = false;
@@ -303,7 +406,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function placeAt(at: Vec2): void {
     const step = st.placing[0];
-    if (!step || !placingDone) return;
+    if (st.stage !== 'placing' || !step || !mine(step.player)) return;
     const { player: me, kind } = step;
     const res = place(kind, at, { hole: hole(), blocked, trees: treesFor(trees, st.removed, st.changes, me), rng: Math.random });
     if (!res.ok) { chip(res.reason, 'hot'); return; }
@@ -311,16 +414,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       t: 'place', player: me, kind,
       ...(res.kind === 'pond' ? { pond: res.pond } : res.kind === 'clear-cut' ? { target: st.refOf(res.target) } : { tree: res.tree }),
     });
-    if (res.kind === 'clear-cut') refreshViewer(me);
-    showPlacementPreview(me);
-    runPlacements(placingDone);
   }
 
   $('place-skip').addEventListener('click', () => {
     const step = st.placing[0];
-    if (!step || !placingDone) return;
+    if (st.stage !== 'placing' || !step || !mine(step.player)) return;
     dispatch({ t: 'place-skip', player: step.player });
-    runPlacements(placingDone);
   });
 
   /**
@@ -342,8 +441,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     return pin;
   }
 
+  /** The current player's turn: aim and throw if they're ours, else watch for their throw. */
   function startTurn(): void {
-    phase = 'aim';
+    phase = mine(game().current) ? 'aim' : 'watching';
+    $('hud').hidden = false;
     power = 0;
     fpOverride = null;
     perfectArmed = false;
@@ -355,7 +456,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const d = dist(p.ball, aimTarget);
     disc = toBasket() <= PUTT_RANGE ? PUTTER_DISC : suggestDisc(d, ranges);
     applyCamera(true);
-    recomputeTick();
+    if (phase === 'aim') recomputeTick();
+    else showWait(`${p.name} is throwing…`);
     updateHud();
   }
 
@@ -418,7 +520,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Lower is better: holed, then distance to the basket, with penalties counting heavily. */
   const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, myPin()) + r.penalty * 30);
 
-  /** Simulate the throw here, then show it; its event is applied when it lands. */
+  /** Simulate the throw here, then show it; its event is applied (and sent) when it lands. */
   function release(): void {
     if (phase !== 'charging') return;
     const me = game().current;
@@ -431,12 +533,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const twin = simulateThrow(input, world());
       if (outcomeScore(twin) < outcomeScore(result)) result = twin;
     }
-    playThrow({ t: 'throw', player: me, perfect, result: st.wire(result) }, puttStyle() ? 1 : prefs().playback);
+    playThrow({ t: 'throw', player: me, perfect, result: st.wire(result) }, puttStyle() ? 1 : prefs().playback, false);
   }
 
-  /** Fly a throw event's disc (then replay it, then apply it). */
-  function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number): void {
-    flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock };
+  /** Fly a throw event's disc (then replay it, then apply it). `remote`: another player's throw. */
+  function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number, remote: boolean): void {
+    hideWait();
+    flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock, remote };
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
@@ -450,7 +553,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const s = flight!.result.samples;
     if (!replaysOn() || s.length < REPLAY_MIN_SAMPLES) return finishThrow();
     phase = 'replay';
-    replay = { t0: performance.now(), heading: yaw, smoothHeading: yaw, started: false, last: performance.now() };
+    // Start behind the disc, looking along its first few meters (the thrower's aim).
+    const h0 = Math.atan2(s[Math.min(8, s.length - 1)][1] - s[0][1], s[Math.min(8, s.length - 1)][0] - s[0][0]);
+    replay = { t0: performance.now(), heading: h0, smoothHeading: h0, started: false, last: performance.now() };
     scene.setFirstPerson(true);
     scene.minimapEnabled = false;
     $('minimap').hidden = true;
@@ -470,12 +575,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   function finishThrow(): void {
-    const e = flight!.e;
+    const { e, remote } = flight!;
     const r = e.result;
     const idx = e.player;
     scene.addTrail(r.samples, game().players[idx].color);
     flight = null;
-    dispatch(e); // the throw lands: strokes, lie, Lumberjack, the hole's score if it's over
+    // The throw lands: strokes, lie, Lumberjack, the hole's score if it's over. Ours is sent now.
+    if (remote) st.apply(e);
+    else dispatch(e);
     const done = game().players[idx];
     // Broadcast graphics: a chip per distinct event, a result banner when someone holes out.
     const msgs = [...(r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!'), ...r.events.map((e) => course.toasts?.[e] ?? EVENT_TOASTS[e])]
@@ -495,28 +602,29 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       banner({ word: 'PICKED UP', tone: 'double', who: done.name, color: done.color, what: `Hole ${hole().ref} · max ${done.strokes}`, score: fmtPar(liveToPar(idx)) });
       shown = true;
     }
-    // Mulligan window: a few seconds to take the throw back (not after holing out).
+    // Mulligan window: a few seconds to take the throw back (not after holing out). Everyone
+    // waits the same time, so nobody moves on while the thrower can still take it back.
     const canMull = rogue && !done.holed && mulligansLeft[idx] > 0;
-    if (canMull) chip('Press M for a mulligan', 'info', `${mulligansLeft[idx]} left`, 2600);
-    mulliganOpen = canMull;
+    if (canMull && mine(idx)) chip('Press M for a mulligan', 'info', `${mulligansLeft[idx]} left`, 2600);
+    mulliganOpen = canMull && mine(idx);
     phase = 'between';
     updateHud();
     const wait = canMull ? 2600 : done.holed ? 2200 : shown ? 1300 : 600;
-    if (game().finished) {
-      pendingTimer = window.setTimeout(() => { mulliganOpen = false; showCard(); }, Math.max(1500, wait));
-    } else {
-      pendingTimer = window.setTimeout(() => { mulliganOpen = false; startTurn(); }, wait);
-    }
+    pendingTimer = window.setTimeout(() => { mulliganOpen = false; phase = 'idle'; advance(); }, game().finished ? Math.max(1500, wait) : wait);
   }
 
   function takeMulligan(): void {
     if (!mulliganOpen || !st.undo || phase !== 'between') return;
+    dispatch({ t: 'mulligan', player: st.undo.idx });
+  }
+
+  /** A mulligan landed (ours or theirs): take the trail back and replay the turn. */
+  function presentMulligan(): void {
     clearTimeout(pendingTimer);
     mulliganOpen = false;
-    dispatch({ t: 'mulligan', player: st.undo.idx });
     scene.popTrail();
     chip('Mulligan', 'info');
-    startTurn();
+    phase = 'idle';
   }
 
   /** To par over completed holes plus the current hole if this player has finished it. */
@@ -554,8 +662,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     });
     $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
     $('results-table').innerHTML = head + '<tbody>' + par + rows.join('') + '</tbody>';
-    $('next').hidden = readOnly || last;
+    // Online, only the host moves everyone on to the next hole.
+    $('next').hidden = readOnly || last || !isHost;
+    $('card-wait').hidden = readOnly || last || isHost;
     $('again').hidden = readOnly || !last;
+    $('again').textContent = net ? 'Leave room' : 'Play again';
     $('card-close').hidden = !readOnly;
     $('results').hidden = false;
     if (!readOnly) { $('hud').hidden = true; clearBroadcast(); }
@@ -564,59 +675,60 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   window.addEventListener('show-scorecard', () => showCard(true));
 
   $('next').addEventListener('click', () => {
-    $('results').hidden = true;
-    if (!rogue) return advanceHole();
-    // Draft in order of this hole's score (best first).
-    const order = game().players.map((_, i) => i).sort((a, b) => game().players[a].strokes - game().players[b].strokes);
-    runDrafts(order, advanceHole);
+    if (st.stage !== 'card' || !isHost) return;
+    dispatch({ t: 'next' });
   });
 
-  function advanceHole(): void {
-    $('hud').hidden = false;
-    if (!round.isLastHole) startHole();
+  // ---------- Crazy mode drafts ----------
+  /** The drafter's turn: deal them cards (as an event) and let them pick, or wait for them. */
+  function draftStep(): void {
+    const pi = st.drafting[0];
+    $('hud').hidden = true;
+    $('results').hidden = true;
+    if (!mine(pi)) {
+      $('draft').hidden = true;
+      showWait(`${opts.names[pi]} is picking ${st.starter ? 'a starter augment' : 'an augment'}`);
+      return;
+    }
+    if (!st.offer || st.offer.player !== pi) deal(pi);
+    renderDraft(pi);
   }
 
-  // ---------- roguelike draft ----------
-  function runDrafts(order: number[], done: () => void, starter = false): void {
-    if (order.length === 0) return done();
-    const [pi, ...rest] = order;
-    const players = opts.names.length;
-    // The cards are drawn here and travel in the 'offer' event.
-    const deal = (tier?: Tier) => {
-      const o = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, tier ?? rollTier(Math.random, starter ? STARTER_WEIGHTS : undefined), players);
-      dispatch({ t: 'offer', player: pi, tier: o.tier, cards: o.cards.map((c) => c.id), bumped: o.bumped, starter });
-    };
-    deal();
-    const render = () => {
-      const offer = { ...st.offer!, cards: st.offer!.cards.map(byId) };
-      $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${starter ? 'pick your starter augment' : 'pick an augment'}`;
-      $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
-      $('draft-tier').className = `tier ${offer.tier}`;
-      $('draft-cards').innerHTML = offer.cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
-          <span class="ptier">${c.tier}${offer.bumped === i ? ' ★ bumped' : ''}</span>
-          <b>${esc(c.name)}</b><span>${esc(convertText(c.text))}</span></button>`).join('');
-      $('draft-reroll').hidden = mods[pi].rerolls <= 0;
-      $('draft-reroll').textContent = `Reroll (${mods[pi].rerolls})`;
-      $('draft-owned').textContent = owned[pi].length ? `Have: ${owned[pi].map((id) => byId(id).name).join(', ')}` : '';
-      $('draft-cards').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
-        const card = st.offer!.cards[parseInt(b.dataset.i!, 10)];
-        dispatch({ t: 'pick', player: pi, id: card });
-        $('draft').hidden = true;
-        runDrafts(rest, done, starter);
-      }));
-    };
+  /** The cards are drawn here and travel in the 'offer' event. */
+  function deal(pi: number, tier?: Tier): void {
+    const o = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, tier ?? rollTier(Math.random, st.starter ? STARTER_WEIGHTS : undefined), opts.names.length);
+    dispatchQuiet({ t: 'offer', player: pi, tier: o.tier, cards: o.cards.map((c) => c.id), bumped: o.bumped, starter: st.starter });
+  }
+
+  function renderDraft(pi: number): void {
+    const offer = { ...st.offer!, cards: st.offer!.cards.map(byId) };
+    $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${st.starter ? 'pick your starter augment' : 'pick an augment'}`;
+    $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
+    $('draft-tier').className = `tier ${offer.tier}`;
+    $('draft-cards').innerHTML = offer.cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
+        <span class="ptier">${c.tier}${offer.bumped === i ? ' ★ bumped' : ''}</span>
+        <b>${esc(c.name)}</b><span>${esc(convertText(c.text))}</span></button>`).join('');
+    $('draft-reroll').hidden = mods[pi].rerolls <= 0;
+    $('draft-reroll').textContent = `Reroll (${mods[pi].rerolls})`;
+    $('draft-owned').textContent = owned[pi].length ? `Have: ${owned[pi].map((id) => byId(id).name).join(', ')}` : '';
+    $('draft-cards').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+      if (st.drafting[0] !== pi) return;
+      dispatch({ t: 'pick', player: pi, id: st.offer!.cards[parseInt(b.dataset.i!, 10)] });
+    }));
     $('draft-reroll').onclick = () => {
-      if (mods[pi].rerolls <= 0) return;
+      if (st.drafting[0] !== pi || mods[pi].rerolls <= 0) return;
       const tier = st.offer!.tier;
-      dispatch({ t: 'reroll', player: pi });
-      deal(tier);
-      render();
+      dispatchQuiet({ t: 'reroll', player: pi });
+      deal(pi, tier);
+      renderDraft(pi);
     };
-    $('draft-skip').onclick = () => { dispatch({ t: 'pick', player: pi, id: null }); $('draft').hidden = true; runDrafts(rest, done, starter); };
-    render();
+    $('draft-skip').onclick = () => { if (st.drafting[0] === pi) dispatch({ t: 'pick', player: pi, id: null }); };
     $('draft').hidden = false;
   }
-  $('again').addEventListener('click', () => location.reload());
+  $('again').addEventListener('click', () => {
+    if (net) { net.room.close(); history.replaceState(null, '', location.pathname + location.search); }
+    location.reload();
+  });
 
   // ---------- HUD ----------
 
@@ -679,7 +791,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Replay: drag orbits the camera around the disc (clicking doesn't skip; Space does).
     if (phase === 'replay') { drag = { x: e.clientX, y: e.clientY, mode: 'orbit' }; return; }
     if (phase === 'placing') {
-      if (e.button === 0) placeAt(scene.screenToWorld(e.clientX, e.clientY));
+      if (e.button === 0 && mine(st.placing[0]?.player ?? -1)) placeAt(scene.screenToWorld(e.clientX, e.clientY));
       else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
       return;
     }
@@ -928,20 +1040,46 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log,
     };
   }
+  // Joining (or rejoining) a room: replay its log, redraw this hole's throws, then carry on.
+  if (net) {
+    for (const x of net.log) st.apply(x.e);
+    if (st.holeStarted) {
+      presentHole();
+      const from = st.log.map((e) => e.t).lastIndexOf('hole-start');
+      for (const e of st.log.slice(from + 1)) {
+        if (e.t === 'throw') scene.addTrail(e.result.samples, PLAYER_COLORS[e.player]);
+        if (e.t === 'mulligan') scene.popTrail();
+      }
+    }
+    net.room.on({
+      event: (seq, _from, e) => {
+        if (seq < known) return; // already have it
+        if (seq > known) return resync(); // missed some
+        known++;
+        inbox.push(e);
+        pump();
+      },
+      reject: () => resync(),
+      // Reconnected: pick up what we missed, resend what the room didn't get.
+      welcome: (w) => {
+        for (const x of w.log) if (x.seq >= known) { known++; inbox.push(x.e); }
+        for (let q = w.log.length; q < known; q++) {
+          const e = sent.get(q);
+          if (!e) return resync();
+          net.room.sendEvent(q, e);
+        }
+        pump();
+      },
+      status: (s) => { $('status').textContent = s === 'open' ? '' : s === 'connecting' ? 'Connecting to the room…' : 'Connection lost: reconnecting…'; },
+      error: (reason) => chip(reason, 'hot'),
+    });
+  }
   // Dev/play-test: ?grant=0:sapling,1:the-bucket gives augments to players at the start of a run.
-  if (rogue) for (const g of (new URLSearchParams(location.search).get('grant') ?? '').split(',').filter(Boolean)) {
+  if (rogue && isHost && st.log.length === 0) for (const g of (new URLSearchParams(location.search).get('grant') ?? '').split(',').filter(Boolean)) {
     const [pi, id] = g.includes(':') ? g.split(':') : ['0', g];
     const pu = byId(id);
     const i = parseInt(pi, 10);
-    if (pu && mods[i]) dispatch({ t: 'grant', player: i, id: pu.id });
+    if (pu && mods[i]) dispatchQuiet({ t: 'grant', player: i, id: pu.id });
   }
-  if (rogue) {
-    // Starter augment before hole 1, with better odds (epic/legendary more likely).
-    $('hud').hidden = true;
-    const order = opts.names.map((_, i) => i);
-    runDrafts(order, () => { $('hud').hidden = false; startHole(); }, true);
-  } else {
-    $('hud').hidden = false;
-    startHole();
-  }
+  advance();
 }

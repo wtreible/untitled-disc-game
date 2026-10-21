@@ -131,6 +131,18 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #player-names .pname { display: flex; align-items: center; gap: 10px; }
 #player-names .pname i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #0008; flex: none; }
 #player-names input { flex: 1; font: 500 14px var(--body); color: var(--text); background: var(--navy-1); border: 1px solid var(--navy-3); border-radius: 8px; padding: 8px 10px; }
+.online { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.online-start { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.online-label { font: 700 13px var(--body); color: var(--muted); letter-spacing: 0.04em; margin-right: auto; }
+#join-code { width: 84px; font: 700 14px var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text); background: var(--navy-1); border: 1px solid var(--navy-3); border-radius: 8px; padding: 7px 8px; }
+.online-head { display: flex; align-items: center; gap: 8px; }
+.online-head > span { margin-right: auto; font-size: 14px; }
+.online-head b { font: 800 18px var(--head); letter-spacing: 0.14em; color: var(--accent); }
+.room-members { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 6px; }
+.room-members .m { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.room-members .m i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #0008; flex: none; }
+.room-members .m small { color: var(--muted); }
+.menu.online-guest .courses, .menu.online-guest .round { pointer-events: none; opacity: 0.6; }
 .menu-foot { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
 .menu-foot .huge { width: 100%; }
 .credits { margin: 0; font-size: 11.5px; color: #6f8597; }
@@ -207,6 +219,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #rogue-bar b { color: var(--eagle); }
 
 #place-bar { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+#wait-bar {
+  position: fixed; top: 74px; left: 50%; transform: translateX(-50%); padding: 7px 16px; border-radius: 999px;
+  font: 700 15px var(--head); letter-spacing: 0.04em; background: rgba(8, 19, 29, 0.85); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); z-index: 5;
+}
+#card-wait { align-self: center; font-size: 13px; }
 #replay-bar {
   position: fixed; top: 74px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-radius: 999px;
