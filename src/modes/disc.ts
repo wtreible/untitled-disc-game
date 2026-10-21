@@ -19,7 +19,7 @@ import { treeShape } from '../disc/treeShapes';
 import { IMAGERY, asset } from '../assets';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
-import { convertText, fmtLen } from '../units';
+import { convertText, fmtLen, fmtSpeed } from '../units';
 import { prefs, replaysOn } from '../settings';
 import { banner, chip, clearBroadcast, scoreTone, type Tone } from '../ui/broadcast';
 
@@ -147,14 +147,16 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     return w;
   };
   /** World for the current player, with moving props evaluated from the game clock now. */
-  const world = () => { const w = worldFor(round.game.current); w.clock0 = gameClock; return w; };
+  /** This hole's wind (m/s, blowing toward), drawn when the hole starts. */
+  let wind: Vec2 = [0, 0];
+  const world = () => { const w = worldFor(round.game.current); w.clock0 = gameClock; w.wind = wind; return w; };
   /** Mods acting on player i's throws: their own plus opponents' hexes. */
   const modsFor = (i: number) => effectiveMods(mods, i);
   const hole = () => round.hole as DiscHole;
 
   // Expected full-power flat range per disc, for disc suggestions.
   const ranges = Object.fromEntries(DISCS.map((d) => {
-    const r = simulateThrow({ start: [0, 0], aim: 0, power: 1, disc: d, hyzer: 0 }, { ...world(), basket: [1e6, 1e6] }, () => 0.25, { ghost: true });
+    const r = simulateThrow({ start: [0, 0], aim: 0, power: 1, disc: d, hyzer: 0 }, { ...world(), basket: [1e6, 1e6], wind: undefined }, () => 0.25, { ghost: true });
     return [d.id, dist([0, 0], r.rest)];
   }));
 
@@ -220,7 +222,33 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('hole-info').innerHTML = `<div class="num">${esc(h.ref)}<small>HOLE</small></div><div class="info">
       <div class="hname">${esc(h.name ?? course.name)}</div>
       <div class="hmeta">Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length">*</span>' : ''} · ${fmtLen(h.length_m)}</div>
-      ${h.name ? `<div class="course">${esc(course.name)}${rogue ? ' · Crazy mode' : ''}</div>` : rogue ? '<div class="course">Crazy mode</div>' : ''}</div>`;
+      ${h.name ? `<div class="course">${esc(course.name)}${rogue ? ' · Crazy mode' : ''}</div>` : rogue ? '<div class="course">Crazy mode</div>' : ''}</div>
+      <div class="wind" title="Wind at 10 m (weaker near the ground). The arrow shows where it blows, turned to your view."><svg viewBox="-12 -12 24 24" width="26" height="26"><path d="M0 -10 L6 2 L1.5 0.5 L1.5 10 L-1.5 10 L-1.5 0.5 L-6 2 Z" fill="currentColor"/></svg>
+        <b>${Math.hypot(wind[0], wind[1]) < 0.5 ? 'Calm' : fmtSpeed(Math.hypot(wind[0], wind[1]))}</b><small>WIND</small></div>`;
+    lastWindRot = NaN;
+  }
+
+  /**
+   * Wind for a new hole: 30% calm (0–1 m/s), 50% breezy (1–3), 20% windy (3–5), any direction.
+   * Capped at 5 m/s: a tailwind already costs a distance driver ~15% and turns a headwind drive over.
+   */
+  function drawWind(): Vec2 {
+    const r = Math.random();
+    const speed = r < 0.3 ? Math.random() : r < 0.8 ? 1 + Math.random() * 2 : 3 + Math.random() * 2;
+    const a = Math.random() * Math.PI * 2;
+    return [Math.cos(a) * speed, Math.sin(a) * speed];
+  }
+
+  /** Point the HUD wind arrow relative to the current view (up the screen = straight ahead). */
+  let lastWindRot = NaN;
+  function updateWindArrow(): void {
+    const el = $('hole-info').querySelector<SVGElement>('.wind svg');
+    if (!el) return;
+    const rot = Math.round((((scene.viewHeading() - Math.atan2(wind[1], wind[0])) * 180) / Math.PI) % 360);
+    if (rot === lastWindRot) return;
+    lastWindRot = rot;
+    el.style.transform = `rotate(${rot}deg)`;
+    el.parentElement!.classList.toggle('calm', Math.hypot(wind[0], wind[1]) < 0.5);
   }
 
   function startHole(): void {
@@ -230,6 +258,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     courseVersion++;
     scene.setHole(hole());
     scene.clearTrails();
+    wind = drawWind();
     startHoleInfo();
     // Every hole starts from a flat backhand; startTurn picks the suggested disc.
     hyzer = 0;
@@ -815,6 +844,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const dt = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
     lastFrame = now;
     fpsFrames++;
+    updateWindArrow();
     if (now - fpsSince >= 500) {
       if (!$('fps').hidden) $('fps').textContent = `${Math.round((fpsFrames * 1000) / (now - fpsSince))} fps`;
       fpsFrames = 0;

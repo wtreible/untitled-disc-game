@@ -59,6 +59,16 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 - **Per-disc launch, speed and meter curve** (2026-10-20): each disc has a default launch near its best (distance driver 0.09 rad, fairway 0.09, midrange 0.10, putter 0.13), a release speed fitted so that default reaches its range (110 / 90 / 72 / 58 m), and a measured distance-vs-speed curve the meter inverts, so meter fill ≈ fraction of max distance for every disc. In first person, launch = view pitch + that default (putts: +0.12 rad). A pitched-down line drive with the distance driver gains ~18%; launching much higher or lower loses distance.
 - Verified with an 8,640-throw sweep (every disc × power × release angle × launch −20°…41° × backhand/forehand × stacked augments): no NaN, nothing underground, no backward flights, banks within limits; only absurd distance stacks (+74%) still reach a 37 m apex.
 
+## Wind (2026-10-20)
+
+Each hole draws a wind when it starts: 30% calm (0–1 m/s), 50% breezy (1–3), 20% windy (3–5), any direction. The hole banner shows the speed (m/s or mph) and an arrow turned to your view (up the screen = straight ahead). Calm hides the arrow.
+
+- **Physics:** lift, drag, angle of attack and the turn/fade speed thresholds all use the disc's motion **through the air** (velocity minus wind). A headwind means more airspeed: more lift and a longer turn, so drivers turn over. A tailwind means less: the disc fades sooner and drops. A crosswind drifts it downwind. Rolling discs ignore wind.
+- **Height:** full strength from 10 m up, easing to 40% at the ground (`windAt`, a rough power-law profile), so putts feel it less than drives.
+- **At 5 m/s** (flat, full power, from `tests/wind.test.ts` and a sweep): the distance driver goes 110 m L1 calm → 90 m R40 into a headwind, 93 m L20 downwind; crosswinds move it 15–20 m. Soft putter shots lose ~25% downwind and gain ~15% into the wind (the extra lift outweighs the drag at those speeds). That's why the cap is 5 m/s.
+- The aim preview and the power meter's target tick simulate with the wind, so they show its effect. Disc suggestions use calm ranges.
+- Wind stays the same for every player on a hole and isn't a Crazy mode effect (yet).
+
 ## Collisions
 
 | Obstacle | Model |

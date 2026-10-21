@@ -299,6 +299,13 @@ export class CourseScene {
     for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) setTreeQuality(g, q);
   }
 
+  /** World angle (CCW from +x) that points up the screen: the look direction in first person. */
+  viewHeading(): number {
+    if (!this.fp) return Math.atan2(this.up[1], this.up[0]);
+    const d = this.persp.getWorldDirection(new THREE.Vector3());
+    return Math.atan2(d.y, d.x);
+  }
+
   /** Themed props (models). Visible in every view; model trees follow per-player visibility. */
   private props?: PropsView;
   attachProps(v: PropsView): void {

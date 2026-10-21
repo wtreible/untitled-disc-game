@@ -39,7 +39,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D15 | Own physics code; no physics library. | 2026-10-19 |
 | D16 | Multiplayer: local hot-seat (players take turns on one device). | 2026-10-19 |
 | D17 | Hosting: localhost only for now (`npm run dev`). | 2026-10-19 |
-| D18 | No wind in v1. | 2026-10-19 |
+| D18 | No wind in v1. (Superseded by D49.) | 2026-10-19 |
 | D19 | Out of bounds: casual drop near where the ball left the course, +1 stroke (not stroke and distance). | 2026-10-19 |
 | D20 | **Disc golf is the default mode**; golf stays selectable. Course: Tali, Helsinki (best-mapped famous course with open tree data). | 2026-10-19 |
 | D21 | Trees for disc golf: individual trees planted inside HSY 2024 canopy polygons, trunk-free fairway lanes; trunk + crown + basket collisions. | 2026-10-19 |
@@ -71,6 +71,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D46 | Course trees are branched CC0 models (Quaternius Stylized Nature MegaKit). Branch hits happen only inside their leaf clumps (×1.3 density, since the clumps are ~38% of the old crown volume); trunks follow the model. Big forests draw models near the eye only. | 2026-10-20 |
 | D47 | Shippable static build: relative asset URLs (any folder), three.js in its own cached chunk, KayKit GLBs slimmed to their used clip (3.6 → 0.4 MB each). Esri imagery only in dev or with `VITE_ESRI_IMAGERY=on` (Esri MLA; public use generally needs an ArcGIS account). | 2026-10-20 |
 | D48 | Settings → Graphics (Low / Medium default / High: pixel density and how many trees draw as models) and a frame-rate readout. Physics doesn't depend on it. | 2026-10-20 |
+| D49 | Wind (supersedes D18 "no wind in v1"): a random wind per hole, up to 5 m/s, mostly calm or breezy. Aerodynamics use airspeed, so headwinds turn discs over and tailwinds make them drop. Shown in the hole banner with an arrow relative to the view. | 2026-10-20 |
 
 ## Open questions
 

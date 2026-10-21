@@ -149,6 +149,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .bug .hname { font: 700 20px var(--head); letter-spacing: 0.02em; line-height: 1.05; }
 .bug .hmeta { font: 600 12px var(--body); color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
 .bug .course { font: 600 11px var(--body); color: var(--muted); }
+.bug .wind { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 12px 6px 10px; border-left: 1px solid rgba(255, 255, 255, 0.08); color: #8fd3ff; min-width: 58px; }
+.bug .wind svg { transition: transform 0.25s; }
+.bug .wind b { font: 700 15px var(--head); color: var(--text); letter-spacing: 0.02em; line-height: 1.1; white-space: nowrap; }
+.bug .wind small { font: 700 9px var(--body); letter-spacing: 0.14em; color: var(--muted); }
+.bug .wind.calm svg { opacity: 0.25; }
 .bug:empty { display: none; }
 
 .leaderboard {

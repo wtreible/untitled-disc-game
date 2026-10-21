@@ -127,6 +127,17 @@ export interface DiscWorld {
    * Trees without a shape (and worlds without this) use the trunk + crown ellipsoid.
    */
   treeShape?: (t: Tree) => TreeShape | null;
+  /** Wind (m/s, the direction it blows toward) at 10 m up; weaker near the ground (windAt). */
+  wind?: Vec2;
+}
+
+/**
+ * Wind at height z above the ground: full strength from 10 m up, easing to 40% near the ground
+ * (a rough power-law profile). Rolling discs ignore it.
+ */
+export function windAt(w: Vec2, z: number): Vec2 {
+  const k = Math.min(1, Math.max(0.4, Math.pow(Math.max(0, z) / 10, 0.3)));
+  return [w[0] * k, w[1] * k];
 }
 
 /** Surface under (x, y) for this world's thrower: the course grid, plus any personal hazards. */
@@ -291,23 +302,27 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
         if (world.props) { const prevG: Vec3 = [p[0] - v[0] * DT, p[1] - v[1] * DT, p[2]]; const tag = collideProps(p, v, prevG, (world.clock0 ?? 0) + step * DT, world.props); if (tag) { propHits.push(tag); events.push('prop'); } }
       }
     } else {
-      // Forces.
-      const q = s / disc.v0; // speed relative to this disc's full-power release
-      const f: Vec3 = [v[0] / s, v[1] / s, v[2] / s];
+      // Forces, from the disc's motion through the air (its velocity minus the wind). A headwind
+      // means more airspeed (more lift, longer turn); a tailwind less (it fades sooner).
+      const w = world.wind ? windAt(world.wind, p[2] - ground) : null;
+      const air: Vec3 = w ? [v[0] - w[0], v[1] - w[1], v[2]] : v;
+      const sa = w ? Math.hypot(air[0], air[1], air[2]) || 1e-6 : s;
+      const q = sa / disc.v0; // airspeed relative to this disc's full-power release
+      const f: Vec3 = [air[0] / sa, air[1] / sa, air[2] / sa];
       const hl = Math.hypot(f[0], f[1]) || 1e-6;
       const r: Vec3 = [f[1] / hl, -f[0] / hl, 0]; // horizontal right of travel
       const u: Vec3 = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]]; // up, ⟂ f
       // Angle of attack: fixed nose angle minus the flight path angle. A tumbling (dead) disc
       // gets a fraction of the lift and extra drag.
-      const alpha = nose - Math.atan2(v[2], Math.hypot(v[0], v[1])); // −π/2 … +π/2-ish
+      const alpha = nose - Math.atan2(air[2], Math.hypot(air[0], air[1])); // −π/2 … +π/2-ish
       const dead = state === 'dead';
       const { CL: cl, CD: cd } = aero(alpha, cl0, cd0);
       const CL = cl * (dead ? 0.2 : 1);
       const CD = cd + (dead ? 0.3 : 0);
-      const L = FLIGHT.K * s * s * CL;
-      const D = FLIGHT.K * s * CD; // × v below gives K·s²·CD along −v
+      const L = FLIGHT.K * sa * sa * CL;
+      const D = FLIGHT.K * sa * CD; // × air below gives K·sa²·CD against the airflow
       const n: Vec3 = [u[0] * Math.cos(bank) - r[0] * Math.sin(bank), u[1] * Math.cos(bank) - r[1] * Math.sin(bank), u[2] * Math.cos(bank) - r[2] * Math.sin(bank)];
-      const a: Vec3 = [L * n[0] - D * v[0], L * n[1] - D * v[1], L * n[2] - D * v[2] - G];
+      const a: Vec3 = [L * n[0] - D * air[0], L * n[1] - D * air[1], L * n[2] - D * air[2] - G];
       if (m.homing > 0 && state === 'flight') {
         // Homing: steer the horizontal velocity toward the basket late in flight, within 80 m.
         const bx = world.basket[0] - p[0], by = world.basket[1] - p[1];

@@ -31,6 +31,11 @@ export function toDisplay(m: number, sport: Sport = 'disc'): number {
   return units === 'metric' ? m : m * (sport === 'golf' ? YD : FT);
 }
 
+/** Wind speed: "3 m/s" / "7 mph". */
+export function fmtSpeed(ms: number): string {
+  return units === 'metric' ? `${Math.round(ms)} m/s` : `${Math.round(ms * 2.23694)} mph`;
+}
+
 /** "123 ft" / "37 m". Distances under 10 display units get one decimal when `fine`. */
 export function fmtLen(m: number, sport: Sport = 'disc', fine = false): string {
   const v = toDisplay(m, sport);
