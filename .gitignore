@@ -4,3 +4,5 @@ dist/
 .scratch/
 # HSY canopy WFS responses are ~23 MB; `npm run disc-course` re-downloads them when missing.
 data/raw/hsy-*.json
+# wrangler dev local state and build output
+.wrangler/
