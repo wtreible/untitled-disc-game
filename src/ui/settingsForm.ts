@@ -1,6 +1,6 @@
 // One settings form, rendered into both the main menu and the pause menu. Every control writes
 // through to prefs/units, and both copies refresh when anything changes.
-import { prefs, setPref } from '../settings';
+import { prefs, setPref, type Graphics } from '../settings';
 import { getUnits, setUnits } from '../units';
 
 export function mountSettings(el: HTMLElement): void {
@@ -18,14 +18,19 @@ export function mountSettings(el: HTMLElement): void {
       <div class="row"><span>Flight speed</span><div class="seg" data-k="playback">
         ${[1, 1.5, 2].map((v) => `<button data-v="${v}" class="${p.playback === v ? 'on' : ''}">${v}×</button>`).join('')}</div></div>
       <label class="toggle"><input type="checkbox" data-k="help" ${p.help ? 'checked' : ''}><span class="switch"></span>
-        <span class="toggle-text"><b>Show control hints</b></span></label>`;
+        <span class="toggle-text"><b>Show control hints</b></span></label>
+      <div class="row"><span>Graphics</span><div class="seg" data-k="graphics">
+        ${(['low', 'medium', 'high'] as const).map((v) => `<button data-v="${v}" class="${p.graphics === v ? 'on' : ''}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div></div>
+      <label class="toggle"><input type="checkbox" data-k="fps" ${p.fps ? 'checked' : ''}><span class="switch"></span>
+        <span class="toggle-text"><b>Show frame rate</b></span></label>`;
     el.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => {
       const k = (b.parentElement as HTMLElement).dataset.k!;
       if (k === 'units') setUnits(b.dataset.v as 'metric' | 'imperial');
       else if (k === 'playback') setPref('playback', parseFloat(b.dataset.v!));
+      else if (k === 'graphics') setPref('graphics', b.dataset.v as Graphics);
     }));
     el.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((i) => i.addEventListener('change', () => {
-      setPref(i.dataset.k as 'firstPerson' | 'replays' | 'help', i.checked);
+      setPref(i.dataset.k as 'firstPerson' | 'replays' | 'help' | 'fps', i.checked);
     }));
     const fov = el.querySelector<HTMLInputElement>('input[type=range]')!;
     fov.addEventListener('input', () => { el.querySelector('.val')!.textContent = `${fov.value}°`; });

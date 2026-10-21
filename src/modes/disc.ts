@@ -801,7 +801,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; recomputeTick(); updateHud(); } });
 
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
-  window.addEventListener('prefschange', () => { scene.setFov(prefs().fov); $('help').hidden = !prefs().help; });
+  const applyGraphics = () => { scene.setGraphics(prefs().graphics); $('fps').hidden = !prefs().fps; };
+  applyGraphics();
+  window.addEventListener('prefschange', () => { scene.setFov(prefs().fov); $('help').hidden = !prefs().help; applyGraphics(); });
+  // Frame-rate readout (Settings → Show frame rate): frames counted over half-second windows.
+  let fpsFrames = 0, fpsSince = performance.now();
   scene.setFov(prefs().fov);
   $('help').hidden = !prefs().help;
 
@@ -810,6 +814,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function frameLoop(now: number): void {
     const dt = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
     lastFrame = now;
+    fpsFrames++;
+    if (now - fpsSince >= 500) {
+      if (!$('fps').hidden) $('fps').textContent = `${Math.round((fpsFrames * 1000) / (now - fpsSince))} fps`;
+      fpsFrames = 0;
+      fpsSince = now;
+    }
     // Props clock: replays rewind to the throw's own time; live flights advance at playback speed.
     if (flight && replay) scene.updateProps(flight.clock0 + Math.max(0, (now - replay.t0) / 1000) * REPLAY_SPEED, dt);
     else {

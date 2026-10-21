@@ -9,7 +9,7 @@ import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
 import type { Vec3 } from '../game/terrain';
 import { classCanvas } from './classTexture';
-import { basketModel, discMesh, setTreesVisible, treeMeshes, updateTreeLod } from './disc3d';
+import { basketModel, discMesh, setTreeQuality, setTreesVisible, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
@@ -290,6 +290,15 @@ export class CourseScene {
     this.persp.lookAt(this.persp.position.clone().add(cur));
   }
 
+  private quality: TreeQuality = 'high';
+  /** Graphics setting: pixel density and model trees (src/render/disc3d.ts). */
+  setGraphics(q: TreeQuality): void {
+    this.quality = q;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1));
+    this.resize();
+    for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) setTreeQuality(g, q);
+  }
+
   /** Themed props (models). Visible in every view; model trees follow per-player visibility. */
   private props?: PropsView;
   attachProps(v: PropsView): void {
@@ -351,7 +360,7 @@ export class CourseScene {
     if (this.props) for (const [t, obj] of this.props.treeObjects) obj.visible = v.trees.has(t);
     // Placed trees: rebuilt each time (a handful at most).
     for (const c of [...this.extras.children]) this.extras.remove(c);
-    if (v.extras.length) this.extras.add(treeMeshes(v.extras));
+    if (v.extras.length) { const g = treeMeshes(v.extras); setTreeQuality(g, this.quality); this.extras.add(g); }
     if (this.symbols) {
       const rebuild = (g: THREE.Group, list: Tree[]) => {
         for (const c of [...g.children]) { g.remove(c); (c as THREE.Mesh).geometry?.dispose(); }

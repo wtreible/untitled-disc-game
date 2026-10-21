@@ -11,10 +11,16 @@ export interface Prefs {
   playback: number;
   /** Show the controls help line in the HUD. */
   help: boolean;
+  /** Rendering cost: pixel density and how many trees draw as full models. Physics is the same. */
+  graphics: Graphics;
+  /** Frame-rate readout in the corner. */
+  fps: boolean;
 }
 
+export type Graphics = 'low' | 'medium' | 'high';
+
 const KEY = 'sat-golf:prefs';
-const DEFAULTS: Prefs = { replays: true, firstPerson: true, fov: 62, playback: 1.5, help: true };
+const DEFAULTS: Prefs = { replays: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false };
 
 let cache: Prefs | null = null;
 

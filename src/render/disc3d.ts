@@ -68,7 +68,7 @@ export function basketModel(): THREE.Group {
 /**
  * Course trees. Branched models (Quaternius, CC0) placed exactly as the physics places them
  * (src/disc/treeShapes.ts), with the old trunk + ellipsoid blobs standing in until the models load
- * and, on big forests, beyond LOD_RADIUS of the first-person eye.
+ * and, on big forests, away from the first-person eye (see LOD).
  */
 export function treeMeshes(trees: Tree[]): THREE.Group {
   const g = new THREE.Group();
@@ -95,7 +95,7 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
   });
   if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
   g.add(trunks, crowns);
-  const state: TreeState = { trees, trunks, crowns, trunkM, crownM, visible: () => true, lod: n > LOD_ALL, eye: null, models: null };
+  const state: TreeState = { trees, trunks, crowns, trunkM, crownM, visible: () => true, lod: n > LOD_ALL, eye: null, models: null, quality: 'high' };
   g.userData = state;
   refresh(state);
   loadTreeModels().then((kinds) => {
@@ -127,8 +127,9 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
 
 /** Forests bigger than this draw models only near the first-person eye. */
 const LOD_ALL = 1500;
-const LOD_RADIUS = 90;
-const LOD_MAX = 300;
+/** Big forests by graphics setting: model trees within this radius of the eye, at most this many. */
+const LOD: Record<TreeQuality, { radius: number; max: number }> = { low: { radius: 0, max: 0 }, medium: { radius: 60, max: 120 }, high: { radius: 90, max: 300 } };
+export type TreeQuality = 'low' | 'medium' | 'high';
 
 interface TreeState {
   trees: Tree[];
@@ -141,6 +142,8 @@ interface TreeState {
   /** First-person eye position and unit view direction (x, y, dx, dy). */
   eye: [number, number, number, number] | null;
   models: { meshes: THREE.InstancedMesh[][]; kindOf: number[]; matrices: THREE.Matrix4[] } | null;
+  /** Low: no models anywhere. Medium / high: all models on small courses, LOD on big forests. */
+  quality: TreeQuality;
 }
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -150,16 +153,17 @@ function refresh(s: TreeState): void {
   // Big forests: models for the nearest LOD_MAX trees within LOD_RADIUS that are roughly in view
   // (or within 15 m all round, for looking about).
   let near: Set<number> | null = null;
-  if (s.lod) {
+  if (s.lod || s.quality === 'low') {
     near = new Set();
-    if (s.eye) {
+    const { radius, max } = LOD[s.quality];
+    if (s.eye && max > 0) {
       const cand: [number, number][] = [];
       s.trees.forEach((t, i) => {
         const dx = t.x - s.eye![0], dy = t.y - s.eye![1], d = Math.hypot(dx, dy);
-        if (s.visible(i) && (d < 15 || (d < LOD_RADIUS && (dx * s.eye![2] + dy * s.eye![3]) / d > 0.2))) cand.push([d, i]);
+        if (s.visible(i) && (d < Math.min(15, radius) || (d < radius && (dx * s.eye![2] + dy * s.eye![3]) / d > 0.2))) cand.push([d, i]);
       });
       cand.sort((a, b) => a[0] - b[0]);
-      for (const [, i] of cand.slice(0, LOD_MAX)) near.add(i);
+      for (const [, i] of cand.slice(0, max)) near.add(i);
     }
   }
   s.trees.forEach((_t, i) => {
@@ -182,6 +186,15 @@ function refresh(s: TreeState): void {
 export function setTreesVisible(g: THREE.Group, visible: (i: number) => boolean): void {
   const s = g.userData as TreeState;
   s.visible = visible;
+  refresh(s);
+}
+
+/** Graphics setting for one tree group. */
+export function setTreeQuality(g: THREE.Group, q: TreeQuality): void {
+  const s = g.userData as TreeState;
+  if (s.quality === q) return;
+  s.quality = q;
+  s.eye = null; // re-place on the next frame
   refresh(s);
 }
 

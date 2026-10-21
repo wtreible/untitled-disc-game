@@ -208,6 +208,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 }
 .pause-btn { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); background: var(--panel); border-radius: 10px; padding: 7px 10px; }
 #status { position: fixed; top: 92px; left: 16px; color: var(--muted); font-size: 12px; text-shadow: 0 1px 2px #000; }
+#fps { position: fixed; top: 96px; right: 16px; font: 600 12px var(--body); color: #d9ff6b; background: rgba(8, 18, 28, 0.7); padding: 3px 8px; border-radius: 6px; }
 #attribution { position: fixed; bottom: 2px; right: 6px; font-size: 10px; color: rgba(255, 255, 255, 0.7); text-shadow: 0 1px 2px #000; }
 #toast { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 12px 22px; border-radius: 12px; font: 700 22px var(--head); pointer-events: none; }
 
