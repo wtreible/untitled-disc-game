@@ -1,16 +1,15 @@
 // Disc golf mode (default): a round at an OSM-mapped course with real tree canopy, local hot-seat.
 import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from '../course/geo';
-import type { SurfaceClass } from '../course/types';
 import { simplify } from '../course/disc-build';
-import { decodeTrees, type DiscCourseFile, type DiscHole, type Tree } from '../course/disc-types';
+import { decodeTrees, type DiscCourseFile, type Tree } from '../course/disc-types';
 import { DISCS, PUTTER_DISC, suggestDisc, type Disc } from '../disc/discs';
 import { BASKET, simulateThrow, type DiscWorld, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
 import { TreeIndex } from '../disc/trees';
-import { effectiveMods, neutralMods, rogueStartMods, type Mods } from '../disc/mods';
-import { emptyChanges, PLACE_TEXT, pinFor, place, placementQueue, pondsFor, teeFor, treesFor, type HoleChanges, type PlaceKind } from '../rogue/course';
-import { byId, drawOffer, rollTier, STARTER_WEIGHTS, type Offer } from '../rogue/powerups';
+import { effectiveMods } from '../disc/mods';
+import { PLACE_TEXT, place, pondsFor, teeFor, treesFor } from '../rogue/course';
+import { byId, drawOffer, rollTier, STARTER_WEIGHTS, type Tier } from '../rogue/powerups';
 import { PLAYER_COLORS } from '../game/game';
-import { Round } from '../game/round';
+import { DiscRound, type RoundEvent, type WireResult } from './discRound';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
@@ -102,25 +101,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     bounds: course.bounds, boundary: course.boundary, features: course.features, ob: course.ob,
     trees: course.canopy.map((c, i) => ({ osm_id: `canopy/${i}`, rings: c.rings, height_m: c.height_m })),
   }, 0.5);
-  const round = new Round(course.holes, opts.names, opts.first, opts.count);
-  // Roguelike state per player (neutral and unused outside rogue mode).
-  const rogue = !!opts.rogue;
-  const mods: Mods[] = opts.names.map(() => (rogue ? rogueStartMods() : neutralMods()));
   const blocked = (q: Vec2) => { const c = grid.classAt(q[0], q[1]); return c === 'oob' || c === 'water'; };
-  // Per-player tees/baskets (Forward Tee, Back Tees, Short Pin), decided when the hole is set up.
-  round.setup = (hi) => {
-    const h = course.holes[hi];
-    return { tees: opts.names.map((_, i) => teeFor(h, mods, i, blocked)), pins: opts.names.map((_, i) => pinFor(h, mods[i])) };
-  };
-  round.restartHole();
-  let changes: HoleChanges = emptyChanges(opts.names.length);
-  /** Bumped whenever trees/ponds change, to invalidate per-player worlds. */
-  let courseVersion = 0;
-  const owned: string[][] = opts.names.map(() => []);
-  const mulligansLeft = opts.names.map(() => 0);
-  const perfectLeft = opts.names.map(() => 0);
-  let perfectArmed = false;
-  const removed = new Set<Tree>(); // Lumberjack: gone for everyone
+  // Everything the players share lives in the round state and changes only through events
+  // (src/modes/discRound.ts). This file presents it and turns input into events.
+  const rogue = !!opts.rogue;
+  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue }, blocked);
+  const { round, mods, owned, mulligansLeft, perfectLeft } = st;
+  /** Apply an event. It goes through JSON first, exactly as one from another player would arrive. */
+  const dispatch = (e: RoundEvent) => st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent);
+  let perfectArmed = false; // local: arming Perfect Form for the next throw
   // Themed props: colliders for physics; hit toasts by collider tag.
   const propColliders = (course.props ?? []).flatMap((p) => p.colliders);
   const propToasts = new Map<string, string>([['blades', 'Swatted by the windmill!']]);
@@ -138,22 +127,20 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const worldFor = (i: number): DiscWorld => {
     const c = worldCache.get(i);
     const pin = round.game.pins[i];
-    if (c && c.v === courseVersion && c.w.basket === pin) return c.w;
+    if (c && c.v === st.version && c.w.basket === pin) return c.w;
     const w: DiscWorld = {
       grid, terrain: new FlatTerrain(), basket: pin, branchDensity: course.branch_density,
-      trees: new TreeIndex(treesFor(trees, removed, changes, i)), hazards: pondsFor(changes, i),
+      trees: new TreeIndex(treesFor(trees, st.removed, st.changes, i)), hazards: pondsFor(st.changes, i),
       props: propColliders, clock0: gameClock, treeShape: shapeOf,
     };
-    worldCache.set(i, { v: courseVersion, w });
+    worldCache.set(i, { v: st.version, w });
     return w;
   };
   /** World for the current player, with moving props evaluated from the game clock now. */
-  /** This hole's wind (m/s, blowing toward), drawn when the hole starts. */
-  let wind: Vec2 = [0, 0];
-  const world = () => { const w = worldFor(round.game.current); w.clock0 = gameClock; w.wind = wind; return w; };
+  const world = () => { const w = worldFor(round.game.current); w.clock0 = gameClock; w.wind = st.wind; return w; };
   /** Mods acting on player i's throws: their own plus opponents' hexes. */
   const modsFor = (i: number) => effectiveMods(mods, i);
-  const hole = () => round.hole as DiscHole;
+  const hole = () => st.hole;
 
   // Expected full-power flat range per disc, for disc suggestions.
   const ranges = Object.fromEntries(DISCS.map((d) => {
@@ -202,7 +189,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let chargeStart = 0;
   let preferFP = prefs().firstPerson; // C switches (persists across turns)
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
-  let flight: { result: ThrowResult; t0: number; speed: number; clock0: number } | null = null;
+  /** A throw being shown (local or, later, another player's): the event is applied when it lands. */
+  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number } | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
   let replay: { t0: number; heading: number; smoothHeading: number; started: boolean; last: number } | null = null;
   const REPLAY_SPEED = 1.25;
@@ -225,7 +213,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       <div class="hmeta">Par ${h.par}${h.par_source === 'length' ? '<span title="No par in OSM; estimated from length">*</span>' : ''} · ${fmtLen(h.length_m)}</div>
       ${h.name ? `<div class="course">${esc(course.name)}${rogue ? ' · Crazy mode' : ''}</div>` : rogue ? '<div class="course">Crazy mode</div>' : ''}</div>
       <div class="wind" title="Wind at 10 m (weaker near the ground). The arrow shows where it blows, turned to your view."><svg viewBox="-12 -12 24 24" width="26" height="26"><path d="M0 -10 L6 2 L1.5 0.5 L1.5 10 L-1.5 10 L-1.5 0.5 L-6 2 Z" fill="currentColor"/></svg>
-        <b>${Math.hypot(wind[0], wind[1]) < 0.5 ? 'Calm' : fmtSpeed(Math.hypot(wind[0], wind[1]))}</b><small>WIND</small></div>`;
+        <b>${Math.hypot(st.wind[0], st.wind[1]) < 0.5 ? 'Calm' : fmtSpeed(Math.hypot(st.wind[0], st.wind[1]))}</b><small>WIND</small></div>`;
     lastWindRot = NaN;
   }
 
@@ -245,6 +233,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function updateWindArrow(): void {
     const el = $('hole-info').querySelector<SVGElement>('.wind svg');
     if (!el) return;
+    const wind = st.wind;
     const rot = Math.round((((scene.viewHeading() - Math.atan2(wind[1], wind[0])) * 180) / Math.PI) % 360);
     if (rot === lastWindRot) return;
     lastWindRot = rot;
@@ -252,48 +241,45 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     el.parentElement!.classList.toggle('calm', Math.hypot(wind[0], wind[1]) < 0.5);
   }
 
+  /** Start the next hole (the first, the first time): its wind travels in the event. */
   function startHole(): void {
-    mods.forEach((m, i) => { mulligansLeft[i] = m.mulligans; perfectLeft[i] = m.perfectForm; round.capBonus[i] = m.pickupBonus; });
-    round.restartHole(); // pick up this hole's per-player tees/baskets (nobody has thrown yet)
-    changes = emptyChanges(opts.names.length);
-    courseVersion++;
+    dispatch({ t: 'hole-start', wind: drawWind() });
     scene.setHole(hole());
     scene.clearTrails();
-    wind = drawWind();
     startHoleInfo();
     // Every hole starts from a flat backhand; startTurn picks the suggested disc.
     hyzer = 0;
     forehand = false;
-    const queue = rogue ? placementQueue(mods) : [];
-    runPlacements(queue, startTurn);
+    runPlacements(startTurn);
   }
 
   /** Show the course as player i plays it. */
   function refreshViewer(i: number): void {
     const m = modsFor(i);
-    const visible = new Set(treesFor(trees, removed, { ...changes, trees: [] }, i));
+    const visible = new Set(treesFor(trees, st.removed, { ...st.changes, trees: [] }, i));
     scene.setViewer({
       trees: visible,
-      extras: changes.trees.filter((t) => t.owner !== i).map((t) => t.tree),
-      ponds: pondsFor(changes, i),
+      extras: st.changes.trees.filter((t) => t.owner !== i).map((t) => t.tree),
+      ponds: pondsFor(st.changes, i),
       basketScale: m.basketScale, magnet: m.magnet,
       tee: teeFor(hole(), mods, i, blocked), pin: pinOf(i),
     });
   }
 
   // ---------- placement (roguelike, before each hole) ----------
-  let placing: { player: number; kind: PlaceKind; rest: { player: number; kind: PlaceKind }[]; done: () => void } | null = null;
+  /** Called when the placement queue (st.placing) runs out. */
+  let placingDone: (() => void) | null = null;
 
-  function runPlacements(queue: { player: number; kind: PlaceKind }[], done: () => void): void {
-    if (queue.length === 0) {
-      placing = null;
+  function runPlacements(done: () => void): void {
+    const step = st.placing[0];
+    if (!step) {
+      placingDone = null;
       $('place-bar').hidden = true;
       scene.setPlacementPreview(null);
       $('hud').hidden = false;
       return done();
     }
-    const [step, ...rest] = queue;
-    placing = { ...step, rest, done };
+    placingDone = done;
     phase = 'placing';
     $('hud').hidden = true;
     // Top-down over the hole, as the placer sees it.
@@ -302,37 +288,40 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('minimap').hidden = true;
     refreshViewer(step.player);
     scene.frame([hole().tee, hole().pin, ...hole().routing], 90, 12);
-    showPlacementPreview();
-    const left = queue.filter((q) => q.player === step.player && q.kind === step.kind).length;
+    showPlacementPreview(step.player);
+    const left = st.placing.filter((q) => q.player === step.player && q.kind === step.kind).length;
     $('place-text').innerHTML = `<span style="color:${PLAYER_COLORS[step.player]}">●</span> <b>${esc(opts.names[step.player])}</b>: ${convertText(PLACE_TEXT[step.kind])} <small>(${left} left; click the map)</small>`;
     $('place-bar').hidden = false;
   }
 
-  function showPlacementPreview(): void {
-    if (!placing) return;
-    const me = placing.player;
+  function showPlacementPreview(me: number): void {
     scene.setPlacementPreview([
-      ...changes.trees.filter((t) => t.owner === me).map((t) => ({ at: [t.tree.x, t.tree.y] as Vec2, r: t.tree.r, color: PLAYER_COLORS[me] })),
-      ...changes.ponds.filter((q) => q.owner === me).map((q) => ({ at: q.c, r: q.r, color: '#4f8fcf' })),
+      ...st.changes.trees.filter((t) => t.owner === me).map((t) => ({ at: [t.tree.x, t.tree.y] as Vec2, r: t.tree.r, color: PLAYER_COLORS[me] })),
+      ...st.changes.ponds.filter((q) => q.owner === me).map((q) => ({ at: q.c, r: q.r, color: '#4f8fcf' })),
     ]);
   }
 
   function placeAt(at: Vec2): void {
-    if (!placing) return;
-    const { player: me, kind } = placing;
-    const res = place(kind, at, { hole: hole(), blocked, trees: treesFor(trees, removed, changes, me), rng: Math.random });
+    const step = st.placing[0];
+    if (!step || !placingDone) return;
+    const { player: me, kind } = step;
+    const res = place(kind, at, { hole: hole(), blocked, trees: treesFor(trees, st.removed, st.changes, me), rng: Math.random });
     if (!res.ok) { chip(res.reason, 'hot'); return; }
-    if (res.kind === 'pond') changes.ponds.push({ ...res.pond, owner: me });
-    else if (res.kind === 'clear-cut') changes.cleared[me].add(res.target);
-    else changes.trees.push({ tree: res.tree, owner: me });
-    courseVersion++;
+    dispatch({
+      t: 'place', player: me, kind,
+      ...(res.kind === 'pond' ? { pond: res.pond } : res.kind === 'clear-cut' ? { target: st.refOf(res.target) } : { tree: res.tree }),
+    });
     if (res.kind === 'clear-cut') refreshViewer(me);
-    showPlacementPreview();
-    const { rest, done } = placing;
-    runPlacements(rest, done);
+    showPlacementPreview(me);
+    runPlacements(placingDone);
   }
 
-  $('place-skip').addEventListener('click', () => { if (placing) runPlacements(placing.rest, placing.done); });
+  $('place-skip').addEventListener('click', () => {
+    const step = st.placing[0];
+    if (!step || !placingDone) return;
+    dispatch({ t: 'place-skip', player: step.player });
+    runPlacements(placingDone);
+  });
 
   /**
    * Default aim: from the fairway, the next bend of the hole line (else the basket). From the
@@ -429,25 +418,33 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Lower is better: holed, then distance to the basket, with penalties counting heavily. */
   const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, myPin()) + r.penalty * 30);
 
+  /** Simulate the throw here, then show it; its event is applied when it lands. */
   function release(): void {
     if (phase !== 'charging') return;
     const me = game().current;
-    const input = { ...throwInput(Math.max(0.01, power)), perfect: perfectArmed };
-    if (perfectArmed) { perfectArmed = false; perfectLeft[me]--; }
+    const perfect = perfectArmed;
+    perfectArmed = false;
+    const input = { ...throwInput(Math.max(0.01, power)), perfect };
     let result = simulateThrow(input, world());
     if (modsFor(me).clone) {
       // Clone Disc: throw twice, keep the better one.
       const twin = simulateThrow(input, world());
       if (outcomeScore(twin) < outcomeScore(result)) result = twin;
     }
-    flight = { result, t0: performance.now(), speed: puttStyle() ? 1 : prefs().playback, clock0: gameClock };
+    playThrow({ t: 'throw', player: me, perfect, result: st.wire(result) }, puttStyle() ? 1 : prefs().playback);
+  }
+
+  /** Fly a throw event's disc (then replay it, then apply it). */
+  function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number): void {
+    flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock };
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
   }
 
   let pendingTimer = 0;
-  let undo: { idx: number; ball: Vec2; lie: SurfaceClass; strokes: number; pickedUp: boolean; lastFrom?: Vec2; current: number } | null = null;
+  /** Crazy mode: the few seconds after a throw when M takes it back. */
+  let mulliganOpen = false;
 
   function startReplay(): void {
     const s = flight!.result.samples;
@@ -473,23 +470,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   function finishThrow(): void {
-    const r = flight!.result;
-    const idx = game().current;
-    scene.addTrail(r.samples, player().color);
+    const e = flight!.e;
+    const r = e.result;
+    const idx = e.player;
+    scene.addTrail(r.samples, game().players[idx].color);
     flight = null;
-    const pl = player();
-    undo = { idx, ball: pl.ball, lie: pl.lie, strokes: pl.strokes, pickedUp: pl.pickedUp, lastFrom: pl.lastFrom, current: idx };
-    game().applyShot(r);
-    // Lumberjack: cut down every tree the disc touched.
-    if (mods[idx].treeChopper && r.treesHit.length) {
-      for (const t of r.treesHit) {
-        // A planted hex tree is removed from the hole; a base tree is gone for everyone.
-        const placed = changes.trees.findIndex((x) => x.tree === t);
-        if (placed >= 0) changes.trees.splice(placed, 1);
-        else removed.add(t);
-      }
-      courseVersion++;
-    }
+    dispatch(e); // the throw lands: strokes, lie, Lumberjack, the hole's score if it's over
     const done = game().players[idx];
     // Broadcast graphics: a chip per distinct event, a result banner when someone holes out.
     const msgs = [...(r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!'), ...r.events.map((e) => course.toasts?.[e] ?? EVENT_TOASTS[e])]
@@ -512,28 +498,22 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Mulligan window: a few seconds to take the throw back (not after holing out).
     const canMull = rogue && !done.holed && mulligansLeft[idx] > 0;
     if (canMull) chip('Press M for a mulligan', 'info', `${mulligansLeft[idx]} left`, 2600);
-    else undo = null;
+    mulliganOpen = canMull;
     phase = 'between';
     updateHud();
     const wait = canMull ? 2600 : done.holed ? 2200 : shown ? 1300 : 600;
     if (game().finished) {
-      round.recordCurrent();
-      updateHud();
-      pendingTimer = window.setTimeout(() => { undo = null; showCard(); }, Math.max(1500, wait));
+      pendingTimer = window.setTimeout(() => { mulliganOpen = false; showCard(); }, Math.max(1500, wait));
     } else {
-      pendingTimer = window.setTimeout(() => { undo = null; startTurn(); }, wait);
+      pendingTimer = window.setTimeout(() => { mulliganOpen = false; startTurn(); }, wait);
     }
   }
 
   function takeMulligan(): void {
-    if (!undo || phase !== 'between') return;
+    if (!mulliganOpen || !st.undo || phase !== 'between') return;
     clearTimeout(pendingTimer);
-    const u = undo;
-    undo = null;
-    const p = game().players[u.idx];
-    Object.assign(p, { ball: u.ball, lie: u.lie, strokes: u.strokes, pickedUp: u.pickedUp, lastFrom: u.lastFrom });
-    game().current = u.idx;
-    mulligansLeft[u.idx]--;
+    mulliganOpen = false;
+    dispatch({ t: 'mulligan', player: st.undo.idx });
     scene.popTrail();
     chip('Mulligan', 'info');
     startTurn();
@@ -593,7 +573,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function advanceHole(): void {
     $('hud').hidden = false;
-    if (round.nextHole()) startHole();
+    if (!round.isLastHole) startHole();
   }
 
   // ---------- roguelike draft ----------
@@ -601,8 +581,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (order.length === 0) return done();
     const [pi, ...rest] = order;
     const players = opts.names.length;
-    let offer: Offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, rollTier(Math.random, starter ? STARTER_WEIGHTS : undefined), players);
+    // The cards are drawn here and travel in the 'offer' event.
+    const deal = (tier?: Tier) => {
+      const o = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, tier ?? rollTier(Math.random, starter ? STARTER_WEIGHTS : undefined), players);
+      dispatch({ t: 'offer', player: pi, tier: o.tier, cards: o.cards.map((c) => c.id), bumped: o.bumped, starter });
+    };
+    deal();
     const render = () => {
+      const offer = { ...st.offer!, cards: st.offer!.cards.map(byId) };
       $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${starter ? 'pick your starter augment' : 'pick an augment'}`;
       $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
       $('draft-tier').className = `tier ${offer.tier}`;
@@ -613,20 +599,20 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       $('draft-reroll').textContent = `Reroll (${mods[pi].rerolls})`;
       $('draft-owned').textContent = owned[pi].length ? `Have: ${owned[pi].map((id) => byId(id).name).join(', ')}` : '';
       $('draft-cards').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
-        const card = offer.cards[parseInt(b.dataset.i!, 10)];
-        card.apply(mods[pi]);
-        owned[pi].push(card.id);
+        const card = st.offer!.cards[parseInt(b.dataset.i!, 10)];
+        dispatch({ t: 'pick', player: pi, id: card });
         $('draft').hidden = true;
         runDrafts(rest, done, starter);
       }));
     };
     $('draft-reroll').onclick = () => {
       if (mods[pi].rerolls <= 0) return;
-      mods[pi].rerolls--;
-      offer = drawOffer(Math.random, owned[pi], 3 + mods[pi].extraCard, offer.tier, players);
+      const tier = st.offer!.tier;
+      dispatch({ t: 'reroll', player: pi });
+      deal(tier);
       render();
     };
-    $('draft-skip').onclick = () => { $('draft').hidden = true; runDrafts(rest, done, starter); };
+    $('draft-skip').onclick = () => { dispatch({ t: 'pick', player: pi, id: null }); $('draft').hidden = true; runDrafts(rest, done, starter); };
     render();
     $('draft').hidden = false;
   }
@@ -939,7 +925,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // Dev builds only: a handle for automated browser checks.
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__satgolf = {
-      scene, hole, game, pinOf, changes: () => changes, phase: () => phase, worldFor, trees,
+      scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log,
     };
   }
   // Dev/play-test: ?grant=0:sapling,1:the-bucket gives augments to players at the start of a run.
@@ -947,7 +933,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const [pi, id] = g.includes(':') ? g.split(':') : ['0', g];
     const pu = byId(id);
     const i = parseInt(pi, 10);
-    if (pu && mods[i]) { pu.apply(mods[i]); owned[i].push(pu.id); }
+    if (pu && mods[i]) dispatch({ t: 'grant', player: i, id: pu.id });
   }
   if (rogue) {
     // Starter augment before hole 1, with better odds (epic/legendary more likely).

@@ -1,0 +1,234 @@
+// Disc golf round state, driven only by events (the event log). Everything players share goes
+// through apply(): holes starting (with their wind), throws landing, mulligans, Crazy mode drafts and
+// placements. Anything random (wind, draft cards, placed tree sizes, the flight itself) is decided
+// by whoever makes the event and travels inside it, so replaying the same log on any machine
+// rebuilds the same round. Events are plain JSON (trees are referenced by index), ready to send to
+// other players. No DOM here; src/modes/disc.ts presents the state.
+import type { DiscHole, Tree } from '../course/disc-types';
+import type { Vec2 } from '../course/geo';
+import type { SurfaceClass } from '../course/types';
+import type { ThrowEvent, ThrowResult } from '../disc/flight';
+import { neutralMods, rogueStartMods, type Mods } from '../disc/mods';
+import { Round } from '../game/round';
+import type { Vec3 } from '../game/terrain';
+import { emptyChanges, pinFor, placementQueue, teeFor, type HoleChanges, type PlaceKind } from '../rogue/course';
+import { byId, type Tier } from '../rogue/powerups';
+
+/** A tree: a course tree by index, or a tree placed this hole (Sapling, Thicket) by index. */
+export type TreeRef = number | { placed: number };
+
+/** A throw's outcome as sent over the wire: trees as references, numbers rounded to mm. */
+export interface WireResult {
+  samples: Vec3[];
+  banks: number[];
+  rest: Vec2;
+  restSurface: SurfaceClass;
+  holed: boolean;
+  penalty: number;
+  events: ThrowEvent[];
+  treesHit: TreeRef[];
+  propHits?: string[];
+}
+
+export type RoundEvent =
+  /** Start the next hole (the first one, the first time) with its wind (m/s, blowing toward). */
+  | { t: 'hole-start'; wind: Vec2 }
+  /** A throw landed. `perfect`: a Perfect Form charge was used on it. */
+  | { t: 'throw'; player: number; perfect: boolean; result: WireResult }
+  /** Take back the player's last throw (Crazy mode). */
+  | { t: 'mulligan'; player: number }
+  /** Crazy mode draft: the cards offered to a player (powerup ids). */
+  | { t: 'offer'; player: number; tier: Tier; cards: string[]; bumped: number | null; starter: boolean }
+  /** Spend a reroll (a new 'offer' follows). */
+  | { t: 'reroll'; player: number }
+  /** Take a card from the offer, or skip it (null). */
+  | { t: 'pick'; player: number; id: string | null }
+  /** Give a player an augment outside a draft (dev/play-test ?grant=). */
+  | { t: 'grant'; player: number; id: string }
+  /** A hex or Clear-Cut placed before a hole: the next step of the placement queue. */
+  | { t: 'place'; player: number; kind: PlaceKind; tree?: Tree; pond?: { c: Vec2; r: number }; target?: TreeRef }
+  /** Skip the next placement step. */
+  | { t: 'place-skip'; player: number };
+
+interface Undo { idx: number; ball: Vec2; lie: SurfaceClass; strokes: number; pickedUp: boolean; lastFrom?: Vec2 }
+
+export interface RoundOptions {
+  names: string[];
+  first: number;
+  count: number;
+  rogue: boolean;
+}
+
+export class DiscRound {
+  readonly round: Round;
+  readonly mods: Mods[];
+  readonly owned: string[][];
+  readonly mulligansLeft: number[];
+  readonly perfectLeft: number[];
+  changes: HoleChanges;
+  /** Lumberjack: course trees cut down for everyone. */
+  readonly removed = new Set<Tree>();
+  /** Bumped whenever trees or ponds change (per-player physics worlds are cached on it). */
+  version = 0;
+  wind: Vec2 = [0, 0];
+  /** Placement steps left before this hole's first throw (Crazy mode). */
+  placing: { player: number; kind: PlaceKind }[] = [];
+  /** The open draft offer, if any. */
+  offer: Extract<RoundEvent, { t: 'offer' }> | null = null;
+  /** The last throw, while it can still be taken back. */
+  undo: Undo | null = null;
+  /** Every event applied so far, in order. */
+  readonly log: RoundEvent[] = [];
+  private started = false;
+
+  constructor(
+    readonly holes: DiscHole[],
+    /** Course trees, in file order (TreeRef indexes into this). */
+    readonly trees: Tree[],
+    readonly opts: RoundOptions,
+    /** OB / water test for moved tees (Back Tees). */
+    readonly blocked: (q: Vec2) => boolean,
+  ) {
+    const n = opts.names.length;
+    this.round = new Round(holes, opts.names, opts.first, opts.count);
+    this.mods = opts.names.map(() => (opts.rogue ? rogueStartMods() : neutralMods()));
+    this.owned = opts.names.map(() => []);
+    this.mulligansLeft = opts.names.map(() => 0);
+    this.perfectLeft = opts.names.map(() => 0);
+    this.changes = emptyChanges(n);
+    // Per-player tees/baskets (Forward Tee, Back Tees, Short Pin), decided when the hole is set up.
+    this.round.setup = (hi) => {
+      const h = holes[hi];
+      return { tees: opts.names.map((_, i) => teeFor(h, this.mods, i, blocked)), pins: opts.names.map((_, i) => pinFor(h, this.mods[i])) };
+    };
+    this.round.restartHole();
+  }
+
+  /** A fresh round with the same setup, then every event of `log`: what a joining player does. */
+  static replay(holes: DiscHole[], trees: Tree[], opts: RoundOptions, blocked: (q: Vec2) => boolean, log: RoundEvent[]): DiscRound {
+    const r = new DiscRound(holes, trees, opts, blocked);
+    for (const e of log) r.apply(e);
+    return r;
+  }
+
+  get game() {
+    return this.round.game;
+  }
+
+  get hole(): DiscHole {
+    return this.round.hole as DiscHole;
+  }
+
+  apply(e: RoundEvent): void {
+    this.log.push(e);
+    switch (e.t) {
+      case 'hole-start': {
+        if (this.started) this.round.nextHole();
+        this.started = true;
+        this.mods.forEach((m, i) => { this.mulligansLeft[i] = m.mulligans; this.perfectLeft[i] = m.perfectForm; this.round.capBonus[i] = m.pickupBonus; });
+        this.round.restartHole(); // this hole's per-player tees/baskets (nobody has thrown yet)
+        this.changes = emptyChanges(this.opts.names.length);
+        this.version++;
+        this.wind = [e.wind[0], e.wind[1]];
+        this.undo = null;
+        this.placing = this.opts.rogue ? placementQueue(this.mods) : [];
+        return;
+      }
+      case 'throw': {
+        const g = this.game;
+        const idx = e.player;
+        g.current = idx;
+        const pl = g.players[idx];
+        this.undo = { idx, ball: pl.ball, lie: pl.lie, strokes: pl.strokes, pickedUp: pl.pickedUp, lastFrom: pl.lastFrom };
+        if (e.perfect) this.perfectLeft[idx]--;
+        const r = e.result;
+        g.applyShot({ rest: [r.rest[0], r.rest[1]], restSurface: r.restSurface, holed: r.holed, penalty: r.penalty });
+        // Lumberjack: cut down every tree the disc touched (a placed hex tree just leaves this hole).
+        if (this.mods[idx].treeChopper && r.treesHit.length) {
+          const hit = r.treesHit.map((t) => this.resolve(t));
+          for (const t of hit) {
+            const placed = this.changes.trees.findIndex((x) => x.tree === t);
+            if (placed >= 0) this.changes.trees.splice(placed, 1);
+            else if (t) this.removed.add(t);
+          }
+          this.version++;
+        }
+        if (g.finished) this.round.recordCurrent();
+        return;
+      }
+      case 'mulligan': {
+        const u = this.undo;
+        if (!u || u.idx !== e.player) return;
+        this.undo = null;
+        Object.assign(this.game.players[u.idx], { ball: u.ball, lie: u.lie, strokes: u.strokes, pickedUp: u.pickedUp, lastFrom: u.lastFrom });
+        this.game.current = u.idx;
+        this.mulligansLeft[u.idx]--;
+        // The hole isn't over any more for this player: un-record it.
+        this.round.scores[u.idx][this.round.index] = undefined;
+        return;
+      }
+      case 'offer':
+        this.offer = e;
+        return;
+      case 'reroll':
+        this.mods[e.player].rerolls--;
+        return;
+      case 'pick':
+        this.offer = null;
+        if (e.id) this.grant(e.player, e.id);
+        return;
+      case 'grant':
+        this.grant(e.player, e.id);
+        return;
+      case 'place': {
+        this.placing.shift();
+        if (e.pond) this.changes.ponds.push({ c: e.pond.c, r: e.pond.r, owner: e.player });
+        else if (e.target !== undefined) { const t = this.resolve(e.target); if (t) this.changes.cleared[e.player].add(t); }
+        else if (e.tree) this.changes.trees.push({ tree: { ...e.tree }, owner: e.player });
+        this.version++;
+        return;
+      }
+      case 'place-skip':
+        this.placing.shift();
+        return;
+    }
+  }
+
+  private grant(player: number, id: string): void {
+    const p = byId(id);
+    if (!p) return;
+    p.apply(this.mods[player]);
+    this.owned[player].push(id);
+  }
+
+  // ---------- wire format ----------
+
+  refOf(t: Tree): TreeRef {
+    const placed = this.changes.trees.findIndex((x) => x.tree === t);
+    if (placed >= 0) return { placed };
+    return this.index().get(t) ?? -1;
+  }
+
+  resolve(r: TreeRef): Tree | undefined {
+    return typeof r === 'number' ? this.trees[r] : this.changes.trees[r.placed]?.tree;
+  }
+
+  private treeIndex?: Map<Tree, number>;
+  private index(): Map<Tree, number> {
+    this.treeIndex ??= new Map(this.trees.map((t, i) => [t, i]));
+    return this.treeIndex;
+  }
+
+  /** A simulated throw → its wire form (positions rounded to mm, trees as references). */
+  wire(r: ThrowResult): WireResult {
+    const mm = (v: number) => Math.round(v * 1000) / 1000;
+    return {
+      samples: r.samples.map((s) => [mm(s[0]), mm(s[1]), mm(s[2])]),
+      banks: r.banks.map(mm),
+      rest: [mm(r.rest[0]), mm(r.rest[1])],
+      restSurface: r.restSurface, holed: r.holed, penalty: r.penalty, events: r.events,
+      treesHit: r.treesHit.map((t) => this.refOf(t)),
+      propHits: r.propHits,
+    };
+  }
+}

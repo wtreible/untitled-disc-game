@@ -74,6 +74,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D49 | Wind (supersedes D18 "no wind in v1"): a random wind per hole, up to 5 m/s, mostly calm or breezy. Aerodynamics use airspeed, so headwinds turn discs over and tailwinds make them drop. Shown in the hole banner with an arrow relative to the view. | 2026-10-20 |
 | D50 | Disc picker at the bottom of the HUD with a flight chart per disc (from the physics, full-power flat, calm), replacing the ‹ › disc arrows. | 2026-10-20 |
 | D51 | Tali (simple) becomes **Tali Recreation**, the easy version: the real version's HSY trees, thinned back 3 m from fairways and greens (and from tees); Tali Forest is the real version. Replaces D24's designed trees. | 2026-10-20 |
+| D52 | The round is event-driven (`src/modes/discRound.ts`): hole starts (with wind), throws (with their computed flight), mulligans, drafts and placements are JSON events applied in order; replaying the log rebuilds the round. Groundwork for online play (a Cloudflare Durable Object room relaying events). | 2026-10-21 |
 
 ## Open questions
 
