@@ -79,6 +79,8 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D53 | Online play: one Cloudflare Durable Object per room (free plan) stores the lobby and event log and relays events; browsers run the game. The round's `stage` decides who acts next; a stale event is rejected and that browser rejoins. Hot seat is the case where every player is local. | 2026-10-21 |
 | D54 | Online: throws are sent at release (applied on landing everywhere), and the thrower's aim, disc, release angle and meter stream live to watchers (relayed, not stored). | 2026-10-21 |
 | D55 | Tree LOD stops popping: model ↔ stand-in switches dissolve (dither, 0.45 s), the eye zone has hysteresis, and following a throw locks the models to its flight-path corridor. | 2026-10-21 |
+| D56 | Augments: values +20–30%, 8 new (wind-themed and more), categories, legendaries visible on the course, Magnet Basket legendary. Drafts customizable (cards, picks, frequency, starter, tier odds) with one tier per draft for the whole group; side panel, browser and scorecard show augments. | 2026-10-21 |
+| D57 | Three specialty discs: overstable driver, turnover fairway, approach. Suggestions stay with the everyday four. | 2026-10-21 |
 
 ## Open questions
 

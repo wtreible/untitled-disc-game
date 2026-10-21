@@ -53,7 +53,7 @@ export function mountDiscPicker(el: HTMLElement, onPick: (d: Disc) => void): { u
     el.innerHTML = fl.map((c) => `
       <button class="disc-card" data-id="${c.disc.id}" title="${c.disc.name}: full-power flat throw in calm air (side-to-side drawn ${LATERAL}× wider)">
         ${chart(c, scale)}
-        <span class="txt"><b>${c.disc.name}</b><span class="nums">${c.disc.speed} | ${c.disc.glide} | ${c.disc.turn} | ${c.disc.fade}</span><span class="range">~${fmtLen(Math.hypot(c.rest[0], c.rest[1]))}</span></span>
+        <span class="txt"><b>${c.disc.short}</b><span class="nums">${c.disc.speed} | ${c.disc.glide} | ${c.disc.turn} | ${c.disc.fade}</span><span class="range">~${fmtLen(Math.hypot(c.rest[0], c.rest[1]))}</span></span>
       </button>`).join('');
     el.querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => b.addEventListener('click', () => onPick(DISCS.find((d) => d.id === b.dataset.id)!)));
     mark();

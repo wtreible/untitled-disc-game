@@ -6,3 +6,6 @@ dist/
 data/raw/hsy-*.json
 # wrangler dev local state and build output
 .wrangler/
+# editor swap files
+*.swp
+*.swo

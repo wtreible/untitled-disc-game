@@ -56,9 +56,23 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 - **Per-disc launch, speed and meter curve** (2026-10-20): each disc has a default launch near its best (distance driver 0.09 rad, fairway 0.09, midrange 0.10, putter 0.13), a release speed fitted so that default reaches its range (110 / 90 / 72 / 58 m), and a measured distance-vs-speed curve the meter inverts, so meter fill ≈ fraction of max distance for every disc. In first person, launch = view pitch + that default (putts: +0.12 rad). A pitched-down line drive with the distance driver gains ~18%; launching much higher or lower loses distance.
 - Verified with an 8,640-throw sweep (every disc × power × release angle × launch −20°…41° × backhand/forehand × stacked augments): no NaN, nothing underground, no backward flights, banks within limits; only absurd distance stacks (+74%) still reach a 37 m apex.
 
+## The bag (2026-10-21)
+
+| Disc | Speed \| Glide \| Turn \| Fade | Full-power flat | Shape (right-hand backhand) |
+|---|---|---|---|
+| Distance driver | 12 \| 5 \| −1 \| 3 | ~110 m | slight turn, fades back to the line |
+| Overstable driver | 11 \| 4 \| 0 \| 4 | ~90 m | no turn, hard fade (~30 m left): hyzers, headwinds |
+| Fairway driver | 7 \| 5 \| −1 \| 2 | ~90 m | drifts right ~12 m |
+| Turnover fairway | 7 \| 5 \| −1 \| 1 | ~84 m | turns right ~24 m and holds |
+| Midrange | 5 \| 5 \| 0 \| 1 | ~72 m | straight |
+| Approach | 4 \| 3 \| 0 \| 3 | ~52 m | short, dependable fade |
+| Putter | 2 \| 3 \| 0 \| 1 | ~58 m | straight |
+
+New discs are fitted with `scripts/calibrate-disc.ts` (release speed for the range, then the meter curve), so half a meter is ~half the distance for every disc. Disc suggestions only pick the everyday four (distance, fairway, midrange, putter).
+
 ## Disc picker (2026-10-20)
 
-The bottom row of the HUD is the disc picker: one card per disc with its **flight chart**, flight numbers and typical full-power distance. Click a card (or [ / ]) to pick it. The charts are the game's own physics: a full-power flat throw in calm air on an open field, seen from above with the release at the bottom, all on one scale so lengths compare. Side-to-side is drawn 2× wider so turn and fade read clearly. With forehand selected (T) the charts mirror. (`src/ui/discPicker.ts`)
+The bottom row of the HUD is the disc picker: one compact card per disc (seven) with its **flight chart**, flight numbers and typical full-power distance. Click a card (or [ / ]) to pick it. The charts are the game's own physics: a full-power flat throw in calm air on an open field, seen from above with the release at the bottom, all on one scale so lengths compare. Side-to-side is drawn 2× wider so turn and fade read clearly. With forehand selected (T) the charts mirror. (`src/ui/discPicker.ts`)
 
 ## Wind (2026-10-20)
 

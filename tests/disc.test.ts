@@ -4,7 +4,7 @@ import { dist, distToPolyline, type Vec2 } from '../src/course/geo';
 import { decodeTrees, type DiscCourseFile, type Tree } from '../src/course/disc-types';
 import { parFromLength, RECREATION, simplify } from '../src/course/disc-build';
 import type { Rings } from '../src/course/types';
-import { DISCS, PUTTER_DISC } from '../src/disc/discs';
+import { DISCS, PUTTER_DISC, suggestDisc } from '../src/disc/discs';
 import { BASKET, simulateThrow, type DiscWorld, type ThrowInput } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
 import { mulberry32 } from '../src/game/physics';
@@ -37,6 +37,25 @@ describe('disc flight calibration', () => {
     expect(d.DD).toBeGreaterThan(d.FD);
     expect(d.FD).toBeGreaterThan(d.MR);
     expect(d.MR).toBeGreaterThan(d.PT);
+  });
+
+  it('specialty discs: the overstable driver fades hard left, the turnover fairway curves right, the approach is short', () => {
+    const fly = (id: string) => throwN({ start: [0, -140], aim: NORTH, power: 1, disc: disc(id), hyzer: 0 }).rest;
+    const [od, tf, ap, dd, fd] = ['OD', 'TF', 'AP', 'DD', 'FD'].map(fly);
+    const range = (r: Vec2) => Math.hypot(r[0], r[1] + 140);
+    expect(range(od)).toBeGreaterThan(82); expect(range(od)).toBeLessThan(98);
+    expect(range(tf)).toBeGreaterThan(76); expect(range(tf)).toBeLessThan(92);
+    expect(range(ap)).toBeGreaterThan(45); expect(range(ap)).toBeLessThan(58);
+    expect(od[0]).toBeLessThan(dd[0] - 15); // much more fade than the distance driver
+    expect(tf[0]).toBeGreaterThan(fd[0] + 6); // more turn than the fairway driver
+  });
+
+  it('every disc\'s meter curve rises (more power, more distance), and suggestions stick to the everyday four', () => {
+    for (const d of DISCS) for (let i = 1; i < d.curve.length; i++) expect(d.curve[i]).toBeGreaterThan(d.curve[i - 1]);
+    const ranges = Object.fromEntries(DISCS.map((k) => [k.id, throwN({ start: [0, -140], aim: NORTH, power: 1, disc: k, hyzer: 0 }).rest[1] + 140]));
+    const picked = new Set([25, 40, 55, 70, 85, 100, 130].map((d) => suggestDisc(d, ranges).id));
+    for (const id of picked) expect(['DD', 'FD', 'MR', 'PT']).toContain(id);
+    expect(DISCS).toHaveLength(7);
   });
 
   it('power meter is roughly linear in distance', () => {
