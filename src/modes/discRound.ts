@@ -5,6 +5,7 @@
 // rebuilds the same round. Events are plain JSON (trees are referenced by index), ready to send to
 // other players. No DOM here; src/modes/disc.ts presents the state.
 import type { DiscHole, Tree } from '../course/disc-types';
+import { rangeConditions, rangeWind, type RangeConditions } from '../course/range';
 import type { Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
 import type { ThrowEvent, ThrowResult } from '../disc/flight';
@@ -39,8 +40,9 @@ export type RoundEvent =
    * A throw landed. `perfect`: a Perfect Form charge was used on it. `twin`: Clone Disc's other
    * throw, the one not kept (every other sample, for show only). `clock`: the thrower's game clock
    * at release (s), which moving props (windmill, drawbridge, sliding ring) were simulated at.
+   * `disc`: the disc's id (the range lists it with the throw).
    */
-  | { t: 'throw'; player: number; perfect: boolean; result: WireResult; twin?: Vec3[]; clock?: number }
+  | { t: 'throw'; player: number; perfect: boolean; result: WireResult; twin?: Vec3[]; clock?: number; disc?: string }
   /** Take back the player's last throw (Crazy mode). */
   | { t: 'mulligan'; player: number }
   /** Crazy mode draft: the cards offered to a player (powerup ids). */
@@ -60,7 +62,9 @@ export type RoundEvent =
   /** Crazy mode setup (the host's), the round's first event. */
   | { t: 'rules'; rules: CrazyRules }
   /** Bag building: the discs (ids) a player carries from now on. */
-  | { t: 'bag'; player: number; discs: string[] };
+  | { t: 'bag'; player: number; discs: string[] }
+  /** Driving range: its baskets, trees, wind and weather, as whoever's turn it is set them. */
+  | { t: 'range'; setup: RangeConditions };
 
 /** What the round is waiting for (src/modes/disc.ts acts on it, or waits for whoever's turn it is). */
 export type Stage =
@@ -88,6 +92,8 @@ export interface RoundOptions {
   rogue: boolean;
   /** Bag building: everyone carries BAG_SIZE discs, picked before hole 1. */
   bag?: boolean;
+  /** The driving range: throws don't move anyone or score, they just pass the turn round. */
+  range?: boolean;
 }
 
 /** Discs in a bag (Bag Pocket adds more, up to every disc). */
@@ -105,6 +111,9 @@ export class DiscRound {
   /** Bumped whenever trees or ponds change (per-player physics worlds are cached on it). */
   version = 0;
   wind: Vec2 = [0, 0];
+  /** Driving range: the shared setup ('range' events), and throws so far. */
+  range: RangeConditions | null = null;
+  rangeThrows = 0;
   /** Placement steps left before this hole's first throw (Crazy mode). */
   placing: { player: number; kind: PlaceKind }[] = [];
   /** The open draft offer, if any. */
@@ -239,6 +248,12 @@ export class DiscRound {
       case 'throw': {
         const g = this.game;
         const idx = e.player;
+        if (this.opts.range) {
+          // Everyone throws from the tee every time, in turn.
+          this.rangeThrows++;
+          g.current = (idx + 1) % g.players.length;
+          return;
+        }
         g.current = idx;
         const pl = g.players[idx];
         this.undo = { idx, ball: pl.ball, lie: pl.lie, strokes: pl.strokes, pickedUp: pl.pickedUp, lastFrom: pl.lastFrom };
@@ -294,6 +309,12 @@ export class DiscRound {
       }
       case 'place-skip':
         this.placing.shift();
+        return;
+      case 'range':
+        if (!this.opts.range) return;
+        this.range = rangeConditions(e.setup);
+        this.wind = rangeWind(this.range);
+        this.version++;
         return;
       case 'bag': {
         if (!this.opts.bag || !this.opts.names[e.player]) return;

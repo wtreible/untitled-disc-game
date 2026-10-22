@@ -35,9 +35,9 @@ import { Life } from '../render/life';
 import { WEATHER, pickWeather, type Weather } from '../render/weather';
 import { setTreeWind } from '../render/disc3d';
 import { commentary } from '../ui/commentary';
-import { FT, rangeCourse, rangeTree } from '../course/range';
+import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
 import { rangeMarkers } from '../render/rangeMarkers';
-import { freshRange, loadRange, mountRangePanel, rangeWind, saveRange, type RangeTool } from '../ui/rangePanel';
+import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
 
 export const DISC_COURSES = {
   simple: 'courses/tali-simple.json',
@@ -161,7 +161,7 @@ type Phase = 'aim' | 'charging' | 'flying' | 'replay' | 'between' | 'placing' | 
 
 export interface DiscOptions {
   names: string[];
-  /** 'range': the driving range (src/course/range.ts), one player, nothing scored. */
+  /** 'range': the driving range (src/course/range.ts): everyone throws from the tee in turn, nothing scored. */
   course: keyof typeof DISC_COURSES | 'range';
   /** First hole index and number of holes. */
   first: number;
@@ -213,8 +213,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const blocked = (q: Vec2) => { const c = grid.classAt(q[0], q[1]); return c === 'oob' || c === 'water'; };
   // Everything the players share lives in the round state and changes only through events
   // (src/modes/discRound.ts). This file presents it and turns input into events.
-  const rogue = !!opts.rogue;
-  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag }, blocked);
+  const rogue = !!opts.rogue && !range;
+  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range }, blocked);
   const { round, mods, owned, mulligansLeft, perfectLeft } = st;
   const net = opts.net ?? null;
   /** Away players the host is playing for until they reconnect (online). */
@@ -257,9 +257,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Commit without moving on (a draft offer is part of the draft step). */
   const dispatchQuiet = commit;
   let perfectArmed = false; // local: arming Perfect Form for the next throw
-  /** Range: the last throw's release angle and shot, kept for the next. */
-  let keptHyzer = 0;
-  let keptShot: Shot = 'standard';
+  /** Range: each player's last aim, disc and release, kept for their next throw. */
+  const kept = new Map<number, { aimTarget: Vec2; yaw: number; pitch: number; disc: Disc; hyzer: number; forehand: boolean; shot: Shot }>();
   // Themed props: colliders for physics; hit toasts by collider tag.
   const propColliders = (course.props ?? []).flatMap((p) => p.colliders);
   const propToasts = new Map<string, string>([['blades', 'Swatted by the windmill!']]);
@@ -291,7 +290,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (range) {
       const pin = myPin();
       return {
-        grid, terrain: new FlatTerrain(), basket: pin, extraBaskets: rs.baskets.filter((b) => b !== pin), branchDensity: course.branch_density,
+        grid, terrain: new FlatTerrain(), basket: pin, extraBaskets: R().baskets.filter((b) => b !== pin), branchDensity: course.branch_density,
         trees: rangeTrees, props: [], clock0: gameClock, treeShape: shapeOf, wind: st.wind,
       };
     }
@@ -313,13 +312,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const hole = () => st.hole;
 
   // ---------- driving range: baskets and trees placed at will, wind and weather picked ----------
+  /** This browser's copy (the panel edits it, saved here); the round's own is st.range. */
   const rs = loadRange();
+  /** The range everyone plays: the round's, or ours until the round has one. */
+  const R = () => st.range ?? rs;
   let rangeTrees = new TreeIndex(rs.trees);
   /** No basket on the range: the flight model still wants one, so it's far behind the tee. */
   const NO_BASKET: Vec2 = [0, -1e4];
   /** The range basket nearest where the thrower is aiming. */
-  const rangePin = (): Vec2 | null => rs.baskets.reduce<Vec2 | null>((a, b) => (!a || dist(b, aimTarget) < dist(a, aimTarget) ? b : a), null);
-  let rangeThrows = 0;
+  const rangePin = (): Vec2 | null => R().baskets.reduce<Vec2 | null>((a, b) => (!a || dist(b, aimTarget) < dist(a, aimTarget) ? b : a), null);
 
   // Expected full-power flat range per disc, for disc suggestions.
   const ranges = Object.fromEntries(DISCS.map((d) => {
@@ -349,7 +350,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let roundWeather: Weather | null = null;
   function applyWeather(): void {
     if (space) { ambience('space'); return; }
-    if (range) roundWeather = WEATHER[rs.weather];
+    if (range) roundWeather = WEATHER[R().weather];
     const first = st.log.find((e): e is Extract<RoundEvent, { t: 'hole-start' }> => e.t === 'hole-start');
     if (!first) { ambience('outdoors'); return; }
     roundWeather ??= pickWeather(first.wind[0] * 7.31 + first.wind[1] * 3.17);
@@ -472,6 +473,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** After an event is applied (ours or theirs): show it, then do what the round needs next. */
   function react(e: RoundEvent): void {
     if (e.t === 'throw') return; // finishThrow shows it, and moves on after a pause
+    if (e.t === 'range') return presentRange(); // mid-turn: the thrower carries on aiming
     if (e.t === 'hole-start') presentHole();
     if (e.t === 'mulligan') presentMulligan();
     if (e.t === 'place') { if (e.target !== undefined) refreshViewer(e.player); showPlacementPreview(e.player); }
@@ -646,6 +648,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   /** Start the next hole (the first, the first time): its wind travels in the event. */
   function startHole(): void {
+    // The range: the host's saved setup is everyone's to start with.
+    if (range) dispatchQuiet({ t: 'range', setup: rangeConditions(rs) });
     dispatch({ t: 'hole-start', wind: range ? rangeWind(rs) : drawWind() });
   }
 
@@ -657,6 +661,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     startHoleInfo();
     wind(Math.hypot(st.wind[0], st.wind[1]));
     applyWeather();
+    if (range) presentRange();
     const h = hole();
     setTreeWind(st.wind);
     life.setHole(h, st.wind);
@@ -673,7 +678,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function refreshViewer(i: number): void {
     if (range) {
       const pin = rangePin() ?? hole().tee;
-      scene.setViewer({ trees: new Set(), extras: rs.trees, ponds: [], basketScale: 1, magnet: 0, tee: hole().tee, pin });
+      scene.setViewer({ trees: new Set(), extras: R().trees, ponds: [], basketScale: 1, magnet: 0, tee: hole().tee, pin });
       life.setHole({ tee: hole().tee, pin: rangePin() ?? NO_BASKET }, st.wind);
       return;
     }
@@ -744,7 +749,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
    * woods, pitch back out: the point on the hole line ~25 m past the player's closest point.
    */
   function defaultTarget(from: Vec2): Vec2 {
-    if (range) return rs.baskets[0] ?? [0, 300 * FT];
+    if (range) return R().baskets[0] ?? [0, 300 * FT];
     const h = hole();
     const pin = myPin();
     const dB = dist(from, pin);
@@ -772,8 +777,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     perfectArmed = false;
     const p = player();
     // The range keeps the last throw's aim, disc and release, so the next one can change one thing.
-    const again = range && rangeThrows > 0;
-    if (again) { hyzer = keptHyzer; shot = keptShot; }
+    const k = range ? kept.get(game().current) : undefined;
+    const again = !!k;
+    if (k) ({ aimTarget, yaw, pitch, disc, hyzer, forehand, shot } = k);
     else {
       aimTarget = defaultTarget(p.ball);
       yaw = Math.atan2(aimTarget[1] - p.ball[1], aimTarget[0] - p.ball[0]);
@@ -944,8 +950,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Simulate the throw here, then show it; its event is applied (and sent) when it lands. */
   function release(): void {
     if (phase !== 'charging') return;
-    keptHyzer = hyzer;
-    keptShot = shot;
+    kept.set(game().current, { aimTarget, yaw, pitch, disc, hyzer, forehand, shot });
     const me = game().current;
     const perfect = perfectArmed;
     perfectArmed = false;
@@ -958,6 +963,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       if (outcomeScore(other) < outcomeScore(result)) [result, other] = [other, result];
     }
     const e: Extract<RoundEvent, { t: 'throw' }> = { t: 'throw', player: me, perfect, result: st.wire(result), clock: Math.round(gameClock * 1000) / 1000 }; // world() simulated at gameClock
+    if (range) e.disc = disc.id;
     if (other) e.twin = st.wire(other).samples.filter((_, i) => i % 2 === 0);
     const early = sendNow(e);
     playThrow(e, puttStyle() ? 1 : prefs().playback, false);
@@ -965,7 +971,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   const cuesFor = (e: Extract<RoundEvent, { t: 'throw' }>) => throwCues(e.result, range ? nearestBasket(e.result.rest) : pinOf(e.player), (x, y) => grid.classAt(x, y));
-  const nearestBasket = (p: Vec2): Vec2 => rs.baskets.reduce<Vec2>((a, b) => (dist(b, p) < dist(a, p) ? b : a), NO_BASKET);
+  const nearestBasket = (p: Vec2): Vec2 => R().baskets.reduce<Vec2>((a, b) => (dist(b, p) < dist(a, p) ? b : a), NO_BASKET);
   /**
    * Play the flight's sounds up to sample t. Watched from the tee they fade with distance; from the
    * chase camera (replay, following a friend) they're right there.
@@ -1111,28 +1117,33 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   /**
-   * A range throw has landed: show how far it went and how far off line, then throw again from the
-   * tee. Nothing is applied to the round (the range is local and unscored).
+   * A range throw has landed: show how far it went and how far off line. Applying it just passes the
+   * turn on; everyone throws from the tee.
    */
   function finishPractice(): void {
-    const { e } = flight!;
+    const { e, remote, sentEarly } = flight!;
     scene.lockTrees(null);
     const r = e.result;
-    scene.addTrail(r.samples, player().color);
+    const who = game().players[e.player];
+    scene.addTrail(r.samples, who.color);
     flight = null;
-    rangeThrows++;
+    if (remote) st.apply(e);
+    else if (sentEarly) st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent);
+    else dispatch(e);
     const tee = hole().tee;
     const carried = dist(tee, r.rest);
+    const side = r.rest[0] - tee[0];
     const msgs = [...(r.propHits ?? []).map(() => 'Bonk!'), ...r.events.map((x) => EVENT_TOASTS[x])]
       .filter((m, i, a): m is string => !!m && a.indexOf(m) === i && !/\+1/.test(m));
+    const name = opts.names.length > 1 ? `${who.name}: ` : '';
     if (r.holed) {
-      chip('Chains!', 'birdie', fmtLen(carried));
+      chip(`${name}Chains!`, 'birdie', fmtLen(carried));
       sfx('jingle-birdie', { delay: 0.15 });
     } else {
-      chip(fmtLen(carried), 'info', Math.abs(r.rest[0] - tee[0]) < 1 ? 'on line' : `${fmtLen(Math.abs(r.rest[0] - tee[0]))} ${r.rest[0] < tee[0] ? 'left' : 'right'}`, 2600);
+      chip(`${name}${fmtLen(carried)}`, 'info', Math.abs(side) < 1 ? 'on line' : `${fmtLen(Math.abs(side))} ${side < 0 ? 'left' : 'right'}`, 2600);
       for (const m of msgs) chip(m, 'hot');
     }
-    panel?.addShot({ disc: disc.name, dist: carried, side: r.rest[0] - tee[0], holed: r.holed });
+    panel?.addShot({ who: who.name, color: who.color, disc: DISCS.find((d) => d.id === e.disc)?.name ?? '', dist: carried, side, holed: r.holed });
     phase = 'between';
     updateHud();
     pendingTimer = window.setTimeout(() => { phase = 'idle'; advance(); }, r.holed ? 1400 : 900);
@@ -1397,7 +1408,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
     if (range) {
       const pin = rangePin();
-      $('stats').innerHTML = `${pin ? `Basket <b>${fmtLen(dist(p.ball, pin))}</b> · ` : ''}Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Throws <b>${rangeThrows}</b>`;
+      $('stats').innerHTML = `${pin ? `Basket <b>${fmtLen(dist(p.ball, pin))}</b> · ` : ''}Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Throws <b>${st.rangeThrows}</b>`;
+      panel?.lock(mine(game().current) ? null : { name: p.name, color: p.color });
     } else $('stats').innerHTML = `Basket <b>${fmtLen(toBasket())}</b> · Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
     $('meter-fill').style.width = `${power * 100}%`;
     $('meter-target').style.left = `${tick * 100}%`;
@@ -1409,7 +1421,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       ? 'Drag or arrows to aim (up/down = launch) · W/S target distance · scroll zoom · click minimap to aim · Q/E release angle · [ / ] disc · T forehand · G shot · C top-down · V view'
       : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · G shot · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
       .replace(vector ? ' · V view' : '\u0000', '');
-    if (range) { $('scoreboard').innerHTML = ''; return; }
+    if (range) { rangeBoard(); return; }
     const lbOrder = game().players.map((_, i) => i).sort((a, b) => liveToPar(a) - liveToPar(b));
     $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + lbOrder.map((i) => {
       const q = game().players[i];
@@ -1417,6 +1429,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${fmtLen(dist(q.ball, pinOf(i)))} · ${LIE_LABELS[q.lie] ?? q.lie}`;
       return `<div class="row ${i === game().current && !game().finished ? 'active' : ''}"><span class="bar" style="background:${q.color}"></span><span><div class="name">${esc(q.name)}</div><div class="state">${state}</div></span><span class="strokes">${q.strokes}</span><span class="topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</span></div>`;
     }).join('') + upNext();
+  }
+
+  /** Range with friends: everyone's throws and longest, and who's up (in the range panel). */
+  function rangeBoard(): void {
+    $('scoreboard').innerHTML = '';
+    const tee = hole().tee;
+    const best = opts.names.map(() => ({ throws: 0, longest: 0 }));
+    for (const e of st.log) if (e.t === 'throw') { best[e.player].throws++; best[e.player].longest = Math.max(best[e.player].longest, Math.round(dist(tee, e.result.rest) * 10) / 10); }
+    panel?.setPlayers(game().players.map((q, i) => ({ name: q.name, color: q.color, ...best[i], up: i === game().current })));
   }
 
   /** Who throws after the current player, by the away rule as things stand (it can change). */
@@ -1532,18 +1553,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   });
 
   // ---------- driving range panel: wind, weather, baskets and trees ----------
+  /** Only whoever's turn it is sets the range, while lining up their throw. */
+  const canSetRange = () => range && phase === 'aim' && mine(game().current);
   const panel = range ? mountRangePanel($('range-panel'), rs, {
     change: (what) => {
-      if (what === 'wind') {
-        // The range is local and unscored, so its wind changes in place rather than by event.
-        st.wind = rangeWind(rs);
-        wind(Math.hypot(st.wind[0], st.wind[1]));
-        setTreeWind(st.wind);
-        refreshViewer(0);
-        if (phase === 'aim') recomputeTick();
-      }
-      if (what === 'weather') { roundWeather = WEATHER[rs.weather]; applyWeather(); }
-      updateHud();
+      if (what === 'ghost') return; // our own view only
+      sendRange();
     },
     tool: (t) => {
       canvas.style.cursor = t ? 'crosshair' : '';
@@ -1554,31 +1569,48 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.setFirstPerson(false);
       $('reticle').hidden = true;
       $('minimap').hidden = true;
-      scene.frame([hole().tee, [0, 400 * FT], ...rs.baskets, ...rs.trees.map((q): Vec2 => [q.x, q.y])], 60, 12, true);
+      scene.frame([hole().tee, [0, 400 * FT], ...R().baskets, ...R().trees.map((q): Vec2 => [q.x, q.y])], 60, 12, true);
       updateHud();
     },
     clearLines: () => scene.clearTrails(),
     reset: () => {
-      const fresh = freshRange();
-      rs.baskets = fresh.baskets;
+      rs.baskets = freshRange().baskets;
       rs.trees = [];
-      rangeChanged();
+      sendRange();
     },
   }) : null;
   $('range-panel').hidden = !range;
   $('pause-card').hidden = range;
 
-  /** The range's baskets or trees changed: save, rebuild what the disc can hit, redraw. */
-  function rangeChanged(): void {
+  /**
+   * The panel changed our copy of the range: if it's ours to set, save it and send it to everyone
+   * (it applies here too); if not, put the round's back.
+   */
+  function sendRange(): void {
+    if (!canSetRange()) { presentRange(); return; }
     saveRange(rs);
-    rangeTrees = new TreeIndex(rs.trees);
-    scene.setBaskets(rs.baskets);
-    refreshViewer(0);
+    dispatchQuiet({ t: 'range', setup: rangeConditions(rs) });
+    presentRange();
+  }
+
+  /** The round's range changed (ours or someone else's): rebuild what the disc can hit, redraw. */
+  function presentRange(): void {
+    const r = st.range;
+    if (!r) return;
+    Object.assign(rs, rangeConditions(r));
+    panel?.refresh();
+    rangeTrees = new TreeIndex(r.trees);
+    scene.setBaskets(r.baskets);
+    wind(Math.hypot(st.wind[0], st.wind[1]));
+    setTreeWind(st.wind);
+    applyWeather();
+    refreshViewer(game().current);
     if (phase === 'aim') recomputeTick();
     updateHud();
   }
 
   function rangeEdit(tool: RangeTool, at: Vec2): void {
+    if (!canSetRange()) return;
     const tee = hole().tee;
     if (tool === 'remove') {
       const b = rs.baskets.find((q) => dist(q, at) < 2.5);
@@ -1591,11 +1623,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       chip('Too close to the tee', 'hot');
       return;
     } else {
-      if (tool === 'basket') rs.baskets = [...rs.baskets, at];
-      else rs.trees = [...rs.trees, rangeTree(at, Math.random)];
+      // Rounded to cm, as the room would see them.
+      const p: Vec2 = [Math.round(at[0] * 100) / 100, Math.round(at[1] * 100) / 100];
+      if (tool === 'basket') rs.baskets = [...rs.baskets, p];
+      else rs.trees = [...rs.trees, rangeTree(p, Math.random)];
       sfx('confirm');
     }
-    rangeChanged();
+    sendRange();
   }
 
   function cycleDisc(dir: 1 | -1): void {

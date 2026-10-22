@@ -4,6 +4,32 @@
 import type { Vec2 } from './geo';
 import type { DiscCourseFile, Tree } from './disc-types';
 import type { Rings } from './types';
+import type { WeatherId } from '../render/weather';
+
+/**
+ * What everyone on the range shares: baskets, trees, wind and weather. Set by whoever's turn it is,
+ * and sent as a round event so a room sees the same range.
+ */
+export interface RangeConditions {
+  baskets: Vec2[];
+  trees: Tree[];
+  /** Wind speed (m/s) at 10 m. */
+  windSpeed: number;
+  /** Where the wind comes from, degrees clockwise from straight downrange: 0 into you, 180 at your back. */
+  windFrom: number;
+  weather: WeatherId;
+}
+
+/** The range throws up +y, so wind from straight ahead blows toward −y. */
+export function rangeWind(c: Pick<RangeConditions, 'windSpeed' | 'windFrom'>): Vec2 {
+  const a = ((270 - c.windFrom) * Math.PI) / 180;
+  return [Math.cos(a) * c.windSpeed, Math.sin(a) * c.windSpeed];
+}
+
+/** Just the shared part of a setup, copied. */
+export function rangeConditions(c: RangeConditions): RangeConditions {
+  return { baskets: c.baskets.map((b): Vec2 => [b[0], b[1]]), trees: c.trees.map((t) => ({ ...t })), windSpeed: c.windSpeed, windFrom: c.windFrom, weather: c.weather };
+}
 
 export const FT = 0.3048;
 /** Distance lines, feet from the tee. */
