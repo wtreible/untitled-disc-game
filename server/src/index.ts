@@ -7,7 +7,7 @@
 //   wss://<worker>/room/<CODE>?client=<id>&name=<name>
 //
 // Messages are JSON. Client → room:
-//   { type: 'lobby', lobby }        host only, before the start: course, holes, crazy, seats
+//   { type: 'lobby', lobby }        host only, before the start: course, holes, crazy, bag, seats
 //   { type: 'start' }               host only: freeze the lobby; game events may follow
 //   { type: 'event', seq, e }       a game event, valid only if seq is the next log position
 //   { type: 'live', s }             passing state (the thrower's aim, power): relayed, not stored
@@ -36,6 +36,7 @@ export interface Lobby {
   first: number;
   count: number;
   crazy: boolean;
+  bag?: boolean;
   seats: Seat[];
 }
 
@@ -241,5 +242,5 @@ function cleanLobby(l: unknown): Lobby | null {
     if (!s || typeof s.name !== 'string' || typeof s.client !== 'string' || !ID.test(s.client)) return null;
     seats.push({ name: s.name.trim().slice(0, 16) || 'Player', client: s.client });
   }
-  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, seats };
+  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, seats };
 }

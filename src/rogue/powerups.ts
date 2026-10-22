@@ -30,6 +30,8 @@ export interface Powerup {
    * 'hex': changes the course for everyone else (never you) — only offered with 2+ players.
    */
   kind: 'self' | 'personal' | 'hex';
+  /** Only offered when the round uses bag building. */
+  needsBag?: boolean;
   apply: (m: Mods) => void;
 }
 
@@ -57,6 +59,7 @@ export const POWERUPS: Powerup[] = [
   P('common', 'luck', 'reroll-token', 'Reroll Token', '+3 draft rerolls.', (m) => { m.rerolls += 3; }),
   P('common', 'trees', 'glancing-blow', 'Glancing Blow', 'Trunk hits keep 90% more speed.', (m) => { m.trunkKeep *= 1.9; }),
   P('common', 'putting', 'wide-chains', 'Wide Chains', 'Baskets are 13% bigger for you.', (m) => { m.basketScale *= 1.13; }),
+  { ...P('common', 'flight', 'bag-pocket', 'Bag Pocket', 'Carry one more disc: pick it before the next hole.', (m) => { m.bagSlots += 1; }), needsBag: true },
   P('common', 'power', 'run-up', 'Run-Up', '+5% distance, and throws past 90% power no longer add wobble.', (m) => { m.noOverpowerWobble = true; m.distance *= 1.05; }, true),
   P('common', 'trees', 'lucky-leaves', 'Lucky Leaves', '30% of branch hits miss you.', (m) => { m.branchPass = 1 - (1 - m.branchPass) * 0.7; }),
   P('common', 'luck', 'second-wind', 'Second Wind', '+4 throws before you must pick up.', (m) => { m.pickupBonus += 4; }),
@@ -135,12 +138,13 @@ export interface Offer {
 }
 
 /**
- * Draw `n` distinct cards of one tier (excluding uniques the player owns). The center card has a
+ * Draw `n` distinct cards of one tier (excluding uniques the player owns, hexes when playing alone
+ * and bag augments without bag building). The center card has a
  * BUMP_CHANCE of coming from the next tier up instead.
  */
-export function drawOffer(rng: () => number, owned: string[], n = 3, tier: Tier = rollTier(rng), players = 2): Offer {
+export function drawOffer(rng: () => number, owned: string[], n = 3, tier: Tier = rollTier(rng), players = 2, bag = false): Offer {
   const avail = (t: Tier, taken: Powerup[]) =>
-    POWERUPS.filter((p) => p.tier === t && !(p.unique && owned.includes(p.id)) && !taken.includes(p) && (players > 1 || p.kind !== 'hex'));
+    POWERUPS.filter((p) => p.tier === t && !(p.unique && owned.includes(p.id)) && !taken.includes(p) && (players > 1 || p.kind !== 'hex') && (bag || !p.needsBag));
   const pick = (list: Powerup[]) => list[Math.floor(rng() * list.length)];
   const cards: Powerup[] = [];
   for (let i = 0; i < n; i++) {

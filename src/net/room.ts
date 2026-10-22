@@ -13,6 +13,8 @@ export interface Lobby {
   first: number;
   count: number;
   crazy: boolean;
+  /** Bag building (older rooms don't have it). */
+  bag?: boolean;
   seats: Seat[];
 }
 

@@ -39,22 +39,30 @@ function chart(c: { disc: Disc; path: Vec3[] }, scale: number): string {
     <circle cx="${W / 2}" cy="${H - PAD}" r="1.8" class="start"/></svg>`;
 }
 
-export function mountDiscPicker(el: HTMLElement, onPick: (d: Disc) => void): { update(current: Disc, forehand: boolean): void } {
+/** One disc's card: flight chart, name, flight numbers, full-power range (the picker and the bag). */
+export function discCard(d: Disc): string {
   const fl = flights();
   const far = Math.max(...fl.map((c) => Math.max(...c.path.map((p) => p[0]))));
   const scale = (H - 2 * PAD) / far; // one scale for all cards, so lengths compare
+  const c = fl.find((x) => x.disc.id === d.id)!;
+  return `
+      <button class="disc-card" data-id="${c.disc.id}" title="${c.disc.name}: full-power flat throw in calm air (side-to-side drawn ${LATERAL}× wider)">
+        ${chart(c, scale)}
+        <span class="txt"><b>${c.disc.short}</b><span class="nums">${c.disc.speed} | ${c.disc.glide} | ${c.disc.turn} | ${c.disc.fade}</span><span class="range">~${fmtLen(Math.hypot(c.rest[0], c.rest[1]))}</span></span>
+      </button>`;
+}
+
+export function mountDiscPicker(el: HTMLElement, onPick: (d: Disc) => void): { update(current: Disc, forehand: boolean): void; setBag(ids: string[] | null): void } {
   let last: { current: Disc; forehand: boolean } | null = null;
+  let bag: string[] | null = null;
   const mark = () => {
+    el.querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => { b.hidden = !!bag && !bag.includes(b.dataset.id!); });
     if (!last) return;
     el.classList.toggle('forehand', last.forehand);
     el.querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => b.classList.toggle('on', b.dataset.id === last!.current.id));
   };
   const render = () => {
-    el.innerHTML = fl.map((c) => `
-      <button class="disc-card" data-id="${c.disc.id}" title="${c.disc.name}: full-power flat throw in calm air (side-to-side drawn ${LATERAL}× wider)">
-        ${chart(c, scale)}
-        <span class="txt"><b>${c.disc.short}</b><span class="nums">${c.disc.speed} | ${c.disc.glide} | ${c.disc.turn} | ${c.disc.fade}</span><span class="range">~${fmtLen(Math.hypot(c.rest[0], c.rest[1]))}</span></span>
-      </button>`).join('');
+    el.innerHTML = DISCS.map(discCard).join('');
     el.querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => b.addEventListener('click', () => onPick(DISCS.find((d) => d.id === b.dataset.id)!)));
     mark();
   };
@@ -63,6 +71,11 @@ export function mountDiscPicker(el: HTMLElement, onPick: (d: Disc) => void): { u
   return {
     update(current, forehand) {
       last = { current, forehand };
+      mark();
+    },
+    /** Bag building: show only these discs (null: all of them). */
+    setBag(ids) {
+      bag = ids;
       mark();
     },
   };

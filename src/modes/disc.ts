@@ -20,7 +20,7 @@ import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
-import { mountDiscPicker } from '../ui/discPicker';
+import { discCard, mountDiscPicker } from '../ui/discPicker';
 import { IMAGERY, asset } from '../assets';
 import { VIEW_LABELS, type ViewMode } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
@@ -126,6 +126,8 @@ export interface DiscOptions {
   net?: NetPlay;
   /** Crazy mode setup (the host's is the one used). */
   rules?: CrazyRules;
+  /** Bag building: everyone picks the discs they carry before hole 1. */
+  bag?: boolean;
 }
 
 /** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
@@ -165,7 +167,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // Everything the players share lives in the round state and changes only through events
   // (src/modes/discRound.ts). This file presents it and turns input into events.
   const rogue = !!opts.rogue;
-  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue }, blocked);
+  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag }, blocked);
   const { round, mods, owned, mulligansLeft, perfectLeft } = st;
   const net = opts.net ?? null;
   /** Away players the host is playing for until they reconnect (online). */
@@ -520,6 +522,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     hideWait();
     if (st.stage !== 'placing') { $('place-bar').hidden = true; scene.setPlacementPreview(null); }
     if (st.stage !== 'drafting') $('draft').hidden = true;
+    if (st.stage !== 'bagging') $('bag').hidden = true;
     switch (st.stage) {
       case 'need-rules':
         if (isHost) dispatch({ t: 'rules', rules: cleanRules(opts.rules) });
@@ -533,6 +536,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'placing': placeStep(); break;
       case 'playing': startTurn(); break;
       case 'card': showCard(); break;
+      case 'bagging': bagStep(); break;
     }
     pump();
   }
@@ -651,7 +655,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     yaw = Math.atan2(aimTarget[1] - p.ball[1], aimTarget[0] - p.ball[0]);
     pitch = 0;
     const d = dist(p.ball, aimTarget);
-    disc = toBasket() <= PUTT_RANGE ? PUTTER_DISC : suggestDisc(d, ranges);
+    const bag = bagOf(game().current);
+    disc = toBasket() <= PUTT_RANGE && bag.includes(PUTTER_DISC) ? PUTTER_DISC : suggestDisc(d, ranges, bag);
+    picker.setBag(st.bags[game().current]);
     applyCamera(true);
     if (phase === 'aim') recomputeTick();
     else showWait(`${p.name} is throwing…`);
@@ -955,6 +961,56 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     dispatch({ t: 'next' });
   });
 
+  // ---------- bag building ----------
+  /** The discs player p carries (all of them without bag building). */
+  const bagOf = (p: number): Disc[] => { const b = st.bags[p]; return b ? DISCS.filter((d) => b.includes(d.id)) : DISCS; };
+  /** Picks in progress, per player (kept while other players' bags arrive). */
+  const bagDraft = new Map<number, string[]>();
+  /** Everyone picks their bag (online, all at once): ours here, the others' arrive as events. */
+  function bagStep(): void {
+    $('hud').hidden = true;
+    $('results').hidden = true;
+    const need = st.needBag;
+    const pi = need.find((p) => mine(p));
+    if (pi === undefined) {
+      $('bag').hidden = true;
+      showWait(`Waiting for ${need.map((p) => opts.names[p]).join(', ')} to pick ${need.length === 1 ? 'a bag' : 'their bags'}`);
+      return;
+    }
+    hideWait();
+    const size = st.bagSize(pi);
+    // Start from what they carried (adding a pocket), else the four everyday discs.
+    if (!bagDraft.has(pi)) bagDraft.set(pi, st.bags[pi] ? [...st.bags[pi]!] : DISCS.filter((d) => d.suggest).map((d) => d.id).slice(0, size));
+    const pick = bagDraft.get(pi)!;
+    const render = () => {
+      $('bag-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: pick your bag`;
+      $('bag-count').textContent = `${pick.length} / ${size}`;
+      $('bag-sub').textContent = st.bags[pi]
+        ? `Bag Pocket: room for ${size} discs now. Add one.`
+        : `Carry ${size} of the ${DISCS.length} discs for the whole round. Inside putting range you putt with the putter, if you carry one.`;
+      $('bag-cards').innerHTML = DISCS.map(discCard).join('');
+      $('bag-cards').querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => {
+        const id = b.dataset.id!;
+        b.classList.toggle('on', pick.includes(id));
+        b.addEventListener('click', () => {
+          const i = pick.indexOf(id);
+          if (i >= 0) pick.splice(i, 1);
+          else if (pick.length < size) pick.push(id);
+          render();
+        });
+      });
+      $<HTMLButtonElement>('bag-ok').disabled = pick.length !== size;
+    };
+    $('bag-ok').onclick = () => {
+      if (pick.length !== size || !st.needBag.includes(pi)) return;
+      bagDraft.delete(pi);
+      $('bag').hidden = true;
+      dispatch({ t: 'bag', player: pi, discs: [...pick] });
+    };
+    render();
+    $('bag').hidden = false;
+  }
+
   // ---------- Crazy mode drafts ----------
   /** The drafter's turn: deal them cards (as an event) and let them pick, or wait for them. */
   function draftStep(): void {
@@ -976,7 +1032,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
    */
   function deal(pi: number, tier?: Tier): void {
     const t = tier ?? st.draftTier ?? rollTier(Math.random, tierWeights(st.rules, st.starter));
-    const o = drawOffer(Math.random, owned[pi], st.rules.cards + mods[pi].extraCard, t, opts.names.length);
+    const o = drawOffer(Math.random, owned[pi], st.rules.cards + mods[pi].extraCard, t, opts.names.length, !!opts.bag);
     dispatchQuiet({ t: 'offer', player: pi, tier: o.tier, cards: o.cards.map((c) => c.id), bumped: o.bumped, starter: st.starter });
   }
 
@@ -1166,7 +1222,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   });
 
   const picker = mountDiscPicker($('disc-picker'), (d) => {
-    if (phase !== 'aim') return;
+    if (phase !== 'aim' || !bagOf(game().current).includes(d)) return;
     disc = d;
     recomputeTick();
     updateHud();
@@ -1174,7 +1230,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function cycleDisc(dir: 1 | -1): void {
     if (phase !== 'aim') return;
-    disc = DISCS[(DISCS.indexOf(disc) + dir + DISCS.length) % DISCS.length];
+    const bag = bagOf(game().current);
+    disc = bag[(bag.indexOf(disc) + dir + bag.length) % bag.length];
     recomputeTick();
     updateHud();
   }

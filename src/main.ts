@@ -54,7 +54,7 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
   },
 ];
 
-const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean }>('sat-golf:menu', {});
+const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean }>('sat-golf:menu', {});
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
 let players = Math.min(MAX_PLAYERS, Math.max(1, last.players ?? 2));
 const savedNames = load<string[]>('sat-golf:names', []);
@@ -148,6 +148,8 @@ function renderPlayers(): void {
 // ---------- crazy mode ----------
 const crazy = $<HTMLInputElement>('crazy');
 crazy.checked = !!last.crazy;
+const bagMode = $<HTMLInputElement>('bag-mode');
+bagMode.checked = !!last.bag;
 const syncCrazy = () => { $('crazy-rules').hidden = !crazy.checked; };
 
 // ---------- Crazy mode rules ----------
@@ -193,6 +195,7 @@ $('aug-browser').addEventListener('click', (e) => { if (e.target === $('aug-brow
 renderRules();
 crazy.addEventListener('change', () => { syncCrazy(); pushLobby(); renderCourseInfo(); });
 $('holes').addEventListener('change', () => { pushLobby(); renderCourseInfo(); });
+bagMode.addEventListener('change', () => pushLobby());
 
 renderCourses();
 renderHoles();
@@ -256,7 +259,7 @@ function pushLobby(): void {
   const order = [...members, ...kept].sort((a, b) => seatOf(a) - seatOf(b)); // stable: newcomers keep arrival order
   const seated = order.slice(0, MAX_PLAYERS);
   const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
-  room.setLobby({ course, first, count, crazy: crazy.checked, seats: seated.map((m, i) => ({ name: names[i], client: m.client })) });
+  room.setLobby({ course, first, count, crazy: crazy.checked, bag: bagMode.checked, seats: seated.map((m, i) => ({ name: names[i], client: m.client })) });
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -279,6 +282,7 @@ function trackAway(): void {
 function showLobby(l: Lobby): void {
   if (COURSES.some((c) => c.id === l.course)) course = l.course as CourseId;
   crazy.checked = l.crazy;
+  bagMode.checked = !!l.bag;
   renderCourses();
   renderHoles();
   const sel = $<HTMLSelectElement>('holes');
@@ -433,7 +437,7 @@ async function launch(l: Lobby): Promise<void> {
   const r = room;
   const { startDisc } = await import('./modes/disc');
   await startDisc({
-    names: l.seats.map((q) => q.name), course: id, first: l.first, count: l.count, rogue: l.crazy,
+    names: l.seats.map((q) => q.name), course: id, first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag,
     net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog, seats: l.seats.map((q) => q.client), present: members.map((m) => m.client) },
     rules, // only the host's are used: they send them as the round's first event
   });
@@ -443,7 +447,7 @@ async function launch(l: Lobby): Promise<void> {
 $('start').addEventListener('click', async () => {
   if (room) {
     if (!amHost()) return;
-    save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked });
+    save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
     pushLobby();
     room.start();
     return;
@@ -452,7 +456,7 @@ $('start').addEventListener('click', async () => {
   const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
   save('sat-golf:names', typed);
-  save('sat-golf:menu', { course, holes: holesV, players, crazy: crazy.checked });
+  save('sat-golf:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked });
   $('setup').hidden = true;
   $('settings-btn').hidden = false;
   $('fp-toggle').hidden = false;
@@ -460,5 +464,5 @@ $('start').addEventListener('click', async () => {
   const [first, count] = holesV.split(':').map((x) => parseInt(x, 10));
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === course)!.name}${crazy.checked ? ' · Crazy mode' : ''}`;
   const { startDisc } = await import('./modes/disc');
-  await startDisc({ names, course, first, count: Math.min(count, n - first), rogue: crazy.checked, rules });
+  await startDisc({ names, course, first, count: Math.min(count, n - first), rogue: crazy.checked, rules, bag: bagMode.checked });
 });

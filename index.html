@@ -145,6 +145,11 @@
           <section class="panel-card round">
             <h3>Round</h3>
             <label class="row" id="holes-row"><span>Holes</span><select id="holes"></select></label>
+            <label class="toggle">
+              <input type="checkbox" id="bag-mode" />
+              <span class="switch"></span>
+              <span class="toggle-text"><b>Pick a bag</b><small>Everyone carries 4 of the 7 discs for the round, chosen before hole 1.</small></span>
+            </label>
             <label class="toggle crazy">
               <input type="checkbox" id="crazy" />
               <span class="switch"></span>
@@ -210,6 +215,16 @@
         <input id="name-input" maxlength="16" autocomplete="nickname" spellcheck="false" />
         <div class="sheet-actions"><button type="button" id="name-cancel">Cancel</button><button type="submit" id="name-ok" class="primary">Join</button></div>
       </form>
+    </div>
+
+    <!-- Bag building: pick the discs you carry -->
+    <div id="bag" class="modal" hidden>
+      <div class="sheet bag-sheet">
+        <div class="sheet-head"><h2 id="bag-title"></h2><span id="bag-count" class="dim"></span></div>
+        <p class="dim" id="bag-sub"></p>
+        <div id="bag-cards" class="bag-cards"></div>
+        <div class="sheet-actions"><button id="bag-ok" class="primary big">Carry these</button></div>
+      </div>
     </div>
 
     <!-- Crazy mode draft -->

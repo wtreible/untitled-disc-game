@@ -29,9 +29,9 @@ const withPower = (...ids: string[]): Mods => { const m = neutralMods(); for (co
 const rate = (n: number, f: (seed: number) => boolean) => { let k = 0; for (let s = 1; s <= n; s++) if (f(s)) k++; return k / n; };
 
 describe('catalog', () => {
-  it('has 28 common, 22 epic, 15 legendary with unique ids, each in a category', () => {
+  it('has 29 common, 22 epic, 15 legendary with unique ids, each in a category', () => {
     const count = (t: string) => POWERUPS.filter((p) => p.tier === t).length;
-    expect([count('common'), count('epic'), count('legendary')]).toEqual([28, 22, 15]);
+    expect([count('common'), count('epic'), count('legendary')]).toEqual([29, 22, 15]);
     for (const p of POWERUPS) expect(CATEGORIES.map((c) => c.id)).toContain(p.category);
     expect(new Set(POWERUPS.map((p) => p.id)).size).toBe(POWERUPS.length);
   });

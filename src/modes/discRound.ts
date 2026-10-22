@@ -8,6 +8,7 @@ import type { DiscHole, Tree } from '../course/disc-types';
 import type { Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
 import type { ThrowEvent, ThrowResult } from '../disc/flight';
+import { DISCS } from '../disc/discs';
 import { neutralMods, rogueStartMods, type Mods } from '../disc/mods';
 import { Round } from '../game/round';
 import type { Vec3 } from '../game/terrain';
@@ -56,7 +57,9 @@ export type RoundEvent =
   /** The host closes the hole's scorecard: Crazy mode drafts follow, then the next hole. */
   | { t: 'next' }
   /** Crazy mode setup (the host's), the round's first event. */
-  | { t: 'rules'; rules: CrazyRules };
+  | { t: 'rules'; rules: CrazyRules }
+  /** Bag building: the discs (ids) a player carries from now on. */
+  | { t: 'bag'; player: number; discs: string[] };
 
 /** What the round is waiting for (src/modes/disc.ts acts on it, or waits for whoever's turn it is). */
 export type Stage =
@@ -64,6 +67,8 @@ export type Stage =
   | 'need-rules'
   /** A Crazy mode draft: drafting[0] picks an augment. */
   | 'drafting'
+  /** Bag building: players in `needBag` pick their discs (any order, all at once online). */
+  | 'bagging'
   /** The next hole to start (the host starts it). */
   | 'need-hole'
   /** Hexes / Clear-Cuts to place before the hole: placing[0]. */
@@ -80,7 +85,12 @@ export interface RoundOptions {
   first: number;
   count: number;
   rogue: boolean;
+  /** Bag building: everyone carries BAG_SIZE discs, picked before hole 1. */
+  bag?: boolean;
 }
+
+/** Discs in a bag (Bag Pocket adds more, up to every disc). */
+export const BAG_SIZE = 4;
 
 export class DiscRound {
   readonly round: Round;
@@ -110,6 +120,8 @@ export class DiscRound {
    * drafting after gets the same tier.
    */
   draftTier: Tier | null = null;
+  /** Bag building: each player's discs (ids), null until picked. */
+  readonly bags: (string[] | null)[];
   private rulesSet = false;
   /** The host has closed this hole's scorecard. */
   private cardClosed = false;
@@ -131,6 +143,7 @@ export class DiscRound {
     this.owned = opts.names.map(() => []);
     this.mulligansLeft = opts.names.map(() => 0);
     this.perfectLeft = opts.names.map(() => 0);
+    this.bags = opts.names.map(() => null);
     this.changes = emptyChanges(n);
     // Per-player tees/baskets (Forward Tee, Back Tees, Short Pin), decided when the hole is set up.
     this.round.setup = (hi) => {
@@ -143,10 +156,22 @@ export class DiscRound {
   get stage(): Stage {
     if (this.opts.rogue && !this.rulesSet) return 'need-rules';
     if (this.drafting.length) return 'drafting';
+    if (this.needBag.length && (!this.started || (this.game.finished && this.cardClosed))) return 'bagging';
     if (!this.started) return 'need-hole';
     if (this.game.finished) return this.cardClosed && !this.round.isLastHole ? 'need-hole' : 'card';
     if (this.placing.length) return 'placing';
     return 'playing';
+  }
+
+  /** How many discs this player carries. */
+  bagSize(p: number): number {
+    return Math.min(DISCS.length, BAG_SIZE + this.mods[p].bagSlots);
+  }
+
+  /** Bag building: players whose bag isn't picked (or has room for more, after a Bag Pocket). */
+  get needBag(): number[] {
+    if (!this.opts.bag) return [];
+    return this.bags.map((b, i) => (!b || b.length < this.bagSize(i) ? i : -1)).filter((i) => i >= 0);
   }
 
   get holeStarted(): boolean {
@@ -269,6 +294,14 @@ export class DiscRound {
       case 'place-skip':
         this.placing.shift();
         return;
+      case 'bag': {
+        if (!this.opts.bag || !this.opts.names[e.player]) return;
+        // The first discs listed that exist, once each, as many as the bag holds; in bag order.
+        const order = DISCS.map((d) => d.id);
+        const ids = [...new Set(e.discs)].filter((id) => order.includes(id)).slice(0, this.bagSize(e.player)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+        if (ids.length) this.bags[e.player] = ids;
+        return;
+      }
     }
   }
 

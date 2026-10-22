@@ -44,9 +44,12 @@ export const DISC_RADIUS = 0.105;
 
 /** Shortest disc expected to reach `d` meters (or the longest). Expected range is calibrated in tests. */
 /** The shortest everyday disc expected to reach `d` meters (or the longest). Specialty discs are picked by hand. */
-export function suggestDisc(d: number, ranges: Record<string, number>): Disc {
-  if (d < 20) return PUTTER_DISC;
-  const core = DISCS.filter((k) => k.suggest).sort((a, b) => ranges[b.id] - ranges[a.id]);
+export function suggestDisc(d: number, ranges: Record<string, number>, from: Disc[] = DISCS): Disc {
+  if (d < 20 && from.includes(PUTTER_DISC)) return PUTTER_DISC;
+  // From the bag's everyday discs, or (a bag of specialty discs) from all of it.
+  const everyday = from.filter((k) => k.suggest);
+  const core = [...(everyday.length ? everyday : from)].sort((a, b) => ranges[b.id] - ranges[a.id]);
+  if (d < 20) return core[core.length - 1];
   let best = core[0];
   for (const k of core) if (ranges[k.id] >= d * 1.05) best = k;
   return best;

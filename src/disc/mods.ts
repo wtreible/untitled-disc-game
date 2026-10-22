@@ -66,6 +66,8 @@ export interface Mods {
   treeChopper: boolean;
   rerolls: number;
   extraCard: number;
+  /** Bag building: discs you carry beyond the usual 4. */
+  bagSlots: number;
   /** Fraction of the ghost (predicted) flight line shown, 0..1. Base game 1; roguelike starts at 0. */
   ghost: number;
   /** Ghost line also shows the ±1σ wobble spread (Oracle). */
@@ -101,7 +103,7 @@ export function neutralMods(): Mods {
     catchBonus: 0, teeCatchBonus: 0, cutToCatch: 0, basketScale: 1, tapIn: 1, gimme: 0, magnet: 0, magnetPull: 1.5,
     branch: 1, branchPass: 0, trunkKeep: 1, phaseTrees: 0, kickToward: false, kickKeep: 1, liveKicks: false,
     skid: 1, sticky: false, obInsurance: false, puttRange: 1, homing: 0, windScale: 1, tailwind: false,
-    meterSpeed: 1, pickupBonus: 0, mulligans: 0, perfectForm: 0, clone: false, treeChopper: false, rerolls: 0, extraCard: 0,
+    meterSpeed: 1, pickupBonus: 0, mulligans: 0, perfectForm: 0, clone: false, treeChopper: false, rerolls: 0, extraCard: 0, bagSlots: 0,
     ghost: 1, ghostCone: false, teeForward: 0, pinCloser: 0, clearCut: 0,
     hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1, hexWind: 1,
   };

@@ -193,3 +193,39 @@ describe('Crazy mode rules', () => {
     expect(again.drafting).toEqual(r.drafting);
   });
 });
+
+describe('bag building', () => {
+  const opts: RoundOptions = { names: ['A', 'B'], first: 0, count: 2, rogue: true, bag: true };
+  const fresh = () => { const r = new DiscRound(course.holes, trees, opts, blocked); r.apply({ t: 'rules', rules: cleanRules({ starter: false }) }); return r; };
+  it('waits for every bag before hole 1, and keeps only known discs up to the bag size', () => {
+    const r = fresh();
+    expect(r.stage).toBe('bagging');
+    expect(r.needBag).toEqual([0, 1]);
+    r.apply({ t: 'bag', player: 1, discs: ['PT', 'MR', 'XX', 'DD', 'FD', 'AP'] });
+    expect(r.bags[1]).toEqual(['DD', 'FD', 'MR', 'PT']); // bag order, unknown dropped, 4 kept
+    expect(r.stage).toBe('bagging');
+    r.apply({ t: 'bag', player: 0, discs: ['DD', 'OD', 'TF', 'AP'] });
+    expect(r.stage).toBe('need-hole');
+  });
+  it('Bag Pocket opens a slot: that player picks again between holes', () => {
+    const r = fresh();
+    r.apply({ t: 'bag', player: 0, discs: ['DD', 'FD', 'MR', 'PT'] });
+    r.apply({ t: 'bag', player: 1, discs: ['DD', 'FD', 'MR', 'PT'] });
+    r.apply({ t: 'hole-start', wind: [0, 0] });
+    for (let s = 1; r.stage === 'playing' && s < 200; s++) throwTurn(r, s);
+    r.apply({ t: 'next' });
+    while (r.stage === 'drafting') r.apply({ t: 'pick', player: r.drafting[0], id: r.drafting[0] === 0 ? 'bag-pocket' : null });
+    expect(r.bagSize(0)).toBe(5);
+    expect(r.stage).toBe('bagging');
+    expect(r.needBag).toEqual([0]);
+    r.apply({ t: 'bag', player: 0, discs: ['DD', 'FD', 'MR', 'PT', 'OD'] });
+    expect(r.stage).toBe('need-hole');
+  });
+  it('without bag building nobody picks, and the bag augment is never offered', async () => {
+    const r = new DiscRound(course.holes, trees, { ...opts, bag: false }, blocked);
+    r.apply({ t: 'rules', rules: cleanRules({ starter: false }) });
+    expect(r.stage).toBe('need-hole');
+    const { drawOffer } = await import('../src/rogue/powerups');
+    for (let s = 1; s < 200; s++) expect(drawOffer(mulberry32(s), [], 5, 'common', 2).cards.map((c) => c.id)).not.toContain('bag-pocket');
+  });
+});

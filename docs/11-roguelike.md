@@ -39,7 +39,7 @@ Placed hexes (Sapling, Thicket, Pond Prank) and Clear-Cut are placed by their ow
 
 Roguelike players start with **no ghost line** (the aim line, target ring and power tick remain). Scout's Eye (+50%) and Flight Plan (+75%) reveal the start of the predicted flight; Oracle shows all of it plus the ±1σ wobble spread.
 
-## Catalog (65: 28 common, 22 epic, 15 legendary)
+## Catalog (66: 29 common, 22 epic, 15 legendary)
 
 Generated from `src/rogue/powerups.ts` (2026-10-21). “Unique” augments can be owned once; the rest stack.
 
@@ -83,6 +83,7 @@ Flight numbers, shaping, skids and wind.
 | common | Flippy Plastic | −1 turn on every disc: more turnover. |
 | common | Overstable Stamp | +1 turn and +1 fade: dependable fade. |
 | common | Wind Cheater | Wind pushes your disc around 40% less. |
+| common | Bag Pocket | Carry one more disc: pick it before the next hole. Only offered with bag building. |
 | epic | Hover Plastic | +2.5 glide and −1.25 fade on every disc. |
 | epic | Sticky Plastic (unique) | Discs stop where they land; landing within 2 m of OB or water is saved. |
 | epic | Featherweight | +3 glide, and wind pushes your disc around 25% less. |

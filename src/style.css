@@ -380,6 +380,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .aug-chip { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 8px; border-radius: 999px; font: 600 11.5px var(--body); background: rgba(143, 211, 255, 0.14); color: var(--t-common); cursor: default; }
 .aug-chip.epic { background: rgba(198, 155, 255, 0.14); color: var(--t-epic); }
 .aug-chip.legendary { background: rgba(255, 200, 61, 0.16); color: var(--t-legendary); }
+.bag-sheet { width: min(620px, calc(100vw - 32px)); }
+.bag-sheet p { margin: 0; font-size: 14px; }
+.bag-cards { display: flex; flex-wrap: wrap; gap: 8px; }
+.bag-cards .disc-card { opacity: 0.55; }
+.bag-cards .disc-card.on { opacity: 1; }
 .results-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
 .results-summary .hl { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--navy-1); border: 1px solid var(--line); }
 .results-summary .hl small { font: 700 11px var(--head); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
