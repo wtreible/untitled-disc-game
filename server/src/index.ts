@@ -11,6 +11,7 @@
 //   { type: 'start' }               host only: freeze the lobby; game events may follow
 //   { type: 'event', seq, e }       a game event, valid only if seq is the next log position
 //   { type: 'live', s }             passing state (the thrower's aim, power): relayed, not stored
+//   { type: 'name', name }          change our name (the host's lobby picks it up before the start)
 // Room → client:
 //   { type: 'welcome', you, host, lobby, started, log, members }   on connect (full catch-up)
 //   { type: 'lobby', lobby } · { type: 'started', lobby } · { type: 'members', members }
@@ -47,7 +48,7 @@ const MAX_MESSAGE = 256 * 1024;
 /** Live aim updates are small; anything bigger isn't one. */
 const MAX_LIVE = 2048;
 const MAX_EVENTS = 20000;
-const MAX_SEATS = 4;
+const MAX_SEATS = 6;
 /** Rooms delete themselves after a week without activity. */
 const IDLE_MS = 7 * 24 * 3600 * 1000;
 const CODE = /^[A-Z0-9]{4,8}$/;
@@ -97,7 +98,7 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== 'string' || raw.length > MAX_MESSAGE) return this.fail(ws, 'message too large');
-    let msg: { type?: string; seq?: number; e?: unknown; lobby?: Lobby };
+    let msg: { type?: string; seq?: number; e?: unknown; lobby?: Lobby; name?: unknown };
     try { msg = JSON.parse(raw); } catch { return this.fail(ws, 'not JSON'); }
     const me = ws.deserializeAttachment() as Attachment;
     const isHost = me.client === this.get('host');
@@ -134,6 +135,17 @@ export class Room extends DurableObject<Env> {
         this.sql.exec('INSERT INTO events (seq, client, body) VALUES (?, ?, ?)', next, me.client, body);
         ws.send(JSON.stringify({ type: 'ack', seq: next }));
         this.broadcast({ type: 'event', seq: next, from: me.client, e: msg.e }, ws);
+        return;
+      }
+      case 'name': {
+        const name = typeof msg.name === 'string' ? msg.name.trim().slice(0, 16) : '';
+        if (!name) return this.fail(ws, 'bad name');
+        // Every socket this browser has open (a reconnect can briefly leave two).
+        for (const s of this.ctx.getWebSockets()) {
+          const a = s.deserializeAttachment() as Attachment;
+          if (a.client === me.client) s.serializeAttachment({ ...a, name } satisfies Attachment);
+        }
+        this.broadcast({ type: 'members', members: this.members() });
         return;
       }
       case 'live': {

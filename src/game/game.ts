@@ -3,7 +3,7 @@ import { dist, type Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
 import type { ShotResult } from './physics';
 
-export const PLAYER_COLORS = ['#ffffff', '#ffd23f', '#3fc1ff', '#ff6b9a'];
+export const PLAYER_COLORS = ['#ffffff', '#ffd23f', '#3fc1ff', '#ff6b9a', '#7ee081', '#b48cff'];
 
 export interface Player {
   name: string;

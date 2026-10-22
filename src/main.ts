@@ -5,7 +5,7 @@ import { PLAYER_COLORS } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { IMAGERY, asset } from './assets';
 import { fmtLen } from './units';
-import { ROOMS_URL, RoomClient, newRoomCode, type Lobby, type Member } from './net/room';
+import { MAX_PLAYERS, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
 import { closeAugmentBrowser, openAugmentBrowser } from './ui/augments';
@@ -56,7 +56,7 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
 
 const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean }>('sat-golf:menu', {});
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
-let players = Math.min(4, Math.max(1, last.players ?? 2));
+let players = Math.min(MAX_PLAYERS, Math.max(1, last.players ?? 2));
 const savedNames = load<string[]>('sat-golf:names', []);
 
 // ---------- course cards ----------
@@ -121,7 +121,8 @@ function renderHoles(): void {
 
 // ---------- players ----------
 function renderPlayers(): void {
-  $('player-seg').innerHTML = [1, 2, 3, 4].map((k) => `<button data-n="${k}" class="${k === players ? 'on' : ''}">${k} ${k === 1 ? 'player' : 'players'}</button>`).join('');
+  $('player-seg').innerHTML = Array.from({ length: MAX_PLAYERS }, (_, i) => i + 1)
+    .map((k) => `<button data-n="${k}" class="${k === players ? 'on' : ''}" title="${k} ${k === 1 ? 'player' : 'players'}">${k === 1 ? '1 player' : k}</button>`).join('');
   $('player-seg').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
     players = parseInt(b.dataset.n!, 10);
     renderPlayers();
@@ -142,7 +143,7 @@ function renderPlayers(): void {
 // ---------- crazy mode ----------
 const crazy = $<HTMLInputElement>('crazy');
 crazy.checked = !!last.crazy;
-const syncCrazy = () => { $('holes-row').hidden = crazy.checked; $('crazy-rules').hidden = !crazy.checked; }; // crazy runs play the full course
+const syncCrazy = () => { $('crazy-rules').hidden = !crazy.checked; };
 
 // ---------- Crazy mode rules ----------
 let rules: CrazyRules = cleanRules(load<Partial<CrazyRules> | null>('sat-golf:crazy-rules', null));
@@ -203,12 +204,14 @@ $('settings-menu').addEventListener('click', () => { leaveRoomLink(); location.r
 $('pause-card').addEventListener('click', () => { openPause(false); window.dispatchEvent(new Event('show-scorecard')); });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('aug-browser').hidden === false) { closeAugmentBrowser(); return; }
+  if (e.key === 'Escape' && $('name-ask').hidden === false) { $('name-cancel').click(); return; }
   if (e.key === 'Escape' && $('setup').hidden === true) openPause($('settings').hidden === true);
 });
 
 // ---------- online rooms ----------
 // Host a room or join one by code (or link, #room=CODE). The host's course, holes and Crazy mode
-// setting are the room's; everyone connected gets a player (up to 4; more can watch).
+// setting are the room's; everyone connected gets a player (up to MAX_PLAYERS; more can watch).
+// Hosting or joining asks for your name first; it can be changed in the lobby until the start.
 let room: RoomClient | null = null;
 let me = '';
 let host = '';
@@ -226,7 +229,7 @@ function leaveRoomLink(): void {
 
 function holesFromMenu(): [number, number] {
   const n = COURSES.find((c) => c.id === course)!.holes;
-  const [first, count] = crazy.checked ? [0, n] : $<HTMLSelectElement>('holes').value.split(':').map((x) => parseInt(x, 10));
+  const [first, count] = $<HTMLSelectElement>('holes').value.split(':').map((x) => parseInt(x, 10));
   if (!Number.isFinite(first) || !Number.isFinite(count)) return [0, n]; // holes list not filled yet
   return [first, Math.min(count, n - first)];
 }
@@ -235,8 +238,17 @@ function holesFromMenu(): [number, number] {
 function pushLobby(): void {
   if (!room || !amHost() || launched) return;
   const [first, count] = holesFromMenu();
-  const order = [...members].sort((a, b) => (a.client === host ? -1 : b.client === host ? 1 : 0));
-  room.setLobby({ course, first, count, crazy: crazy.checked, seats: order.slice(0, 4).map((m) => ({ name: m.name, client: m.client })) });
+  // Host first, then whoever already had a seat (in seat order), then newcomers: someone joining
+  // later never bumps an earlier player to watching.
+  const seatOf = (m: Member) => {
+    if (m.client === host) return -1;
+    const k = lobby?.seats.findIndex((q) => q.client === m.client) ?? -1;
+    return k >= 0 ? k : MAX_PLAYERS;
+  };
+  const order = [...members].sort((a, b) => seatOf(a) - seatOf(b)); // stable: newcomers keep arrival order
+  const seated = order.slice(0, MAX_PLAYERS);
+  const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
+  room.setLobby({ course, first, count, crazy: crazy.checked, seats: seated.map((m, i) => ({ name: names[i], client: m.client })) });
 }
 
 /** Guests: show the host's setup. */
@@ -259,7 +271,7 @@ function renderRoom(): void {
   const rows = [...$('player-names').children] as HTMLElement[];
   rows.forEach((r, i) => { r.hidden = inRoom && i > 0; });
   const nameInput = $('player-names').querySelector('input');
-  if (nameInput) nameInput.disabled = inRoom;
+  if (nameInput) nameInput.title = inRoom ? 'Your name in the room (Enter to change it)' : '';
   const start = $<HTMLButtonElement>('start');
   if (!room) { start.disabled = false; start.innerHTML = 'Tee off <span class="arrow">→</span>'; return; }
   $('room-code').textContent = room.code;
@@ -276,6 +288,45 @@ function renderRoom(): void {
   start.innerHTML = amHost() ? 'Start online game <span class="arrow">→</span>' : 'Waiting for the host…';
 }
 const escapeHtml = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/** Ask for a name (prefilled with the last one). Null: cancelled. */
+function askName(title: string, ok: string): Promise<string | null> {
+  const modal = $('name-ask'), input = $<HTMLInputElement>('name-input');
+  $('name-title').textContent = title;
+  $('name-ok').textContent = ok;
+  input.value = myName();
+  modal.hidden = false;
+  input.focus();
+  input.select();
+  return new Promise((done) => {
+    const finish = (v: string | null) => {
+      modal.hidden = true;
+      $('name-form').removeEventListener('submit', submit);
+      $('name-cancel').removeEventListener('click', cancel);
+      done(v);
+    };
+    const submit = (e: Event) => { e.preventDefault(); const v = input.value.trim(); if (v) finish(v.slice(0, 16)); else input.focus(); };
+    const cancel = () => finish(null);
+    $('name-form').addEventListener('submit', submit);
+    $('name-cancel').addEventListener('click', cancel);
+  });
+}
+
+/** Our name, from the name prompt or the lobby: shown in the first player row and remembered. */
+function setMyName(name: string): void {
+  const input = $('player-names').querySelector('input');
+  if (input) input.value = name;
+  savedNames[0] = name;
+  save('sat-golf:names', savedNames);
+}
+
+/** Ask for a name, then join (or host: a new code). Cancelling joins nothing. */
+async function enterRoom(code: string, hosting: boolean): Promise<void> {
+  const name = await askName(hosting ? 'Host a room' : `Join room ${code}`, hosting ? 'Host' : 'Join');
+  if (!name) { if (!room) leaveRoomLink(); return; }
+  setMyName(name);
+  joinRoom(code);
+}
 
 function joinRoom(code: string): void {
   room?.close();
@@ -306,11 +357,21 @@ function joinRoom(code: string): void {
 }
 
 $('online').hidden = !ROOMS_URL;
-$('host-room').addEventListener('click', () => joinRoom(newRoomCode()));
+$('host-room').addEventListener('click', () => void enterRoom(newRoomCode(), true));
 $('join-room').addEventListener('click', () => {
   const code = $<HTMLInputElement>('join-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (code.length >= 4) joinRoom(code);
+  if (code.length >= 4) void enterRoom(code, false);
 });
+// In the lobby, the first player row is our name: changing it renames us in the room.
+$('player-names').addEventListener('change', (e) => {
+  const input = e.target as HTMLInputElement;
+  if (!room || launched || input !== $('player-names').querySelector('input')) return;
+  const name = input.value.trim().slice(0, 16);
+  if (!name) { input.value = members.find((m) => m.client === me)?.name ?? myName(); return; }
+  setMyName(name);
+  room.rename(name);
+});
+$('player-names').addEventListener('keydown', (e) => { if (e.key === 'Enter' && room) (e.target as HTMLInputElement).blur(); });
 $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join-room').click(); });
 $('copy-link').addEventListener('click', async () => {
   if (!room) return;
@@ -329,11 +390,11 @@ $('leave-room').addEventListener('click', () => {
 // pasted into a tab that's already open (only the #hash changes, so the page doesn't reload).
 const roomInHash = () => location.hash.match(/^#room=([A-Za-z0-9]{4,8})$/)?.[1].toUpperCase() ?? null;
 const linked = roomInHash();
-if (ROOMS_URL && linked) joinRoom(linked);
+if (ROOMS_URL && linked) void enterRoom(linked, false);
 window.addEventListener('hashchange', () => {
   const code = roomInHash();
-  if (!ROOMS_URL || !code || launched || room?.code === code) return;
-  joinRoom(code);
+  if (!ROOMS_URL || !code || launched || room?.code === code || !$('name-ask').hidden) return;
+  void enterRoom(code, false);
 });
 
 /** Start (or rejoin) the room's game. */
@@ -363,15 +424,16 @@ $('start').addEventListener('click', async () => {
     room.start();
     return;
   }
-  const names = [...$('player-names').querySelectorAll('input')].map((i, k) => i.value.trim() || `Player ${k + 1}`);
+  const typed = [...$('player-names').querySelectorAll('input')].map((i, k) => i.value.trim() || `Player ${k + 1}`);
+  const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
-  save('sat-golf:names', names);
+  save('sat-golf:names', typed);
   save('sat-golf:menu', { course, holes: holesV, players, crazy: crazy.checked });
   $('setup').hidden = true;
   $('settings-btn').hidden = false;
   $('fp-toggle').hidden = false;
   const n = COURSES.find((c) => c.id === course)!.holes;
-  const [first, count] = crazy.checked ? [0, n] : holesV.split(':').map((x) => parseInt(x, 10));
+  const [first, count] = holesV.split(':').map((x) => parseInt(x, 10));
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === course)!.name}${crazy.checked ? ' · Crazy mode' : ''}`;
   const { startDisc } = await import('./modes/disc');
   await startDisc({ names, course, first, count: Math.min(count, n - first), rogue: crazy.checked, rules });

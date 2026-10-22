@@ -54,6 +54,28 @@ export function clientId(): string {
   }
 }
 
+/** Most players in a game, local or online (the room's seats; everyone past that watches). */
+export const MAX_PLAYERS = 6;
+
+/**
+ * Names made distinct: a repeat (ignoring case) gets a 2-digit number, "Sam" and "Sam 47". The
+ * number comes from `keys[i]` (a client id online, the seat locally), so it doesn't change as the
+ * lobby updates.
+ */
+export function uniqueNames(names: string[], keys: string[] = names.map((_, i) => String(i))): string[] {
+  const taken = new Set<string>();
+  return names.map((raw, i) => {
+    const name = raw.trim().slice(0, 16) || 'Player';
+    if (!taken.has(name.toLowerCase())) { taken.add(name.toLowerCase()); return name; }
+    let h = 0;
+    for (const c of keys[i] ?? '') h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    for (let k = 0; ; k++) {
+      const out = `${name.slice(0, 13)} ${10 + ((h + k) % 90)}`;
+      if (!taken.has(out.toLowerCase())) { taken.add(out.toLowerCase()); return out; }
+    }
+  });
+}
+
 /** A short code friends can type: no 0/O or 1/I. */
 export function newRoomCode(): string {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -126,8 +148,10 @@ export class RoomClient {
     this.ws?.close();
   }
 
+  /** A new name for us: the room tells everyone (and it's the one used when reconnecting). */
   rename(name: string): void {
     this.name = name;
+    this.send({ type: 'name', name });
   }
 
   private send(m: unknown): void {

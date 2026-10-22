@@ -1,6 +1,6 @@
 # Untitled Disc Game
 
-Disc golf in the browser, on real and not-so-real courses, for 1–4 players on one computer (hot seat).
+Disc golf in the browser, on real and not-so-real courses, for 1–6 players on one computer (hot seat) or online.
 
 **Play:** https://wtreible.github.io/untitled-disc-game/
 
