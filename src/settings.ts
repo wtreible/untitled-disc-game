@@ -17,12 +17,22 @@ export interface Prefs {
   graphics: Graphics;
   /** Frame-rate readout in the corner. */
   fps: boolean;
+  /** Music volume, 0–1. */
+  music: number;
+  /** Effects and ambience volume, 0–1. */
+  sfx: number;
+  /** All sound off (N, or the speaker button), volumes kept. */
+  muted: boolean;
+  /** Fly down each hole before its first throw. */
+  flyovers: boolean;
+  /** Random weather and time of day per round (off: always sunny). */
+  weather: boolean;
 }
 
 export type Graphics = 'low' | 'medium' | 'high';
 
 const KEY = 'sat-golf:prefs';
-const DEFAULTS: Prefs = { replays: true, follow: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false };
+const DEFAULTS: Prefs = { replays: true, follow: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false, music: 0.6, sfx: 0.8, muted: false, flyovers: true, weather: true };
 
 let cache: Prefs | null = null;
 

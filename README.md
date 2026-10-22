@@ -33,8 +33,11 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | Shot | G (or the shot chip): normal, tomahawk / thumber (overhand, up over trees), roller (rolls on edge under them) |
 | Throw | Hold Space, let go at the power you want. The white tick on the meter reaches your target; the dashed line is the flight if you throw it perfectly. |
 | View | C: first person / top-down. In top-down: right-drag to pan, scroll to zoom, F to re-frame. |
-| Replay | Drag to orbit, scroll to zoom, R resets, Space skips |
-| Menu | Esc or ⏸: settings (units, replays, field of view, graphics quality, frame rate), scorecard, quit |
+| Replay | Drag to orbit, scroll to zoom, R resets, Space skips. Hold Shift to fast-forward any flight or replay. |
+| Hole flyover | Space or click skips it (Settings → Hole flyovers) |
+| Sound | N mutes; Music and Effects volumes in Settings |
+| Help | ? lists every control |
+| Menu | Esc or ⏸: settings (music and effects volume, units, replays, hole flyovers, weather, field of view, graphics quality, frame rate), scorecard, quit |
 
 The wind for each hole is in the top-left banner; its arrow turns with your view. A headwind turns discs over, a tailwind makes them drop, a crosswind pushes them sideways.
 
@@ -91,4 +94,5 @@ Design notes and every decision so far: [`docs/`](docs/README.md).
 - Course data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL)
 - Tree canopy: [HSY land cover 2024](https://www.hsy.fi/en/environmental-information/open-data/) (Helsingin seudun ympäristöpalvelut, CC BY 4.0)
 - Satellite imagery (dev builds): © Esri and its partners, streamed, not stored
-- 3D models, all [CC0](https://creativecommons.org/publicdomain/zero/1.0/): [Kenney](https://kenney.nl) (Minigolf, Cube Pets, Nature, Castle, Fantasy Town and Space kits), [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) by Kay Lousberg, and [Quaternius](https://quaternius.com) (Animated Monsters, Stylized Nature MegaKit). Each pack's license is next to its models in `public/models/`.
+- 3D models, all [CC0](https://creativecommons.org/publicdomain/zero/1.0/): [Kenney](https://kenney.nl) (Minigolf, Cube Pets, Nature, Castle, Fantasy Town, Space and Mini Characters kits), [KayKit Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) by Kay Lousberg, and [Quaternius](https://quaternius.com) (Animated Monsters, Stylized Nature MegaKit). Each pack's license is next to its models in `public/models/`.
+- Music and sound, all CC0: [Kenney](https://kenney.nl) (Impact, Interface, RPG Audio and Music Jingles packs) and [OpenGameArt](https://opengameart.org) artists TinyWorlds, Zane Little Music, RandomMind, yd, isaiah658, sketchman3, aquinn, rubberduck, artisticdude and expl0it3r. Track by track: [`public/audio/CREDITS.md`](public/audio/CREDITS.md).

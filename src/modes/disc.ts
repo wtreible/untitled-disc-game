@@ -27,6 +27,14 @@ import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen, fmtSpeed } from '../units';
 import { prefs, replaysOn } from '../settings';
 import { banner, chip, clearBroadcast, scoreTone, type Tone } from '../ui/broadcast';
+import { throwCues, type Cue } from '../audio/cues';
+import { ambience, music, preload, rain, sfx, wind, type Track } from '../audio/sound';
+import { Gallery } from '../render/gallery';
+import { Effects } from '../render/effects';
+import { Life } from '../render/life';
+import { WEATHER, pickWeather, type Weather } from '../render/weather';
+import { setTreeWind } from '../render/disc3d';
+import { commentary } from '../ui/commentary';
 
 export const DISC_COURSES = {
   simple: 'courses/tali-simple.json',
@@ -68,6 +76,40 @@ function cutByDistance(q: Vec3[], frac: number): Vec3[] {
   return q;
 }
 const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2;
+/** Music per course. */
+const TRACKS: Record<keyof typeof DISC_COURSES, Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space' };
+/** Landing puff colors by what it landed on. */
+const PUFF: Record<string, string[]> = {
+  fairway: ['#7a9a4a', '#9bb565', '#8a7a55'], rough: ['#6f8f45', '#8a7a55', '#a3b06a'], green: ['#7fb04f', '#a6c96e'],
+  tee: ['#a8a39a', '#8a7a55'], trees: ['#5a4a32', '#4f7d2c', '#7a6a48'], bunker: ['#d9c08a', '#e8d3a0', '#c9ad74'],
+  path: ['#a8a39a', '#8f8a80', '#bdb6aa'], oob: ['#7a9a4a', '#8a7a55'],
+  rainbow: ['#ff4d6d', '#ff9f43', '#ffe066', '#5ee07a', '#4dabf7', '#9b6bff'],
+};
+/** Holding Shift plays flights and replays this much faster. */
+const FAST_FORWARD = 3;
+/** Jingle when a hole is finished, by result. */
+const JINGLES: Record<Tone, 'jingle-great' | 'jingle-birdie' | 'jingle-par' | 'jingle-bogey'> = {
+  ace: 'jingle-great', eagle: 'jingle-great', birdie: 'jingle-birdie', par: 'jingle-par', bogey: 'jingle-bogey', double: 'jingle-bogey', info: 'jingle-par', hot: 'jingle-par',
+};
+
+/** Play one of a throw's sound cues. */
+function playCue(c: Cue, gain: number): void {
+  switch (c.sound) {
+    case 'tree': sfx('tree', { gain }); sfx('leaves', { gain: gain * 0.5 }); break;
+    case 'branch': sfx('branch', { gain: gain * 0.6 }); sfx('leaves', { gain: gain * 0.8 }); break;
+    case 'bonk': sfx('bonk', { gain }); break;
+    case 'chains':
+      // A jangle with a few links rattling after it.
+      sfx('jangle', { gain });
+      [0.03, 0.09, 0.17].forEach((delay, i) => sfx('chain', { gain: gain * (0.8 - i * 0.2), delay }));
+      break;
+    case 'clank': sfx(Math.random() < 0.5 ? 'clank' : 'tray', { gain }); break;
+    case 'land': sfx(c.surface === 'path' ? 'land-hard' : c.surface === 'bunker' ? 'land-sand' : 'land-grass', { gain: gain * 0.8 }); break;
+    case 'splash': sfx('splash', { gain }); break;
+    case 'ob': sfx('ob', { gain: 0.7 }); break;
+  }
+}
+
 const LIE_LABELS: Record<string, string> = {
   tee: 'Tee pad', fairway: 'Fairway', rough: 'Open', trees: 'Woods', bunker: 'Sand', green: 'Basket', path: 'Path', water: 'Water', oob: 'OB',
 };
@@ -260,6 +302,37 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }));
 
   const scene = new CourseScene($('stage'), course, grid, trees, PLAYER_COLORS);
+  music(TRACKS[opts.course]);
+  const space = opts.course === 'rainbow';
+  // Spectators stand on open ground: not in water or OB, clear of trunks and props.
+  let nearTrees: Tree[] = [];
+  const free = (p: Vec2) => {
+    const c = grid.classAt(p[0], p[1]);
+    if (c === 'oob' || c === 'water') return false;
+    if (nearTrees.some((t) => Math.hypot(t.x - p[0], t.y - p[1]) < Math.max(0.8, t.t + 0.7))) return false;
+    return !propColliders.some((k) => (k.kind === 'cyl' && Math.hypot(k.c[0] - p[0], k.c[1] - p[1]) < k.r + 0.6)
+      || (k.kind === 'box' && Math.abs((p[0] - k.c[0]) * Math.cos(k.yaw) + (p[1] - k.c[1]) * Math.sin(k.yaw)) < k.hx + 0.6
+        && Math.abs(-(p[0] - k.c[0]) * Math.sin(k.yaw) + (p[1] - k.c[1]) * Math.cos(k.yaw)) < k.hy + 0.6));
+  };
+  const gallery = new Gallery(free);
+  const effects = new Effects();
+  const life = new Life(course.bounds, space);
+  for (const g of [gallery.group, effects.group, life.group]) scene.addObject(g);
+  /** The round's weather: from the first hole's wind, which every player in a room shares. */
+  let roundWeather: Weather | null = null;
+  function applyWeather(): void {
+    if (space) { ambience('space'); return; }
+    const first = st.log.find((e): e is Extract<RoundEvent, { t: 'hole-start' }> => e.t === 'hole-start');
+    if (!first) { ambience('outdoors'); return; }
+    roundWeather ??= pickWeather(first.wind[0] * 7.31 + first.wind[1] * 3.17);
+    const w = prefs().weather ? roundWeather : WEATHER.clear;
+    scene.setWeather(w);
+    life.setWeather(w);
+    rain(w.rain);
+    ambience(w.rain ? null : 'outdoors');
+  }
+  window.addEventListener('prefschange', applyWeather);
+  preload(['swish', 'tree', 'branch', 'leaves', 'bonk', 'chain', 'jangle', 'clank', 'tray', 'land-grass', 'splash', 'ob']);
   if (new URLSearchParams(location.search).get('debug') === 'colliders') scene.showColliders(propColliders);
   if (course.props?.length) {
     $('status').textContent = 'Loading models…';
@@ -304,11 +377,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   /** A throw being shown (local or, later, another player's): the event is applied when it lands. */
   /** The throw in the air. `show`: a highlight replayed from the final card (already applied). */
-  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number; remote: boolean; sentEarly: boolean; show?: boolean } | null = null;
+  /** `cues`: its sounds (src/audio/cues.ts), `cue` the next one to play (back to 0 for the replay). */
+  /** `t`: samples flown so far (advanced each frame, faster while fast-forwarding). */
+  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t: number; speed: number; clock0: number; remote: boolean; sentEarly: boolean; show?: boolean; cues: Cue[]; cue: number } | null = null;
   /** Online: the current thrower's aim, as they last sent it (another player's turn only). */
   let liveAim: LiveAim | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
-  let replay: { t0: number; heading: number; smoothHeading: number; started: boolean; last: number } | null = null;
+  let replay: { t: number; heading: number; smoothHeading: number; started: boolean; last: number } | null = null;
   const REPLAY_SPEED = 1.25;
   const REPLAY_MIN_SAMPLES = 40; // skip tap-ins and tiny putts
   let tick = 0; // meter tick (power to reach target)
@@ -552,6 +627,16 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.setHole(hole());
     scene.clearTrails();
     startHoleInfo();
+    wind(Math.hypot(st.wind[0], st.wind[1]));
+    applyWeather();
+    const h = hole();
+    setTreeWind(st.wind);
+    life.setHole(h, st.wind);
+    // Spectators by the basket, out of the way of throws coming in along the hole line.
+    const back = h.routing.length > 1 ? pointAlong(h.routing, Math.max(0, polylineLength(h.routing) - 30)) : h.tee;
+    const L = dist(back, h.pin) || 1;
+    nearTrees = trees.filter((t) => Math.hypot(t.x - h.pin[0], t.y - h.pin[1]) < 25);
+    void gallery.setHole(h.pin, [(h.pin[0] - back[0]) / L, (h.pin[1] - back[1]) / L], prefs().graphics === 'low' ? 3 : 6);
     // Every hole starts backhand; startTurn resets the release angle and picks the suggested disc.
     forehand = false;
   }
@@ -569,6 +654,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       fx: { magnet: m.magnet > 0, blackHole: owned[i].includes('black-hole'), gimme: m.gimme, phase: m.phaseTrees === Infinity },
     });
     scene.setStumps([...st.removed]);
+    life.setPin(pinOf(i));
     opts.names.forEach((_, k) => scene.setDiscGold(k, owned[k].includes('golden-arm')));
   }
 
@@ -658,24 +744,113 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const bag = bagOf(game().current);
     disc = toBasket() <= PUTT_RANGE && bag.includes(PUTTER_DISC) ? PUTTER_DISC : suggestDisc(d, ranges, bag);
     picker.setBag(st.bags[game().current]);
-    applyCamera(true);
+    gallery.clearLine(p.ball, myPin());
+    // A new hole opens with its flyover (once); otherwise the camera glides to the new lie.
+    const newHole = turnHole !== hole();
+    turnHole = hole();
+    if (newHole && prefs().flyovers && introFor !== hole() && game().players.every((q) => q.strokes === 0)) startIntro();
+    else applyCamera(true, !newHole);
     if (phase === 'aim') recomputeTick();
     else showWait(`${p.name} is throwing…`);
     updateHud();
   }
 
-  function applyCamera(reframe: boolean): void {
+  /** `glide`: ease from the current view instead of cutting (same view mode only). */
+  function applyCamera(reframe: boolean, glide = false): void {
+    const wasFP = scene.firstPerson;
     const fp = isFP();
     scene.setFirstPerson(fp);
     $('reticle').hidden = !fp;
     $('minimap').hidden = !fp;
     scene.setMinimapFrame([hole().tee, myPin(), ...hole().routing, ...game().players.filter((q) => !q.holed).map((q) => q.ball)]);
     const p = player();
-    if (fp) scene.setEye(p.ball, yaw, pitch);
+    if (fp) scene.setEye(p.ball, yaw, pitch, glide && wasFP);
     else if (reframe) {
       const ahead = hole().routing.filter((r) => dist(r, myPin()) < toBasket() + 1);
-      scene.frame([p.ball, myPin(), ...ahead], 90, toBasket() < 40 ? 20 : 12);
+      scene.frame([p.ball, myPin(), ...ahead], 90, toBasket() < 40 ? 20 : 12, glide && !wasFP);
     }
+  }
+
+  // ---------- hole intro: a flyover down the hole before its first throw ----------
+  let intro: { t: number; dur: number; line: Vec2[]; len: number } | null = null;
+  let introFor: unknown = null;
+  let turnHole: unknown = null;
+
+  function startIntro(): void {
+    const h = hole();
+    introFor = h;
+    const line = h.routing.length > 1 ? h.routing : [h.tee, h.pin];
+    const len = polylineLength(line);
+    intro = { t: 0, dur: Math.min(7, Math.max(3.5, 2.5 + len / 45)), line, len };
+    $('hud').hidden = true;
+    $('minimap').hidden = true;
+    $('reticle').hidden = true;
+    scene.setFirstPerson(true);
+    scene.minimapEnabled = false;
+    const box = $('intro');
+    box.querySelector('.num')!.innerHTML = `${esc(h.ref)}<small>HOLE</small>`;
+    box.querySelector('.hname')!.textContent = h.name ?? course.name;
+    box.querySelector('.hmeta')!.textContent = `Par ${h.par} · ${fmtLen(h.length_m)}`;
+    const windText = `Wind ${fmtSpeed(Math.hypot(st.wind[0], st.wind[1]))}`;
+    box.querySelector('.weather')!.textContent = roundWeather && prefs().weather && !space ? `${roundWeather.label} · ${windText}` : windText;
+    // Restart the card's entrance animation.
+    const card = box.querySelector<HTMLElement>('.intro-card')!;
+    card.style.animation = 'none';
+    void card.offsetWidth;
+    card.style.animation = '';
+    box.hidden = false;
+    flyIntro(0);
+  }
+
+  /** From 25 m behind the tee, high, down the hole line to just short of the basket, looking ahead. */
+  function flyIntro(dt: number): void {
+    const it = intro!;
+    it.t += dt;
+    const k = Math.min(1, it.t / it.dur);
+    const e = k * k * (3 - 2 * k);
+    const s = -25 + (it.len - 18 + 25) * e;
+    const [a, b] = [it.line[0], it.line[1]];
+    const L0 = dist(a, b) || 1;
+    const at: Vec2 = s < 0 ? [a[0] + ((a[0] - b[0]) / L0) * -s, a[1] + ((a[1] - b[1]) / L0) * -s] : pointAlong(it.line, s);
+    const ahead = pointAlong(it.line, Math.min(it.len, Math.max(0, s) + 45));
+    const pin = hole().pin;
+    const m = Math.max(0, Math.min(1, (k - 0.55) / 0.45));
+    const look: Vec3 = [ahead[0] + (pin[0] - ahead[0]) * m, ahead[1] + (pin[1] - ahead[1]) * m, 1.2 * m];
+    scene.flyCam([at[0], at[1], 24 - 14 * e], look);
+    if (k >= 1) endIntro();
+  }
+
+  function endIntro(): void {
+    if (!intro) return;
+    intro = null;
+    $('intro').hidden = true;
+    scene.minimapEnabled = true;
+    if (phase !== 'aim' && phase !== 'charging' && phase !== 'watching') return;
+    $('hud').hidden = false;
+    applyCamera(true, true);
+  }
+
+  // ---------- fast-forward: hold Shift during a flight or replay ----------
+  let ffHeld = false;
+  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') ffHeld = true; });
+  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') ffHeld = false; });
+  window.addEventListener('blur', () => { ffHeld = false; });
+
+  // ---------- color commentary ----------
+  let sayTimer = 0;
+  function say(text: string): void {
+    const el = $('commentary');
+    clearTimeout(sayTimer);
+    el.textContent = text;
+    el.classList.remove('out');
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    el.hidden = false;
+    sayTimer = window.setTimeout(() => {
+      el.classList.add('out');
+      sayTimer = window.setTimeout(() => { el.hidden = true; }, 400);
+    }, 3600);
   }
 
   function throwInput(pw: number): ThrowInput {
@@ -747,12 +922,43 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (flight) flight.sentEarly = early;
   }
 
+  const cuesFor = (e: Extract<RoundEvent, { t: 'throw' }>) => throwCues(e.result, pinOf(e.player), (x, y) => grid.classAt(x, y));
+  /**
+   * Play the flight's sounds up to sample t. Watched from the tee they fade with distance; from the
+   * chase camera (replay, following a friend) they're right there.
+   */
+  function soundUpTo(t: number, chase: boolean): void {
+    const f = flight!;
+    const s0 = f.result.samples[0];
+    while (f.cue < f.cues.length && f.cues[f.cue].k <= t) {
+      const c = f.cues[f.cue++];
+      const d = Math.hypot(c.at[0] - s0[0], c.at[1] - s0[1]);
+      playCue(c, chase ? 0.9 : Math.max(0.25, Math.min(1, 25 / Math.max(1, d))));
+      cueFx(c);
+    }
+  }
+
+  /** What a cue looks like: leaves, a puff of the ground, a splash, sparks, chains swinging. */
+  function cueFx(c: Cue): void {
+    switch (c.sound) {
+      case 'tree': effects.leaves(c.at); break;
+      case 'branch': effects.leaves(c.at, 7); break;
+      case 'bonk': effects.sparks(c.at); break;
+      case 'chains': case 'clank': scene.shakeChains(); break;
+      case 'land': effects.puff(c.at, opts.course === 'rainbow' ? PUFF.rainbow : PUFF[c.surface ?? 'fairway'] ?? PUFF.fairway); break;
+      case 'splash': effects.splash(c.at); break;
+    }
+  }
+
   /** Fly a throw event's disc (then replay it, then apply it). `remote`: another player's throw. */
   function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number, remote: boolean): void {
     hideWait();
     // Someone else's throw: their clock is the one the moving props were simulated at, so take it.
     if (remote && e.clock !== undefined) gameClock = e.clock;
-    flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock, remote, sentEarly: false };
+    flight = { e, result: e.result, t: 0, speed, clock0: gameClock, remote, sentEarly: false, cues: cuesFor(e), cue: 0 };
+    endIntro();
+    gallery.onThrow(e.result.samples);
+    sfx('swish', { gain: remote ? 0.5 : 0.8 });
     if (following(flight)) flight.speed = REPLAY_SPEED; // ridden along at replay pace
     const s = e.result.samples, h0 = Math.atan2(s[Math.min(8, s.length - 1)][1] - s[0][1], s[Math.min(8, s.length - 1)][0] - s[0][0]);
     Object.assign(follow, { heading: h0, smooth: h0, started: false, last: performance.now() });
@@ -782,7 +988,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     phase = 'replay';
     // Start behind the disc, looking along its first few meters (the thrower's aim).
     const h0 = Math.atan2(s[Math.min(8, s.length - 1)][1] - s[0][1], s[Math.min(8, s.length - 1)][0] - s[0][0]);
-    replay = { t0: performance.now(), heading: h0, smoothHeading: h0, started: false, last: performance.now() };
+    replay = { t: 0, heading: h0, smoothHeading: h0, started: false, last: performance.now() };
+    flight!.cue = 0;
     scene.setFirstPerson(true);
     scene.minimapEnabled = false;
     $('minimap').hidden = true;
@@ -828,11 +1035,26 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         what: `Hole ${hole().ref} · ${done.strokes} ${done.strokes === 1 ? 'throw' : 'throws'}`, score: fmtPar(liveToPar(idx)),
       });
       if (r.events.includes('chains')) chip('Chains', 'birdie');
+      const tone = scoreTone(done.strokes, par);
+      sfx(JINGLES[tone], { gain: 0.8, delay: 0.15 });
+      if (tone === 'ace' || tone === 'eagle') sfx('applause', { gain: 0.7, fadeAfter: 3 });
+      else if (tone === 'birdie') sfx('applause', { gain: 0.35, fadeAfter: 1.2 });
       shown = true;
     } else if (done.pickedUp) {
+      sfx('jingle-bogey', { gain: 0.6 });
       banner({ word: 'PICKED UP', tone: 'double', who: done.name, color: done.color, what: `Hole ${hole().ref} · max ${done.strokes}`, score: fmtPar(liveToPar(idx)) });
       shown = true;
     }
+    // Color commentary, and the gallery's reaction.
+    const s0: Vec2 = [r.samples[0][0], r.samples[0][1]];
+    const before = dist(s0, pinOf(idx));
+    const line = commentary({
+      carried: dist(s0, r.rest), before, after: done.holed ? 0 : dist(r.rest, pinOf(idx)), holed: done.holed, strokes: done.strokes,
+      par: hole().par, events: r.events, props: r.propHits?.length ?? 0, putt: before <= PUTT_RANGE,
+    });
+    if (line) say(line);
+    if (done.holed) gallery.react(['ace', 'eagle', 'birdie'].includes(scoreTone(done.strokes, hole().par)) ? 'cheer' : 'yes', pinOf(idx));
+    else if (r.events.some((x) => x === 'spit' || x === 'cut' || x === 'band' || x === 'tray' || x === 'pole')) gallery.react('no', pinOf(idx));
     // Mulligan window: a few seconds to take the throw back (not after holing out). Everyone
     // waits the same time, so nobody moves on while the thrower can still take it back.
     const canMull = rogue && !done.holed && mulligansLeft[idx] > 0;
@@ -908,6 +1130,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('card-close').hidden = !readOnly;
     $('results').hidden = false;
     if (!readOnly) { $('hud').hidden = true; clearBroadcast(); }
+    if (!readOnly && last && game().finished) sfx('jingle-round', { gain: 0.8 });
   }
   $('card-close').addEventListener('click', () => { $('results').hidden = true; });
 
@@ -942,7 +1165,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!e || e.t !== 'throw' || flight) return;
     $('results').hidden = true;
     beforeHighlight = phase;
-    flight = { e, result: e.result, t0: performance.now(), speed: 1, clock0: e.clock ?? gameClock, remote: true, sentEarly: false, show: true };
+    flight = { e, result: e.result, t: 0, speed: 1, clock0: e.clock ?? gameClock, remote: true, sentEarly: false, show: true, cues: cuesFor(e), cue: 0 };
     scene.lockTrees(e.result.samples.map((q): Vec2 => [q[0], q[1]]));
     startReplay();
   }
@@ -1040,6 +1263,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function renderDraft(pi: number): void {
     const offer = { ...st.offer!, cards: st.offer!.cards.map(byId) };
+    sfx('deal', { gain: 0.6 });
     $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${st.starter ? 'pick your starter augment' : 'pick an augment'}`;
     $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
     $('draft-tier').className = `tier ${offer.tier}`;
@@ -1143,6 +1367,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
+    if (intro) { endIntro(); return; }
     // Replay: drag orbits the camera around the disc (clicking doesn't skip; Space does).
     if (phase === 'replay') { drag = { x: e.clientX, y: e.clientY, mode: 'orbit' }; return; }
     if (phase === 'placing') {
@@ -1234,6 +1459,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (phase !== 'aim') return;
     const bag = bagOf(game().current);
     disc = bag[(bag.indexOf(disc) + dir + bag.length) % bag.length];
+    sfx('select', { gain: 0.4 });
     recomputeTick();
     updateHud();
   }
@@ -1241,6 +1467,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function setHyzer(dir: 1 | -1): void {
     if (phase !== 'aim') return;
     hyzer = Math.max(-1, Math.min(1, hyzer + dir * 0.25));
+    sfx('select', { gain: 0.4 });
     recomputeTick();
     updateHud();
   }
@@ -1261,6 +1488,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    // The hole flyover: Space or Enter skips it, other keys wait for it.
+    if (intro) { if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); endIntro(); } return; }
     if (e.code === 'Space') { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) startCharge(); return; }
     const k = e.key.toLowerCase();
     if (k === '[') cycleDisc(-1);
@@ -1276,7 +1505,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (k === 'p' && rogue && phase === 'aim' && perfectLeft[game().current] > 0) { perfectArmed = !perfectArmed; updateHud(); }
     else if (k === 'q') setHyzer(1);
     else if (k === 'e') setHyzer(-1);
-    else if (k === 't') { if (phase === 'aim') { forehand = !forehand; recomputeTick(); updateHud(); } }
+    else if (k === 't') { if (phase === 'aim') { forehand = !forehand; sfx('select', { gain: 0.4 }); recomputeTick(); updateHud(); } }
     else if (k === 'g') cycleShot();
     else if (k === 'c') toggleFP();
     else if (k === 'v') cycleView();
@@ -1292,11 +1521,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function cycleShot(): void {
     if (phase !== 'aim' || puttStyle()) return;
     shot = SHOTS[(SHOTS.indexOf(shot) + 1) % SHOTS.length];
+    sfx('select', { gain: 0.4 });
     recomputeTick();
     updateHud();
   }
   $('shot').addEventListener('click', cycleShot);
-  $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; recomputeTick(); updateHud(); } });
+  $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; sfx('select', { gain: 0.4 }); recomputeTick(); updateHud(); } });
 
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
   const applyGraphics = () => { scene.setGraphics(prefs().graphics); $('fps').hidden = !prefs().fps; };
@@ -1329,12 +1559,22 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       fpsFrames = 0;
       fpsSince = now;
     }
+    // Flight time: holding Shift fast-forwards a flight or replay.
+    const ff = flight && ffHeld ? FAST_FORWARD : 1;
+    $('ff-badge').hidden = ff === 1;
+    if (flight && replay) replay.t += dt * 60 * REPLAY_SPEED * ff;
+    else if (flight) flight.t += dt * 60 * flight.speed * ff;
     // Props clock: replays rewind to the throw's own time; live flights advance at playback speed.
-    if (flight && replay) scene.updateProps(flight.clock0 + Math.max(0, (now - replay.t0) / 1000) * REPLAY_SPEED, dt);
+    if (flight && replay) scene.updateProps(flight.clock0 + replay.t / 60, dt);
     else {
-      gameClock += dt * (flight ? flight.speed : 1);
+      gameClock += dt * (flight ? flight.speed * ff : 1);
       scene.updateProps(gameClock, dt);
     }
+    if (intro) flyIntro(dt);
+    gallery.watch(flight ? sampleAt(flight.result.samples, Math.min(replay ? replay.t : flight.t, flight.result.samples.length - 1)) : null);
+    gallery.update(dt);
+    effects.update(dt);
+    life.update(dt, scene.eye());
     if (phase === 'charging') {
       const t = (((now - chargeStart) / 1000) * modsFor(game().current).meterSpeed) % 2;
       power = t < 1 ? t : 2 - t;
@@ -1354,7 +1594,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (phase === 'watching') showLiveAim();
     if (flight && replay) {
       const s = flight.result.samples;
-      const t = Math.max(0, ((now - replay.t0) / 1000) * 60 * REPLAY_SPEED);
+      const t = replay.t;
       const k = Math.floor(t);
       const kk = Math.min(k, s.length - 1);
       // Interpolate between samples: at 1.25× the frame advances 1 or 2 samples unevenly, which shook.
@@ -1370,6 +1610,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
       scene.chase(pos, replay.smoothHeading, !replay.started, dt);
       showTwin(t);
+      soundUpTo(t, true);
       replay.started = true;
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
@@ -1378,7 +1619,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     } else if (flight && following(flight)) {
       // Online: a friend's throw, ridden along live with the chase camera (no replay after).
       const s = flight.result.samples;
-      const t = Math.max(0, ((now - flight.t0) / 1000) * 60 * flight.speed);
+      const t = flight.t;
       const k = Math.floor(t), kk = Math.min(k, s.length - 1);
       const pos = sampleAt(s, t);
       const a = s[Math.max(0, kk - 2)], b = s[Math.min(s.length - 1, kk + 2)];
@@ -1391,24 +1632,25 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
       scene.chase(pos, follow.smooth, !follow.started, dt);
       showTwin(t);
+      soundUpTo(t, true);
       follow.started = true;
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
       if (k >= s.length + 25 && phase === 'flying') endFollow();
     } else if (flight) {
       const s = flight.result.samples;
-      const k = Math.floor(((now - flight.t0) / 1000) * 60 * flight.speed);
-      // rAF's timestamp can be slightly earlier than the performance.now() taken at release.
+      const k = Math.floor(flight.t);
       const kk = Math.max(0, Math.min(k, s.length - 1));
-      const pos = sampleAt(s, Math.max(0, ((now - flight.t0) / 1000) * 60 * flight.speed));
+      const pos = sampleAt(s, flight.t);
       scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
-      showTwin(((now - flight.t0) / 1000) * 60 * flight.speed);
+      showTwin(flight.t);
+      soundUpTo(flight.t, false);
       // First person: turn the head to follow the disc.
       if (isFP()) scene.lookToward(pos, 0.12);
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
       if (k >= s.length + 25 && phase === 'flying') startReplay();
-    } else if (phase === 'aim' || phase === 'charging') {
+    } else if ((phase === 'aim' || phase === 'charging') && !intro) {
       const p = player();
       scene.setAim(p.ball, aimTarget, p.color); // top-down line; also drawn in the first-person minimap
       scene.setTarget3d(isFP() ? p.ball : null, aimTarget, p.color);
@@ -1441,6 +1683,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__satgolf = {
       scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log, live: () => liveAim, aim: () => ({ pitch, yaw, tick }),
+      gallery, effects, life, intro: () => intro, setWeather: (id: keyof typeof WEATHER) => { roundWeather = WEATHER[id]; applyWeather(); },
     };
   }
   // Joining (or rejoining) a room: replay its log, redraw this hole's throws, then carry on.

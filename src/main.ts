@@ -9,6 +9,8 @@ import { MAX_PLAYERS, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobb
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
 import { closeAugmentBrowser, openAugmentBrowser } from './ui/augments';
+import { initSound, music, sfx } from './audio/sound';
+import { prefs, setPref } from './settings';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -203,6 +205,32 @@ renderPlayers();
 syncCrazy();
 mountSettings($('settings-menu-form'));
 mountSettings($('settings-game'));
+initSound();
+music('menu'); // starts on the first click or key
+
+// ---------- in-game buttons: menu, controls list, sound ----------
+function showGameButtons(): void {
+  for (const id of ['settings-btn', 'fp-toggle', 'keys-btn', 'mute-btn']) $(id).hidden = false;
+}
+const SPEAKER = '<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>';
+function renderMute(): void {
+  const off = prefs().muted;
+  $('mute-btn').innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20">${SPEAKER}${off
+    ? '<path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+    : '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>'}</svg>`;
+  $('mute-btn').title = off ? 'Sound off: N turns it on' : 'Sound on: N mutes';
+}
+const toggleMute = () => setPref('muted', !prefs().muted);
+renderMute();
+window.addEventListener('prefschange', renderMute);
+$('mute-btn').addEventListener('click', toggleMute);
+const openKeys = (open: boolean) => {
+  $('keys').hidden = !open;
+  $('keys').querySelectorAll<HTMLElement>('.crazy-only').forEach((r) => { r.hidden = !crazy.checked; });
+};
+$('keys-btn').addEventListener('click', () => openKeys(true));
+$('keys-close').addEventListener('click', () => openKeys(false));
+$('keys').addEventListener('click', (e) => { if (e.target === $('keys')) openKeys(false); });
 
 // ---------- pause menu (Esc / ⏸) ----------
 const openPause = (open: boolean) => { $('settings').hidden = !open; };
@@ -211,6 +239,10 @@ $('settings-close').addEventListener('click', () => openPause(false));
 $('settings-menu').addEventListener('click', () => { leaveRoomLink(); location.reload(); });
 $('pause-card').addEventListener('click', () => { openPause(false); window.dispatchEvent(new Event('show-scorecard')); });
 window.addEventListener('keydown', (e) => {
+  const typing = (e.target as HTMLElement).tagName === 'INPUT';
+  if (!typing && e.key.toLowerCase() === 'n' && $('setup').hidden) { toggleMute(); return; }
+  if (!typing && e.key === '?' && $('setup').hidden) { openKeys($('keys').hidden === true); return; }
+  if (e.key === 'Escape' && $('keys').hidden === false) { openKeys(false); return; }
   if (e.key === 'Escape' && $('aug-browser').hidden === false) { closeAugmentBrowser(); return; }
   if (e.key === 'Escape' && $('name-ask').hidden === false) { $('name-cancel').click(); return; }
   if (e.key === 'Escape' && $('setup').hidden === true) openPause($('settings').hidden === true);
@@ -431,8 +463,7 @@ async function launch(l: Lobby): Promise<void> {
   launched = true;
   const id = (COURSES.some((c) => c.id === l.course) ? l.course : 'simple') as CourseId;
   $('setup').hidden = true;
-  $('settings-btn').hidden = false;
-  $('fp-toggle').hidden = false;
+  showGameButtons();
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === id)!.name}${l.crazy ? ' · Crazy mode' : ''} · Room ${room.code}`;
   const r = room;
   const { startDisc } = await import('./modes/disc');
@@ -445,6 +476,7 @@ async function launch(l: Lobby): Promise<void> {
 
 // ---------- start ----------
 $('start').addEventListener('click', async () => {
+  sfx('confirm');
   if (room) {
     if (!amHost()) return;
     save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
@@ -458,8 +490,7 @@ $('start').addEventListener('click', async () => {
   save('sat-golf:names', typed);
   save('sat-golf:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked });
   $('setup').hidden = true;
-  $('settings-btn').hidden = false;
-  $('fp-toggle').hidden = false;
+  showGameButtons();
   const n = COURSES.find((c) => c.id === course)!.holes;
   const [first, count] = holesV.split(':').map((x) => parseInt(x, 10));
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === course)!.name}${crazy.checked ? ' · Crazy mode' : ''}`;

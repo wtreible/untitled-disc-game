@@ -88,6 +88,9 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D62 | Optional bag building: 4 of 7 discs per player for the round; Bag Pocket augment adds a slot. | 2026-10-21 |
 | D63 | Moving hazards (drawbridge, sweeping ring) as `hinge` and `slide` colliders; throws carry the game clock so moving props match on every screen. Hole editor recorded as planned work (08). | 2026-10-21 |
 | D64 | Feet are the default units (Feet listed before Meters). An armed Perfect Form throw shows its whole ghost line. Main menu in three columns: courses and Tee off · course card and round · players and settings. | 2026-10-21 |
+| D65 | Sound: CC0 music per course (menu, park, mini golf, medieval, space), bird / space ambience with wind that follows the hole's wind, and throw sounds read off the flight samples (hits, landing by surface, chains, splash, OB), live with distance falloff and again in the replay. Music and Effects volume sliders. Credits in `public/audio/CREDITS.md`. | 2026-10-22 |
+| D66 | Making the course feel lived in, all scenery (the flight model never sees it): a flyover down each hole before its first throw (Settings → Hole flyovers); spectators by the basket (Kenney Mini Characters) who step out of any throw's path before it arrives, watch the disc and react; birds, butterflies, cloud shadows, a wind streamer on the basket and trees swaying with the hole's wind; leaves, puffs, splashes, sparks and swinging chains on contact; weather and time of day per round (sunny, golden hour, overcast, rain), picked from the first hole's wind so a room shares it (Settings → Weather); color commentary lines after throws. | 2026-10-22 |
+| D67 | Quality of life: N mutes (and a speaker button), ? lists the controls, the camera glides to the next lie instead of cutting, holding Shift fast-forwards flights and replays 3×. | 2026-10-22 |
 
 ## Open questions
 

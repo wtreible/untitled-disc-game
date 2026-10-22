@@ -19,8 +19,8 @@
     <footer id="hud" class="hud" hidden>
       <div class="hud-row">
         <div id="turn"></div>
-        <button id="release" class="chip-btn" title="Release angle (Q / E)"></button>
-        <button id="shot" class="chip-btn" title="Shot: backhand / forehand, tomahawk, thumber, roller (G)"></button>
+        <button id="release" class="chip-btn" data-sound="off" title="Release angle (Q / E)"></button>
+        <button id="shot" class="chip-btn" data-sound="off" title="Shot: backhand / forehand, tomahawk, thumber, roller (G)"></button>
         <div id="stats"></div>
       </div>
       <div class="hud-row" id="rogue-bar" hidden></div>
@@ -44,6 +44,17 @@
     <button id="settings-btn" class="icon pause-btn" title="Menu (Esc)" hidden>
       <svg viewBox="0 0 24 24" width="20" height="20"><path d="M7 5h3v14H7zM14 5h3v14h-3z" fill="currentColor"/></svg>
     </button>
+    <button id="keys-btn" class="icon top-btn keys-btn" title="Controls (?)" hidden>?</button>
+    <button id="mute-btn" class="icon top-btn mute-btn" title="Sound on / off (N)" hidden></button>
+    <div id="ff-badge" hidden>▶▶ 3×</div>
+
+    <!-- Hole intro: a card over the flyover -->
+    <div id="intro" hidden>
+      <div class="intro-card"><div class="num"></div><div class="info"><div class="hname"></div><div class="hmeta"></div><div class="weather"></div></div></div>
+      <div class="intro-skip">Space or click to skip</div>
+    </div>
+    <!-- Color commentary after a throw -->
+    <div id="commentary" hidden></div>
 
     <!-- Broadcast-style graphics (score banners and event chips) -->
     <div id="bcast"></div>
@@ -52,6 +63,37 @@
     <div id="status"></div>
     <div id="fps" hidden></div>
     <div id="attribution"></div>
+
+    <!-- Controls (?) -->
+    <div id="keys" class="modal" hidden>
+      <div class="sheet keys-sheet">
+        <div class="sheet-head"><h2>Controls</h2><button id="keys-close" class="icon" title="Close (Esc)">✕</button></div>
+        <table class="keys-table">
+          <tr><th colspan="2">Aim</th></tr>
+          <tr><td>Drag · <kbd>←</kbd> <kbd>→</kbd></td><td>Turn (hold <kbd>Shift</kbd> for fine steps)</td></tr>
+          <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Launch angle (first person)</td></tr>
+          <tr><td><kbd>W</kbd> <kbd>S</kbd></td><td>Target distance (first person)</td></tr>
+          <tr><td>Click the minimap / the map</td><td>Aim at that spot</td></tr>
+          <tr><th colspan="2">Throw</th></tr>
+          <tr><td><kbd>Space</kbd> hold, let go</td><td>Throw: the white tick reaches your target</td></tr>
+          <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Disc</td></tr>
+          <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>Release angle: hyzer / anhyzer</td></tr>
+          <tr><td><kbd>T</kbd></td><td>Backhand / forehand</td></tr>
+          <tr><td><kbd>G</kbd></td><td>Shot: normal, tomahawk, thumber, roller</td></tr>
+          <tr class="crazy-only"><td><kbd>M</kbd> · <kbd>P</kbd></td><td>Crazy mode: mulligan · Perfect Form</td></tr>
+          <tr><th colspan="2">Watch</th></tr>
+          <tr><td>Hold <kbd>Shift</kbd></td><td>Fast-forward a flight or replay (3×)</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Skip the replay or the hole flyover</td></tr>
+          <tr><td>Drag · scroll · <kbd>R</kbd></td><td>Replay: orbit · zoom · reset</td></tr>
+          <tr><th colspan="2">View and sound</th></tr>
+          <tr><td><kbd>C</kbd></td><td>First person / top-down</td></tr>
+          <tr><td>Right-drag · scroll · <kbd>F</kbd></td><td>Top-down: pan · zoom · re-frame</td></tr>
+          <tr><td><kbd>V</kbd></td><td>Map style (where there's a photo)</td></tr>
+          <tr><td><kbd>N</kbd></td><td>Sound on / off</td></tr>
+          <tr><td><kbd>?</kbd> · <kbd>Esc</kbd></td><td>This list · menu and settings</td></tr>
+        </table>
+      </div>
+    </div>
 
     <!-- Pause menu -->
     <div id="settings" class="modal" hidden>
@@ -105,7 +147,7 @@
           </section>
 
           <div class="menu-foot">
-          <button id="start" class="primary huge">Tee off <span class="arrow">→</span></button>
+          <button id="start" class="primary huge" data-sound="off">Tee off <span class="arrow">→</span></button>
           <p class="credits">
             Course data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> ·
             Tree canopy © <a href="https://www.hsy.fi/en/environmental-information/open-data/" target="_blank" rel="noopener">HSY</a> ·

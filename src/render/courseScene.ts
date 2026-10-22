@@ -16,6 +16,7 @@ import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
 import type { PropsView } from './props';
 import { bladeAngle, hingeAngle, slideOffset, type Collider } from '../disc/props';
+import type { Weather } from './weather';
 
 const OVERLAY_Z = 30;
 /** Default replay chase offset: 2.5 m back and 1.2 m up, as distance + elevation. */
@@ -81,6 +82,15 @@ export class CourseScene {
   private readonly preview: THREE.Line;
   private readonly previewMat: THREE.LineDashedMaterial;
   private readonly trails = new THREE.Group();
+  private readonly hemi: THREE.HemisphereLight;
+  private readonly sun: THREE.DirectionalLight;
+  /** Multiplies the unlit ground (weather and time of day). */
+  private groundTint = new THREE.Color('#ffffff');
+  /** Camera moves eased over a moment instead of cutting: first person (eye) or top-down (center, zoom). */
+  private eyeGlide: { p: THREE.Vector3; q: THREE.Quaternion; to: { p: THREE.Vector3; q: THREE.Quaternion }; t0: number; dur: number } | null = null;
+  private mapGlide: { center: Vec2; ppm: number; to: { center: Vec2; ppm: number }; t0: number; dur: number } | null = null;
+  /** When the current basket's chains were last hit (ms), for the shake. */
+  private chainHit = -Infinity;
 
   constructor(private readonly container: HTMLElement, course: DiscCourseFile, grid: SurfaceGrid, trees: Tree[], playerColors: string[]) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -89,10 +99,10 @@ export class CourseScene {
     this.renderer.localClippingEnabled = true; // sunk props are clipped at ground level
     container.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.HemisphereLight('#dfeaff', '#4a5a3a', 1.6));
-    const sun = new THREE.DirectionalLight('#fff6e0', 1.6);
-    sun.position.set(-150, -100, 300);
-    this.scene.add(sun);
+    this.hemi = new THREE.HemisphereLight('#dfeaff', '#4a5a3a', 1.6);
+    this.sun = new THREE.DirectionalLight('#fff6e0', 1.6);
+    this.sun.position.set(-150, -100, 300);
+    this.scene.add(this.hemi, this.sun);
     this.persp.up.set(0, 0, 1);
 
     this.style = course.style ?? 'photo';
@@ -211,7 +221,52 @@ export class CourseScene {
     if (this.photo) this.scene.remove(this.photo);
     const b: [Vec2, Vec2] = [[img.bounds[0][0] + offset[0], img.bounds[0][1] + offset[1]], [img.bounds[1][0] + offset[0], img.bounds[1][1] + offset[1]]];
     this.photo = this.groundPlane(img.canvas, b, 0, 0);
+    this.tintGround();
     this.applyVisibility();
+  }
+
+  /** Light, sky, fog and ground tint for the round's weather and time of day. */
+  setWeather(w: Weather): void {
+    this.skyColor.set(w.sky);
+    this.fog.color.set(w.sky);
+    [this.fog.near, this.fog.far] = w.fog;
+    this.hemi.color.set(w.hemi[0]);
+    this.hemi.groundColor.set(w.hemi[1]);
+    this.hemi.intensity = w.hemi[2];
+    this.sun.color.set(w.sun[0]);
+    this.sun.intensity = w.sun[1];
+    // Same compass direction as before (from the south-west), at the weather's height.
+    const az = Math.atan2(-100, -150), el = w.sun[2];
+    this.sun.position.set(Math.cos(el) * Math.cos(az) * 360, Math.cos(el) * Math.sin(az) * 360, Math.sin(el) * 360);
+    this.groundTint.set(w.ground);
+    this.tintGround();
+    this.applyVisibility();
+  }
+
+  private tintGround(): void {
+    const meshes: THREE.Mesh[] = [];
+    for (const m of [this.photo, this.classes, this.vector]) m?.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
+    for (const m of meshes) {
+      const mat = m.material as THREE.MeshBasicMaterial;
+      if (!mat.color) continue;
+      mat.userData.base ??= mat.color.clone();
+      mat.color.copy(mat.userData.base as THREE.Color).multiply(this.groundTint);
+    }
+  }
+
+  /** Add something drawn with the course (spectators, effects, ambient life). */
+  addObject(o: THREE.Object3D): void {
+    this.scene.add(o);
+  }
+
+  /** First person: where the eye is (null top-down). */
+  eye(): Vec3 | null {
+    return this.fp ? [this.persp.position.x, this.persp.position.y, this.persp.position.z] : null;
+  }
+
+  /** The current basket's chains take a hit: they swing and settle. */
+  shakeChains(): void {
+    this.chainHit = performance.now();
   }
 
   setView(mode: ViewMode): void {
@@ -275,15 +330,32 @@ export class CourseScene {
   }
 
   /** Place the first-person eye at `at`, looking along yaw (CCW from +x) and pitch (up +). */
-  setEye(at: Vec2, yaw: number, pitch: number): void {
+  setEye(at: Vec2, yaw: number, pitch: number, glide = false): void {
+    const from = { p: this.persp.position.clone(), q: this.persp.quaternion.clone() };
     this.persp.position.set(at[0] - Math.cos(yaw) * 0.6, at[1] - Math.sin(yaw) * 0.6, EYE);
     this.beacon.visible = this.fp && Math.hypot(at[0] - this.beaconAt[0], at[1] - this.beaconAt[1]) > 15;
     const d = new THREE.Vector3(Math.cos(yaw) * Math.cos(pitch), Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch));
     this.persp.lookAt(this.persp.position.clone().add(d));
+    // Easing toward the new eye (a glide started, or one under way whose end moved, e.g. looking about).
+    const to = { p: this.persp.position.clone(), q: this.persp.quaternion.clone() };
+    if (glide) {
+      const far = from.p.distanceTo(to.p);
+      this.eyeGlide = far > 0.3 || from.q.angleTo(to.q) > 0.05 ? { ...from, to, t0: performance.now(), dur: Math.min(1600, 550 + far * 25) } : null;
+    } else if (this.eyeGlide) this.eyeGlide.to = to;
+    if (this.eyeGlide) { this.persp.position.copy(from.p); this.persp.quaternion.copy(from.q); }
+  }
+
+  /** Hole intro flyover: put the camera at `pos` looking at `look`. */
+  flyCam(pos: Vec3, look: Vec3): void {
+    this.eyeGlide = null;
+    this.persp.position.set(pos[0], pos[1], pos[2]);
+    this.persp.lookAt(look[0], look[1], look[2]);
+    this.beacon.visible = Math.hypot(pos[0] - this.beaconAt[0], pos[1] - this.beaconAt[1]) > 15;
   }
 
   /** First-person: keep the eye where it is and turn toward a world point (e.g. the disc in flight). */
   lookToward(p: Vec3, smoothing = 0.15): void {
+    this.eyeGlide = null;
     const cur = new THREE.Vector3();
     this.persp.getWorldDirection(cur);
     const want = new THREE.Vector3(p[0], p[1], p[2]).sub(this.persp.position).normalize();
@@ -540,6 +612,7 @@ export class CourseScene {
   }
 
   chase(p: Vec3, heading: number, reset = false, dt = 1 / 60): void {
+    this.eyeGlide = null;
     // Eased follow, frame-rate independent. The default offset is 2.5 m back, 1.2 m up; the
     // easing lag adds ~2 m on a fast disc, so the camera rides ~4–5 m behind.
     const { yaw, elev, dist } = this.orbit;
@@ -606,7 +679,8 @@ export class CourseScene {
   }
 
   /** Fit points on screen (top-down). */
-  frame(points: Vec2[], pad = 80, maxPpm = 12): void {
+  frame(points: Vec2[], pad = 80, maxPpm = 12, glide = false): void {
+    const from = { center: this.center, ppm: this.ppm };
     const right: Vec2 = [this.up[1], -this.up[0]];
     let minU = Infinity, maxU = -Infinity, minR = Infinity, maxR = -Infinity;
     for (const p of points) {
@@ -622,7 +696,29 @@ export class CourseScene {
     const cu = (minU + maxU) / 2 - 65 / this.ppm;
     const cr = (minR + maxR) / 2;
     this.center = [this.up[0] * cu + right[0] * cr, this.up[1] * cu + right[1] * cr];
+    this.mapGlide = glide ? { ...from, to: { center: this.center, ppm: this.ppm }, t0: performance.now(), dur: 700 } : null;
+    if (this.mapGlide) { this.center = from.center; this.ppm = from.ppm; }
     this.updateOrtho();
+  }
+
+  /** Advance camera glides (render calls this). */
+  private stepGlides(now: number): void {
+    const ease = (t: number) => t * t * (3 - 2 * t);
+    const g = this.eyeGlide;
+    if (g) {
+      const k = ease(Math.min(1, (now - g.t0) / g.dur));
+      this.persp.position.lerpVectors(g.p, g.to.p, k);
+      this.persp.quaternion.slerpQuaternions(g.q, g.to.q, k);
+      if (k >= 1) this.eyeGlide = null;
+    }
+    const m = this.mapGlide;
+    if (m) {
+      const k = ease(Math.min(1, (now - m.t0) / m.dur));
+      this.center = [m.center[0] + (m.to.center[0] - m.center[0]) * k, m.center[1] + (m.to.center[1] - m.center[1]) * k];
+      this.ppm = m.ppm * Math.pow(m.to.ppm / m.ppm, k);
+      this.updateOrtho();
+      if (k >= 1) this.mapGlide = null;
+    }
   }
 
   screenToWorld(clientX: number, clientY: number): Vec2 {
@@ -640,6 +736,7 @@ export class CourseScene {
   }
 
   panPixels(dx: number, dy: number): void {
+    this.endMapGlide();
     const right: Vec2 = [this.up[1], -this.up[0]];
     this.center = [
       this.center[0] - (right[0] * dx) / this.ppm + (this.up[0] * dy) / this.ppm,
@@ -649,11 +746,20 @@ export class CourseScene {
   }
 
   zoomAt(clientX: number, clientY: number, factor: number): void {
+    this.endMapGlide();
     const w = this.screenToWorld(clientX, clientY);
     const next = Math.min(40, Math.max(0.2, this.ppm * factor));
     const f = next / this.ppm;
     this.ppm = next;
     this.center = [w[0] + (this.center[0] - w[0]) / f, w[1] + (this.center[1] - w[1]) / f];
+    this.updateOrtho();
+  }
+
+  /** The player took over the map: jump to where the glide was going. */
+  private endMapGlide(): void {
+    if (!this.mapGlide) return;
+    ({ center: this.center, ppm: this.ppm } = this.mapGlide.to);
+    this.mapGlide = null;
     this.updateOrtho();
   }
 
@@ -768,6 +874,8 @@ export class CourseScene {
   }
 
   render(): void {
+    this.stepGlides(performance.now());
+    this.swingChains(performance.now());
     // Legendary effects animate: the magnet bobs, the vortex spins.
     const tt = performance.now() / 1000;
     if (this.fxMagnet?.visible) { this.fxMagnet.rotation.z = tt * 0.8; this.fxMagnet.position.z = BASKET.bandTop + 0.5 + Math.sin(tt * 2.2) * 0.06; }
@@ -825,6 +933,16 @@ export class CourseScene {
 
   // ---------- internals ----------
 
+  /** A hit sets the current basket's chains swinging around the pole, dying out over ~1.5 s. */
+  private swingChains(now: number): void {
+    const chains = this.baskets[this.holeIndex]?.children.at(-1);
+    if (!chains) return;
+    const t = (now - this.chainHit) / 1000;
+    if (t > 1.8) { chains.rotation.set(0, 0, 0); return; }
+    const a = Math.exp(-t * 2.6);
+    chains.rotation.set(0.05 * a * Math.sin(t * 19), 0.05 * a * Math.cos(t * 23), 0.3 * a * Math.sin(t * 15));
+  }
+
   private size() {
     return { w: this.container.clientWidth, h: this.container.clientHeight };
   }
@@ -880,7 +998,7 @@ function rectOutline(w: number, h: number, color: string): THREE.LineLoop {
 }
 
 /** Sky objects only the first-person camera sees (not top-down or the minimap). */
-const SKY_LAYER = 2;
+export const SKY_LAYER = 2;
 
 /** A dome of stars around the course for first person (Rainbow Runs). */
 function skyStars(course: DiscCourseFile): THREE.Points {
