@@ -14,6 +14,16 @@ One editor serves three jobs: fixing OSM mistakes on real courses, building hole
 
 **Output:** the same `course.json` schema as the OSM pipeline, with per-feature `source` (`osm`, `seg:*`, `manual`). Saved locally (file download / localStorage) in the hobby phase.
 
+## Hole editor for the current game (planned, not started)
+
+Recorded 2026-10-21 as a later feature. A smaller, game-first version of the editor above: make your own holes on the existing courses and share them with friends.
+
+- **Edit on any course map:** place the tee and basket, drag the routing line (doglegs), set par; add and remove trees (pick a model and size), and on the arcade courses place props from the course's kit (the models and colliders `scripts/course-kit.ts` already builds: `shapeColliders`, `silhouetteBoxes`).
+- **Play it right away:** the editor produces a `DiscHole` plus any extra trees and props, and the game plays it like a course hole (single-hole round, test throws with the ghost line).
+- **Share it as a file or a link:** a small JSON (the course id, the hole, the added trees and props; colliders recomputed on load from the models, not stored) as a download, or packed into the URL hash for short holes. Opening one offers "Play this hole" and "Host it online"; online, the hole travels in the lobby so everyone plays the same thing.
+- **Checks before saving:** tee and basket in bounds and clear of props (the same rules as `tests/courses.test.ts`), the hole reachable (a putt from 6 m in), par from length.
+- **Open questions:** collider computation in the browser needs the model files loaded (it's build-time today); how much of the kit to expose per course; whether shared holes need a version field for future course changes.
+
 ## Park → course with algorithm suggestions
 
 Runtime flow (this is why the vector pipeline is TypeScript, D7):

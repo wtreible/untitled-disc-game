@@ -15,7 +15,7 @@ Two more hand-designed 9-hole courses in the **Arcade** group on the main menu (
 | 2 | Market Day | Dogleg through market stalls, a cart on the corner, a fountain behind the basket |
 | 3 | The Joust | **A giant knight** (10 m, blocking animation) guards the basket; a hedge "tilt barrier" splits the fairway |
 | 4 | Siege Line | Catapults and trebuchets across the fairway |
-| 5 | Castle Keep | **The basket is in a castle courtyard**: 5 × 5 tiles of wall (8.5 m high) with corner towers and a 6.5 m gate. Fly the gate or go over the wall |
+| 5 | Castle Keep | **The basket is in a castle courtyard**: 5 × 5 tiles of wall (8.5 m high) with corner towers and a 6.5 m gate. Fly the gate or go over the wall. A **drawbridge** closes the gate: up ~5 s, down ~5 s, 14 s a cycle |
 | 6 | The Moat | A moat across the fairway between two watchtowers |
 | 7 | Wizard's Tower | A 26 m tower beside the basket; a wizard casting at the tee |
 | 8 | Haunted Hollow | Crooked trees, skeletons and bats along an S-bend |
@@ -29,7 +29,7 @@ A rainbow road floating in space. Only the road is in bounds: off it is the void
 |---|---|---|
 | 1 | Lights Out | A straight start from a checkered grid between alien and astronaut fans |
 | 2 | Mystery Box Alley | Two rows of spinning "?" boxes floating over the road (they're empty) |
-| 3 | Ring Road | Three hex rings on the line. The hexagonal opening is 9.6 m wide at its middle (5 m at top and bottom), from about 1 m up to 10 m |
+| 3 | Ring Road | Three hex rings on the line. The hexagonal opening is 9.6 m wide at its middle (5 m at top and bottom), from about 1 m up to 10 m. The middle ring **sweeps** ±5 m across the road every 8 s |
 | 4 | The Chicane | S-curves with parked racers on the apexes |
 | 5 | Asteroid Belt | Asteroids at every height from the road to 10 m up |
 | 6 | Rocket Garage | Rockets beside the road and one on the line before the basket |

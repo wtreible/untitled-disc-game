@@ -70,6 +70,21 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 
 New discs are fitted with `scripts/calibrate-disc.ts` (release speed for the range, then the meter curve), so half a meter is ~half the distance for every disc. Disc suggestions only pick the everyday four (distance, fairway, midrange, putter).
 
+### Bag building (2026-10-21)
+
+Optional (menu → Round → Pick a bag): everyone carries 4 of the 7 discs for the round, picked before hole 1 (a `bag` event; online all at once, in hot seat in turn). The disc picker, [ / ] and suggestions only use the bag. The putting stroke needs the putter: leave it at home and you putt with whatever you carry. Crazy mode's **Bag Pocket** (common, only offered with bag building) adds a slot, filled before the next hole.
+
+## Throw styles (2026-10-21)
+
+The shot chip (or G) picks the kind of throw, back to normal after each throw. Not for putts.
+
+| Shot | Release | Flight | Driver, full power |
+|---|---|---|---|
+| Normal | Hyzer / flat / anhyzer, backhand or forehand | The disc's flight numbers | ~110 m |
+| Tomahawk | Overhand, on edge, launched steep | Rolls over onto its back and dives left; flies rim first (low drag, small side force), stops where it lands. Over trees | ~40 m, apex ~11 m, ~8 m left |
+| Thumber | Tomahawk's mirror image | Dives right | ~40 m, ~8 m right |
+| Roller | A big anhyzer, launched low | Touches down ~15–20 m out and rolls on edge, curling more as it slows (which way: the disc's stability and the hand), then falls flat. Under trees | ~80 m |
+
 ## Disc picker (2026-10-20)
 
 The bottom row of the HUD is the disc picker: one compact card per disc (seven) with its **flight chart**, flight numbers and typical full-power distance. Click a card (or [ / ]) to pick it. The charts are the game's own physics: a full-power flat throw in calm air on an open field, seen from above with the release at the bottom, all on one scale so lengths compare. Side-to-side is drawn 2× wider so turn and fade read clearly. With forehand selected (T) the charts mirror. (`src/ui/discPicker.ts`)

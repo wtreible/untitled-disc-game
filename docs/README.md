@@ -11,7 +11,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [05-gameplay](05-gameplay.md) | Clubs, shot model, surfaces, trees, scoring |
 | [06-segmentation](06-segmentation.md) | Three segmentation approaches (future; not needed for v1) |
 | [07-elevation-lidar](07-elevation-lidar.md) | Lidar / DEM terrain (future) |
-| [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) | Park-to-course editor, disc golf variant (future) |
+| [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) | Park-to-course editor, the planned hole editor for sharing holes, disc golf variant (future) |
 | [09-glossary](09-glossary.md) | Terms used across these docs |
 | [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
 | [11-roguelike](11-roguelike.md) | Roguelike run mode: draft rules, augment kinds (self / your course / hex), full list |
@@ -81,6 +81,12 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D55 | Tree LOD stops popping: model ↔ stand-in switches dissolve (dither, 0.45 s), the eye zone has hysteresis, and following a throw locks the models to its flight-path corridor. | 2026-10-21 |
 | D56 | Augments: values +20–30%, 8 new (wind-themed and more), categories, legendaries visible on the course, Magnet Basket legendary. Drafts customizable (cards, picks, frequency, starter, tier odds) with one tier per draft for the whole group; side panel, browser and scorecard show augments. | 2026-10-21 |
 | D57 | Three specialty discs: overstable driver, turnover fairway, approach. Suggestions stay with the everyday four. | 2026-10-21 |
+| D58 | Online: a name prompt before hosting or joining, renaming in the lobby, 2-digit suffixes for repeated names, up to 6 players. Crazy mode can play any hole selection; short-round blocks (1–3 / 4–6 / 7–9, or 6s on 18-hole courses). | 2026-10-21 |
+| D59 | Online seats survive drops: a minute's grace in the lobby; mid-game the host can play for a disconnected player until they're back. Friends' throws are followed live with the chase camera; Up next strip on the leaderboard. | 2026-10-21 |
+| D60 | Final card round summary (longest throw and longest make with Watch replays, tree magnet, aces, clean card), from the event log. | 2026-10-21 |
+| D61 | Throw styles: tomahawk / thumber (overhand, over trees) and roller (on edge, under them). | 2026-10-21 |
+| D62 | Optional bag building: 4 of 7 discs per player for the round; Bag Pocket augment adds a slot. | 2026-10-21 |
+| D63 | Moving hazards (drawbridge, sweeping ring) as `hinge` and `slide` colliders; throws carry the game clock so moving props match on every screen. Hole editor recorded as planned work (08). | 2026-10-21 |
 
 ## Open questions
 

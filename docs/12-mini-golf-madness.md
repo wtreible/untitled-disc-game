@@ -40,4 +40,6 @@ Colliders are computed at build time from measured model geometry (including nod
 
 **Timing:** blade angle = phase + ω·t on a game clock. The physics evaluates the blades at release clock + flight time; the clock advances with flight playback speed, and replays rewind it to the throw's time, so the blades you see are the blades the disc meets.
 
+**Other moving colliders** (2026-10-21): `hinge`, a plank hinged on the ground that stands up across a gap and lowers flat (Fantasy Fairways' drawbridge; lowered it doesn't collide), and `slide`, static boxes and cylinders moving together (Rainbow Runs' sweeping ring). Their schedules (`hingeAngle`, `slideOffset`) drive both the physics and the renderer (`PropDef.motion`). Online, each throw carries the thrower's clock and every browser takes it when the throw flies.
+
 **Debug:** add `?debug=colliders` to the URL to draw every collider as a magenta wireframe.

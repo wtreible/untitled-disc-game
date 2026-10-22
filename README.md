@@ -18,7 +18,9 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 
 **Play online:** host a room from the Players panel and send friends the link; everyone plays from their own browser. See [docs/14-online.md](docs/14-online.md).
 
-**Crazy mode** (a switch on the main menu, any course): draft an augment after every hole. Earn your ghost line, or hex your friends' course.
+**Crazy mode** (a switch on the main menu, any course and any holes): draft an augment after every hole. Earn your ghost line, or hex your friends' course.
+
+**Pick a bag** (also on the menu): everyone carries 4 of the 7 discs for the round.
 
 ## How to play
 
@@ -28,6 +30,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | Disc | Click a card in the disc picker (its chart shows how that disc flies), or `[` / `]` |
 | Release angle | Q (hyzer, curves left) / E (anhyzer, curves right) |
 | Forehand / backhand | T |
+| Shot | G (or the shot chip): normal, tomahawk / thumber (overhand, up over trees), roller (rolls on edge under them) |
 | Throw | Hold Space, let go at the power you want. The white tick on the meter reaches your target; the dashed line is the flight if you throw it perfectly. |
 | View | C: first person / top-down. In top-down: right-drag to pan, scroll to zoom, F to re-frame. |
 | Replay | Drag to orbit, scroll to zoom, R resets, Space skips |

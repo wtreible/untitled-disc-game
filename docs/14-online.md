@@ -1,6 +1,6 @@
 # Online play
 
-Friends play together from their own browsers: one hosts a room, the others open its link (or type its code). Everyone in the room gets a player, up to 4. More can join and watch. Hot seat still works, and can be mixed in later (one browser controlling several players).
+Friends play together from their own browsers: one hosts a room, the others open its link (or type its code). Hosting or joining asks for your name first (nothing connects until you give one). Everyone in the room gets a player, up to 6. More can join and watch. Hot seat still works, and can be mixed in later (one browser controlling several players).
 
 ## How it works
 
@@ -11,6 +11,11 @@ Friends play together from their own browsers: one hosts a room, the others open
 - **Reconnects** get the full log; missed events are applied, and our own events the room didn't get are re-sent. A refresh rejoins as the same person (a client id kept in localStorage).
 - **A throw is sent the moment it's released,** so everyone watches it fly at the same time (measured: the watcher's flight starts ~50 ms after release, where it used to wait the thrower's whole flight and replay, ~8 s). Every browser, the thrower's included, applies it when it lands, so the leaderboard doesn't give the result away early. Everyone waits out the same pause after a throw (including the mulligan window) before the next turn.
 - **Live aim:** while a player lines up, their browser streams their aim about 10 times a second, only when something changes: direction, target, disc, release angle, forehand, and the meter while charging. The room relays it without storing it. Watchers see their aim line and target, the disc picker on their disc, their release angle and their meter. In first person you look where they look. A 20-second aim costs about 10 billed requests (incoming messages bill at 20:1), so a 4-player 18-hole round is a few thousand of the free plan's 100,000 a day.
+- **Names:** your name can be changed in the lobby until the start (a `name` message; the server updates everyone's member list and the host's lobby picks it up). Repeated names get a 2-digit number ("Sam", "Sam 47"), taken from the browser's client id so it doesn't change as people come and go (`uniqueNames`, also used in hot seat).
+- **Seats:** the host first, then seats in the order people joined; a newcomer never bumps an earlier player to watching. A seated player who drops keeps their seat for a minute in the lobby.
+- **Away players:** when the round waits on someone who has disconnected (their throw, draft pick or placement), the host gets **Play for them** after 4 s. The host then controls that player until they reconnect, when control goes straight back.
+- **Following throws:** a friend's throw is ridden along live with the chase camera at replay pace, with no replay after (Settings → Follow friends' throws). The leaderboard's **Up next** strip shows the away-rule order as it stands.
+- **The game clock travels with each throw.** Moving props (windmill blades, the drawbridge, the sweeping ring) are simulated at the thrower's clock; the throw event carries it, and every browser takes it when the throw flies, so the props on screen are where the physics had them.
 - **Rooms delete themselves** after a week idle.
 
 ## Free tier
@@ -30,6 +35,7 @@ Without `ROOMS_URL`, public builds hide "Play online".
 
 ## Not yet
 
-- Your name in a room is the one in the first name box when you join; to change it, leave and rejoin.
 - One player per browser online (no hot seat inside a room yet).
+- Renaming in the lobby, 6 seats and bag building in the lobby need the room server from 2026-10-21 (evening) or later (`npm run server:deploy`).
+- If the host drops mid-game, nobody else can play for an away player.
 - Live aim needs the room server from 2026-10-21 or later (`npm run server:deploy`). An older server refuses those messages, and the game ignores the refusal, so it still plays without live aim.
