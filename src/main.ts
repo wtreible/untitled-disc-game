@@ -21,7 +21,7 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'fantasy' | 'rainbow' | 'range';
+type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'fantasy' | 'rainbow' | 'pirate' | 'range';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
 type Group = 'real' | 'arcade' | 'training';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
@@ -46,6 +46,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#24391f"/>${Array.from({ length: 18 }, (_, i) => `<circle cx="${(i * 37) % 64}" cy="${(i * 23) % 64}" r="${5 + (i % 3)}" fill="${i % 2 ? '#2f5a2a' : '#3b6e33'}"/>`).join('')}<path d="M10 60 L54 6" stroke="#8a9a6a" stroke-width="5" stroke-dasharray="1 0" opacity=".7"/></svg>`,
   },
   {
+    id: 'oakgrove', group: 'real', name: 'Oak Grove', meta: `Stockton, California${IMAGERY ? ' · satellite imagery' : ''} · mapped oaks`, holes: 18,
+    blurb: 'The Gold Course at Oak Grove Regional Park, from OpenStreetMap: eighteen short, open holes among the park’s oaks, every mapped tree where it stands, and a pond to cross on 17.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#6f7f45"/><path d="M6 56 C 22 46, 30 30, 54 14" stroke="#b9c47a" stroke-width="7" fill="none" stroke-linecap="round"/>${[[16, 24, 8], [44, 42, 9], [30, 52, 6], [50, 26, 5], [12, 44, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#3f5a2a"/>`).join('')}<ellipse cx="40" cy="56" rx="9" ry="4" fill="#4f8fcf"/><circle cx="54" cy="14" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
     id: 'fantasy', group: 'arcade', name: 'Fantasy Fairways', meta: 'Knights, a castle keep, one dragon', holes: 9,
     blurb: 'A medieval course: dodge a giant knight on The Joust, fly the gate into a castle courtyard, cross the moat, and finish under a dragon on Dragon’s Lair.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#46603a"/><rect x="0" y="44" width="64" height="20" fill="#7da35a"/><path d="M14 46 V24 h6 v-4 h4 v4 h4 v-4 h4 v4 h4 v-4 h4 v4 h6 v22 h-12 v-10 a4 4 0 0 0 -8 0 v10 z" fill="#d8a77c"/><path d="M14 24 L17 14 L20 24 M44 24 L47 14 L50 24" fill="#5b6fd6"/><path d="M40 10 c6 -2 12 2 14 6 c-4 -1 -6 0 -8 2 c-2 -3 -4 -5 -6 -8z" fill="#2b2b33"/></svg>`,
@@ -54,6 +59,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     id: 'rainbow', group: 'arcade', name: 'Rainbow Runs', meta: 'A rainbow road in deep space · no guardrails', holes: 9,
     blurb: 'Nine laps of a rainbow road floating in space. Stay on the track (off it is lost in space, +1), dodge mystery boxes and asteroids, thread the rings, and jump the gap.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#0b0b26"/>${Array.from({ length: 14 }, (_, i) => `<circle cx="${(i * 41) % 64}" cy="${(i * 17) % 64}" r="${i % 3 ? 0.8 : 1.3}" fill="#fff"/>`).join('')}${['#ff4d6d', '#ff9f43', '#ffe066', '#5ee07a', '#4dabf7', '#9b6bff'].map((c, i) => `<path d="M${-4 + i * 3} 64 C 14 30, 40 50, ${52 + i * 3} 0" stroke="${c}" stroke-width="3.2" fill="none"/>`).join('')}<rect x="40" y="24" width="10" height="10" rx="2" fill="#ffb347" transform="rotate(15 45 29)"/><text x="45" y="32.5" font-size="9" font-weight="700" fill="#fff" text-anchor="middle" transform="rotate(15 45 29)">?</text></svg>`,
+  },
+  {
+    id: 'pirate', group: 'arcade', name: 'Pirate’s Cove', meta: 'Islands, shipwrecks, a ghost ship', holes: 9,
+    blurb: 'Nine holes across sandy islands: carry the cove, get round a stranded wreck and a lookout tower, time the ghost ship sailing across 7, find the island basket, and finish behind a moored galleon. Off the land is the sea: overboard, +1.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2b7db3"/><ellipse cx="18" cy="48" rx="16" ry="11" fill="#e3cf98"/><ellipse cx="48" cy="18" rx="13" ry="9" fill="#e3cf98"/><path d="M14 50 L44 20" stroke="#83c45a" stroke-width="5" stroke-linecap="round"/><path d="M38 44 h18 l-3 5 h-12 z" fill="#5b3a26"/><path d="M47 44 V30" stroke="#3a2a1e" stroke-width="1.5"/><path d="M47 31 l8 5 l-8 4 z" fill="#f4f0e6"/><path d="M45 29 h-6 v4 h6z" fill="#1d1d1d"/><circle cx="48" cy="18" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
     id: 'range', group: 'training', name: 'Driving Range', meta: 'Distance lines every 50 ft · your wind and weather', holes: 1,

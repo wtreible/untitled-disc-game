@@ -18,6 +18,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [12-mini-golf-madness](12-mini-golf-madness.md) | Themed 9-hole course with Kenney CC0 models: windmill, castle, animals; prop colliders |
 | [13-fantasy-and-rainbow](13-fantasy-and-rainbow.md) | Arcade courses Fantasy Fairways (knight, castle, dragon) and Rainbow Runs (rainbow road in space); FBX, decals, stars |
 | [14-online](14-online.md) | Online play: event-log rounds, the Cloudflare Durable Object room, lobby, rejoining, free tier |
+| [15-pirates-cove-and-oak-grove](15-pirates-cove-and-oak-grove.md) | Arcade course Pirate's Cove (islands; the sea as a water hazard) and real course Oak Grove (Stockton, CA; trees from OpenStreetMap) |
 
 ## Decision log
 
@@ -90,6 +91,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D64 | Feet are the default units (Feet listed before Meters). An armed Perfect Form throw shows its whole ghost line. Main menu in three columns: courses and Tee off · course card and round · players and settings. | 2026-10-21 |
 | D65 | Sound: CC0 music per course (menu, park, mini golf, medieval, space), bird / space ambience with wind that follows the hole's wind, and throw sounds read off the flight samples (hits, landing by surface, chains, splash, OB), live with distance falloff and again in the replay. Music and Effects volume sliders. Credits in `public/audio/CREDITS.md`. | 2026-10-22 |
 | D66 | Making the course feel lived in, all scenery (the flight model never sees it): a flyover down each hole before its first throw (Settings → Hole flyovers); spectators by the basket (Kenney Mini Characters) who step out of any throw's path before it arrives, watch the disc and react; birds, butterflies, cloud shadows, a wind streamer on the basket and trees swaying with the hole's wind; leaves, puffs, splashes, sparks and swinging chains on contact; weather and time of day per round (sunny, golden hour, overcast, rain), picked from the first hole's wind so a room shares it (Settings → Weather); color commentary lines after throws. | 2026-10-22 |
+| D68 | Two more courses: **Pirate's Cove** (arcade; islands where off the land is the sea, a water hazard, via a course `sea` flag; Kenney Pirate Kit, CC0) and **Oak Grove** Gold Course, Stockton CA (real; the first mapped course outside Helsinki, so its trees come from OpenStreetMap: mapped trees where they stand, woods planted like canopy). The course builder takes courses mapped as a relation of holes. | 2026-10-22 |
 | D67 | Quality of life: N mutes (and a speaker button), ? lists the controls, the camera glides to the next lie instead of cutting, holding Shift fast-forwards flights and replays 3×. | 2026-10-22 |
 
 ## Open questions

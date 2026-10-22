@@ -13,6 +13,7 @@
     "silly-course": "tsx scripts/build-silly-course.ts",
     "fantasy-course": "tsx scripts/build-fantasy-course.ts",
     "rainbow-course": "tsx scripts/build-rainbow-course.ts",
+    "pirate-course": "tsx scripts/build-pirate-course.ts",
     "tree-shapes": "tsx scripts/build-tree-shapes.ts",
     "slim-models": "tsx scripts/slim-models.ts",
     "course-summary": "tsx scripts/course-summary.ts",

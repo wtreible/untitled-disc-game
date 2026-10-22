@@ -1,9 +1,11 @@
-// Offline pipeline for a disc golf course: Overpass (holes, tees, baskets, water, roads, buildings)
-// + HSY 2024 land cover tree-height polygons (Helsinki region only) → public/courses/<out>.json.
+// Offline pipeline for a disc golf course: Overpass (holes, tees, baskets, water, roads, buildings,
+// mapped trees and woods) + HSY 2024 land cover tree-height polygons (Helsinki region only)
+// → public/courses/<out>.json. Outside Helsinki, --trees osm plants OSM's own trees and woods.
 //
 //   npm run disc-course                      # defaults: Tali, Helsinki
 //   npm run disc-course -- --course 40254405 --out tali [--refresh]
 //   npm run disc-course -- --style simple --out tali-simple   # Tali Recreation: vector, thinned real trees
+//   npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm   # Oak Grove Gold, Stockton CA
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import type { FeatureCollection } from 'geojson';
@@ -19,17 +21,25 @@ const { values: args } = parseArgs({
     'no-hsy': { type: 'boolean', default: false },
     /** 'simple': Tali Recreation, a vector course with the real trees thinned back from fairways and greens. */
     style: { type: 'string', default: 'forest' },
+    /** 'hsy' (Helsinki region) or 'osm': OSM's mapped trees, and its woods planted as canopy. */
+    trees: { type: 'string', default: 'hsy' },
   },
 });
 
 const USER_AGENT = 'sat-golf/0.1 (hobby project; offline course builder)';
 
+/** A course is a closed way (its id) or a relation of hole ways ("relation/<id>"). */
+const rel = args.course!.match(/^relation\/(\d+)$/)?.[1];
+const courseSel = rel ? `relation(${rel})` : `way(${args.course})`;
+const cacheId = rel ? `r${rel}` : args.course;
+
 /** All features we need inside a lat/lon box (south, west, north, east). */
-function overpassQuery(courseWayId: string, b: number[]): string {
+function overpassQuery(b: number[]): string {
   const bb = b.join(',');
   return `[out:json][timeout:180];
 (
-  way(${courseWayId});
+  ${courseSel};
+  ${rel ? `${courseSel};way(r);` : ''}
   nwr["disc_golf"](${bb});
   nwr["natural"="water"](${bb});
   way["waterway"~"^(stream|ditch)$"](${bb});
@@ -37,6 +47,9 @@ function overpassQuery(courseWayId: string, b: number[]): string {
   way["building"](${bb});
   nwr["leisure"="golf_course"](${bb});
   nwr["amenity"="parking"](${bb});
+  node["natural"="tree"](${bb});
+  nwr["natural"="wood"](${bb});
+  nwr["landuse"="forest"](${bb});
 );
 out body;
 >;
@@ -76,18 +89,21 @@ const overpass = async (q: string) => (await fetchRetry('https://overpass-api.de
   body: new URLSearchParams({ data: q }),
 }, 'Overpass')).json();
 
-type Raw = { osm3s?: { timestamp_osm_base?: string }; elements: { type: string; lat?: number; lon?: number; geometry?: { lat: number; lon: number }[] }[] };
+type Raw = {
+  osm3s?: { timestamp_osm_base?: string };
+  elements: { type: string; id: number; lat?: number; lon?: number; geometry?: { lat: number; lon: number }[]; tags?: Record<string, string>; members?: { type: string; ref: number }[] }[];
+};
 
-const raw = await cached(`data/raw/disc-${args.course}.json`, async () => {
-  // Step 1: the course outline, for a search box. Step 2: everything in that box + ~400 m,
-  // since hole lines can run outside the mapped course polygon.
-  console.log(`querying Overpass for course way ${args.course}…`);
-  const outline = (await overpass(`[out:json][timeout:60];way(${args.course});out geom;`)) as Raw;
-  const g = outline.elements[0]?.geometry;
-  if (!g) throw new Error(`course way ${args.course} not found`);
+const raw = await cached(`data/raw/disc-${cacheId}.json`, async () => {
+  // Step 1: the course outline (a relation: its hole lines), for a search box. Step 2: everything
+  // in that box + ~400 m, since hole lines can run outside the mapped course polygon.
+  console.log(`querying Overpass for course ${args.course}…`);
+  const outline = (await overpass(`[out:json][timeout:60];${rel ? `${courseSel};way(r);` : `${courseSel};`}out geom;`)) as Raw;
+  const g = outline.elements.flatMap((e) => e.geometry ?? []);
+  if (!g.length) throw new Error(`course ${args.course} not found`);
   const la = g.map((p) => p.lat), lo = g.map((p) => p.lon);
   const box = [Math.min(...la) - 0.0036, Math.min(...lo) - 0.0072, Math.max(...la) + 0.0036, Math.max(...lo) + 0.0072];
-  return overpass(overpassQuery(args.course!, box));
+  return overpass(overpassQuery(box));
 }) as Raw;
 
 const osm = osmtogeojson(raw);
@@ -105,9 +121,14 @@ const bbox = [Math.min(...lats) - 0.001, Math.min(...lons) - 0.002, Math.max(...
 
 const canopy: CanopyLayer[] = [];
 const simple = args.style === 'simple';
-if (!args['no-hsy']) {
+const osmTrees = args.trees === 'osm';
+if (osmTrees) {
+  // OSM woods as one canopy class: no heights mapped, so a mixed park-woodland range.
+  const woods = osm.features.filter((f) => (f.properties?.natural === 'wood' || f.properties?.landuse === 'forest') && /Polygon/.test(f.geometry.type));
+  canopy.push({ range: [8, 16], fc: { type: 'FeatureCollection', features: woods } });
+} else if (!args['no-hsy']) {
   for (const l of HSY_LAYERS) {
-    const fc = await cached<FeatureCollection>(`data/raw/hsy-${args.course}-${l.name}.json`, async () => {
+    const fc = await cached<FeatureCollection>(`data/raw/hsy-${cacheId}-${l.name}.json`, async () => {
       console.log(`fetching HSY ${l.name}…`);
       const url = 'https://kartta.hsy.fi/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature'
         + `&typeNames=asuminen_ja_maankaytto:maanpeite_${l.name}_2024&outputFormat=application/json&srsName=EPSG:4326`
@@ -130,13 +151,16 @@ function normalizeAxisOrder(fc: FeatureCollection): FeatureCollection {
   return fc;
 }
 
+const relation = rel ? raw.elements.find((e) => e.type === 'relation' && String(e.id) === rel) : undefined;
 const course = buildDiscCourse(osm, canopy, {
-  courseOsmId: `way/${args.course}`,
+  courseOsmId: rel ? `relation/${rel}` : `way/${args.course}`,
   osmTimestamp: raw.osm3s?.timestamp_osm_base ?? 'unknown',
-  trees: simple ? 'recreation' : 'canopy',
+  trees: osmTrees ? 'osm' : simple ? 'recreation' : 'canopy',
+  holeIds: relation?.members?.filter((m) => m.type === 'way').map((m) => `way/${m.ref}`),
+  name: relation?.tags?.name,
   attribution: [
-    'Course data © OpenStreetMap contributors (ODbL)',
-    ...(canopy.length ? ['Tree canopy: HSY land cover 2024 (Helsingin seudun ympäristöpalvelut, CC BY 4.0)'] : []),
+    osmTrees ? 'Course data and trees © OpenStreetMap contributors (ODbL)' : 'Course data © OpenStreetMap contributors (ODbL)',
+    ...(canopy.length && !osmTrees ? ['Tree canopy: HSY land cover 2024 (Helsingin seudun ympäristöpalvelut, CC BY 4.0)'] : []),
   ],
 });
 

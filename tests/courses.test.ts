@@ -13,7 +13,7 @@ import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
 
 const load = (id: string): DiscCourseFile => JSON.parse(readFileSync(`public/courses/${id}.json`, 'utf8'));
-const gridOf = (c: DiscCourseFile) => SurfaceGrid.fromHole({ bounds: c.bounds, boundary: c.boundary, features: c.features, ob: c.ob, trees: [] }, 0.5);
+const gridOf = (c: DiscCourseFile) => SurfaceGrid.fromHole({ bounds: c.bounds, boundary: c.boundary, features: c.features, ob: c.ob, sea: c.sea, trees: [] }, 0.5);
 const worldOf = (c: DiscCourseFile, basket: Vec2): DiscWorld => ({
   grid: gridOf(c), terrain: new FlatTerrain(), trees: new TreeIndex(decodeTrees(c.trees)), basket,
   props: (c.props ?? []).flatMap((p) => p.colliders), clock0: 0, branchDensity: c.branch_density,
@@ -32,7 +32,7 @@ const PT = DISCS.find((d) => d.id === 'PT')!;
 const throwAt = (_c: DiscCourseFile, w: DiscWorld, o: Partial<ThrowInput> & { start: Vec2; aim: number }) =>
   simulateThrow({ power: 1, disc: MR, hyzer: 0, perfect: true, ...o }, w, mulberry32(3));
 
-describe.each(['silly', 'fantasy', 'rainbow'])('%s course', (id) => {
+describe.each(['silly', 'fantasy', 'rainbow', 'pirate'])('%s course', (id) => {
   const c = load(id);
   const grid = gridOf(c);
   const colliders = (c.props ?? []).flatMap((p) => p.colliders);
@@ -162,6 +162,52 @@ describe('Fantasy Fairways', () => {
     expect(near('knight', 2)).toBe(true);
     expect(near('castle', 4)).toBe(true);
     expect(near('dragon', 8)).toBe(true);
+  });
+});
+
+describe('Pirate’s Cove', () => {
+  const c = load('pirate');
+  const grid = gridOf(c);
+  const H = c.holes;
+
+  it('off the islands is the sea: water, out past the map edge too', () => {
+    expect(c.sea).toBe(true);
+    expect(grid.classAt(c.bounds[0][0] + 1, c.bounds[0][1] + 1)).toBe('water');
+    expect(grid.classAt(c.bounds[0][0] - 500, 0)).toBe('water');
+    expect(c.toasts?.water).toMatch(/\+1/);
+  });
+
+  it('Cannon Cove: a throw that falls short of the far shore goes overboard, +1, and plays from the near shore', () => {
+    const h = H[1];
+    const mid: Vec2 = [(h.tee[0] + h.pin[0]) / 2, (h.tee[1] + h.pin[1]) / 2];
+    expect(grid.classAt(mid[0], mid[1])).toBe('water');
+    const aim = Math.atan2(h.pin[1] - h.tee[1], h.pin[0] - h.tee[0]);
+    const short = throwAt(c, worldOf(c, h.pin), { start: h.tee, aim, disc: PT, power: 0.55 });
+    expect(short.events).toContain('water');
+    expect(short.penalty).toBe(1);
+    expect(grid.classAt(short.rest[0], short.rest[1])).not.toBe('water');
+    expect(Math.hypot(short.rest[0] - h.tee[0], short.rest[1] - h.tee[1])).toBeLessThan(Math.hypot(mid[0] - h.tee[0], mid[1] - h.tee[1]));
+  });
+
+  it('Ghost Ship: its colliders sail across the fairway with it', () => {
+    const ship = (c.props ?? []).find((p) => p.model.includes('ship-ghost'))!;
+    const k = ship.colliders[0];
+    expect(k.kind).toBe('slide');
+    if (k.kind !== 'slide') return;
+    expect(Math.hypot(...k.slide.amp)).toBeGreaterThan(15);
+    expect(ship.motion?.kind).toBe('slide');
+  });
+});
+
+describe('Oak Grove (OpenStreetMap, Stockton CA)', () => {
+  const c = load('oak-grove');
+  const grid = gridOf(c);
+  it('has 18 holes with tees and baskets in play, and its mapped trees', () => {
+    expect(c.holes).toHaveLength(18);
+    expect(c.holes.map((h) => h.ref)).toEqual(Array.from({ length: 18 }, (_, i) => String(i + 1)));
+    for (const h of c.holes) for (const p of [h.tee, h.pin]) expect(['oob', 'water']).not.toContain(grid.classAt(p[0], p[1]));
+    expect(decodeTrees(c.trees).length).toBeGreaterThan(500);
+    expect(c.source.attribution.join(' ')).toMatch(/OpenStreetMap/);
   });
 });
 

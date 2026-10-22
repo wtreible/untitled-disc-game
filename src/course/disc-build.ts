@@ -14,7 +14,7 @@ export interface CanopyLayer {
 }
 
 export interface DiscBuildOptions {
-  courseOsmId: string; // "way/40254405"
+  courseOsmId: string; // "way/40254405" or "relation/18072611"
   osmTimestamp: string;
   attribution: string[];
   seed?: number;
@@ -23,8 +23,16 @@ export interface DiscBuildOptions {
   /**
    * 'canopy': plant a forest inside HSY canopy polygons (photo style): the real version.
    * 'recreation': the same real trees, thinned back from fairways, greens and tees (vector style).
+   * 'osm': outside HSY's area: OSM's mapped trees where they stand, and its woods planted like
+   * canopy (the canopy layers passed in are those woods).
    */
-  trees?: 'canopy' | 'recreation';
+  trees?: 'canopy' | 'recreation' | 'osm';
+  /**
+   * A course mapped as a relation (type=disc_golf_course): its hole ways ("way/…") and name.
+   * osmtogeojson drops such relations, so the caller reads them from the raw data.
+   */
+  holeIds?: string[];
+  name?: string;
   margin?: number;
 }
 
@@ -192,15 +200,38 @@ function rasterize(rings: Rings, min: Vec2, cell: number, cols: number, rows: nu
   }
 }
 
+/**
+ * OSM natural=tree points as trees. Height and crown from the tags when mapped (height,
+ * diameter_crown, circumference), else a plausible park tree; broadleaf crowns start higher than
+ * conifers'. Random parts come from `seed`, so a rebuild plants the same trees.
+ */
+export function mappedTrees(feats: Feature<Geometry, Props>[], P: (p: Position) => Vec2, seed: number): Tree[] {
+  const rng = mulberry32(seed ^ 0x5eed);
+  const num = (v: string | undefined) => { const n = parseFloat(v ?? ''); return Number.isFinite(n) && n > 0 ? n : null; };
+  return feats.filter((f) => f.properties.natural === 'tree' && f.geometry.type === 'Point').map((f) => {
+    const t = f.properties;
+    const [x, y] = P((f.geometry as { coordinates: Position }).coordinates);
+    const conifer = t.leaf_type === 'needleleaved';
+    const h = Math.min(35, num(t.height) ?? 8 + rng() * 8);
+    const crown = num(t.diameter_crown);
+    const r = Math.min(12, crown ? crown / 2 : h * (conifer ? 0.25 : 0.45) * (0.8 + rng() * 0.4));
+    // Trunk from the circumference (m) when mapped.
+    const girth = num(t.circumference);
+    return { x, y, h, r, b: conifer ? 0.5 + rng() * 1.5 : h * (0.25 + rng() * 0.15), t: girth ? Math.min(1, girth / (2 * Math.PI)) : 0.08 + 0.014 * h };
+  });
+}
+
 export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLayer[], opts: DiscBuildOptions): DiscCourseFile {
   const feats = osm.features as Feature<Geometry, Props>[];
+  // A course way is the playing area too; a relation has only its holes.
   const course = feats.find((f) => f.id === opts.courseOsmId);
-  if (!course) throw new Error(`Course ${opts.courseOsmId} not in input`);
+  if (!course && !opts.holeIds) throw new Error(`Course ${opts.courseOsmId} not in input`);
+  const holeSet = opts.holeIds ? new Set(opts.holeIds) : null;
   const corridor = opts.corridorM ?? 35;
   const margin = opts.margin ?? 40;
 
   const holeFeats = feats
-    .filter((f) => f.properties.disc_golf === 'hole' && f.properties.ref && f.geometry.type === 'LineString')
+    .filter((f) => f.properties.disc_golf === 'hole' && f.properties.ref && f.geometry.type === 'LineString' && (!holeSet || holeSet.has(String(f.id))))
     .sort((a, b) => parseInt(a.properties.ref!, 10) - parseInt(b.properties.ref!, 10));
   if (holeFeats.length === 0) throw new Error('No disc_golf=hole ways with a ref');
 
@@ -250,7 +281,7 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
   const inBounds = (p: Vec2) => p[0] >= bounds[0][0] && p[0] <= bounds[1][0] && p[1] >= bounds[0][1] && p[1] <= bounds[1][1];
   const touches = (rings: Rings) => rings[0].some(inBounds);
 
-  const boundary: Rings[] = [...polygonsOf(course.geometry).map(toRings)];
+  const boundary: Rings[] = course ? polygonsOf(course.geometry).map(toRings) : [];
   for (const h of holes) boundary.push(...strip(h.routing, corridor));
 
   const features: CourseFeature[] = [];
@@ -301,6 +332,15 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
   const keepClear = holes.flatMap((h) => [{ p: h.tee, r: 3 }, { p: h.pin, r: 2 }]);
   const lanes = holes.map((h) => ({ pts: h.routing, r: 3, lift: 3.5 }));
   let trees = plantTrees(canopy, bounds, keepClear, opts.seed ?? 1, lanes);
+  if (opts.trees === 'osm') {
+    // Mapped trees stand where they're mapped; planted woods give way to them.
+    const mapped = mappedTrees(feats, P, opts.seed ?? 1).filter((t) => inBounds([t.x, t.y]));
+    for (const t of mapped) {
+      // Limbed up over the hole lines, as for planted trees.
+      if (holes.some((h) => distToPolyline([t.x, t.y], h.routing) < t.r)) t.b = Math.max(t.b, Math.min(t.h - 1, 3.5));
+    }
+    trees = [...trees.filter((t) => mapped.every((m) => Math.hypot(m.x - t.x, m.y - t.y) > (m.r + t.r) * 0.6)), ...mapped];
+  }
   if (recreation) {
     // The easy version: mown fairways, drawn and used for lies, and the same real trees thinned
     // back so no crown comes within RECREATION.clear of a fairway, a green or a tee.
@@ -316,7 +356,7 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
     sport: 'disc',
     style: recreation ? 'vector' : 'photo',
     branch_density: 0.11,
-    name: course.properties.name ?? 'Disc golf course',
+    name: opts.name ?? course?.properties.name ?? 'Disc golf course',
     source: { osm_timestamp: opts.osmTimestamp, course_osm_id: opts.courseOsmId, attribution: opts.attribution },
     origin: frame.origin,
     imagery_offset_m: [0, 0],

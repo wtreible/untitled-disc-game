@@ -12,9 +12,11 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 |---|---|---|
 | **Tali Recreation** | 18 | The real [Tali disc golf park](https://www.openstreetmap.org/way/40254405) (Helsinki) from OpenStreetMap, with its real trees from Helsinki's canopy data, cut back a few meters from every fairway, green and tee. The easy version. |
 | **Tali Forest** | 18 | The real thing: the same holes and all ~10,500 trees. |
+| **Oak Grove** | 18 | The Gold Course at [Oak Grove Regional Park](https://www.openstreetmap.org/relation/18072611) (Stockton, California) from OpenStreetMap: short, open holes among the park's mapped oaks, a pond on 17. |
 | **Mini Golf Madness** | 9 | Full-size disc golf themed like mini golf: a windmill with spinning blades, a castle gate, giant animals. |
 | **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
 | **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
+| **Pirate's Cove** | 9 | Sandy islands in the sea: carry the cove, round a stranded wreck and a lookout tower, time the ghost ship, hit the island basket. Overboard is +1. |
 | **Driving Range** | – | Training: a long open range with a line every 50 ft and big signs every 100 ft. Set the wind and weather, place and remove baskets and trees, and see how far and how far off line each throw went. Friends take turns from the tee (hot seat or online); whoever is up sets the range. Nothing scored. |
 
 **Play online:** host a room from the Players panel and send friends the link; everyone plays from their own browser. See [docs/14-online.md](docs/14-online.md).
@@ -70,7 +72,9 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 |---|---|
 | `npm run disc-course` | Rebuild Tali Forest (`public/courses/tali.json`) from OpenStreetMap + HSY canopy. Downloads are cached in `data/raw/`. `-- --course <way id> --out <name>` for another course. |
 | `npm run disc-course -- --style simple --out tali-simple` | Rebuild Tali Recreation |
-| `npm run silly-course` / `fantasy-course` / `rainbow-course` | Rebuild the themed courses |
+| `npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm` | Rebuild Oak Grove. A course mapped as a relation of holes; outside Helsinki, `--trees osm` plants OpenStreetMap's mapped trees and woods |
+| `npm run silly-course` / `fantasy-course` / `rainbow-course` / `pirate-course` | Rebuild the themed courses |
+| `npm run course-summary` | Refresh the menu's par and length stats after rebuilding a course |
 | `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |
 | `npm run slim-models` | Strip animations the courses don't use from the character models |
 | `npm run server:dev` | Run the online room server locally (dev builds connect to it) |

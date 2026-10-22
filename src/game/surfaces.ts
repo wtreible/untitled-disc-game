@@ -2,7 +2,8 @@
 import type { Vec2 } from '../course/geo';
 import { SURFACE_CLASSES, surfacePriority, type CourseHole, type Rings, type SurfaceClass } from '../course/types';
 
-export type SurfaceSource = Pick<CourseHole, 'bounds' | 'boundary' | 'trees' | 'features'> & { ob?: Rings[] };
+/** `sea`: off the land (the boundary) is open water, not out of bounds (an island course). */
+export type SurfaceSource = Pick<CourseHole, 'bounds' | 'boundary' | 'trees' | 'features'> & { ob?: Rings[]; sea?: boolean };
 
 export class SurfaceGrid {
   readonly cols: number;
@@ -11,6 +12,9 @@ export class SurfaceGrid {
   readonly cls: Uint8Array;
   /** Canopy height in meters per cell (0 = no tree). */
   readonly canopy: Float32Array;
+
+  /** Off the land is water (out past the grid too). */
+  sea = false;
 
   constructor(readonly min: Vec2, readonly max: Vec2, readonly cell: number) {
     this.cols = Math.ceil((max[0] - min[0]) / cell);
@@ -39,6 +43,11 @@ export class SurfaceGrid {
       // Water and bunkers outside the boundary polygon still count as themselves.
       g.fill(f.rings, (i) => { if (p >= g.cls[i]) g.cls[i] = p; });
     }
+    if (hole.sea) {
+      g.sea = true;
+      const water = surfacePriority('water');
+      for (let i = 0; i < g.cls.length; i++) if (g.cls[i] === 0) g.cls[i] = water;
+    }
     for (const rings of hole.ob ?? []) g.fill(rings, (i) => { g.cls[i] = 0; });
     return g;
   }
@@ -52,7 +61,7 @@ export class SurfaceGrid {
 
   classAt(x: number, y: number): SurfaceClass {
     const i = this.index(x, y);
-    return i < 0 ? 'oob' : SURFACE_CLASSES[this.cls[i]];
+    return i < 0 ? (this.sea ? 'water' : 'oob') : SURFACE_CLASSES[this.cls[i]];
   }
 
   canopyAt(x: number, y: number): number {

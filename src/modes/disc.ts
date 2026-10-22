@@ -45,6 +45,8 @@ export const DISC_COURSES = {
   silly: 'courses/silly.json',
   fantasy: 'courses/fantasy.json',
   rainbow: 'courses/rainbow.json',
+  pirate: 'courses/pirate.json',
+  oakgrove: 'courses/oak-grove.json',
 } as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 /** Circle 2: inside this, switch to first-person putting. */
@@ -80,7 +82,7 @@ function cutByDistance(q: Vec3[], frac: number): Vec3[] {
 }
 const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2;
 /** Music per course. */
-const TRACKS: Record<DiscOptions['course'], Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', range: 'park' };
+const TRACKS: Record<DiscOptions['course'], Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', pirate: 'minigolf', oakgrove: 'park', range: 'park' };
 /** Landing puff colors by what it landed on. */
 const PUFF: Record<string, string[]> = {
   fairway: ['#7a9a4a', '#9bb565', '#8a7a55'], rough: ['#6f8f45', '#8a7a55', '#a3b06a'], green: ['#7fb04f', '#a6c96e'],
@@ -207,7 +209,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const trees = decodeTrees(course.trees);
   const frame = new LocalFrame(course.origin);
   const grid = SurfaceGrid.fromHole({
-    bounds: course.bounds, boundary: course.boundary, features: course.features, ob: course.ob,
+    bounds: course.bounds, boundary: course.boundary, features: course.features, ob: course.ob, sea: course.sea,
     trees: course.canopy.map((c, i) => ({ osm_id: `canopy/${i}`, rings: c.rings, height_m: c.height_m })),
   }, 0.5);
   const blocked = (q: Vec2) => { const c = grid.classAt(q[0], q[1]); return c === 'oob' || c === 'water'; };

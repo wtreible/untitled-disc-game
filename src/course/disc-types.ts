@@ -72,6 +72,8 @@ export interface DiscCourseFile {
   sky?: string;
   /** Flat colored shapes painted over the ground (Rainbow Runs' road stripes, checkered lines). */
   decals?: { color: string; rings: Rings[] }[];
+  /** An island course: off the land (the boundary) is the sea, a water hazard rather than OB. */
+  sea?: boolean;
   /** Star field over the void and in the sky, this many stars. */
   stars?: number;
   /** Throw-event toasts overriding the defaults (e.g. a themed OB message). */
