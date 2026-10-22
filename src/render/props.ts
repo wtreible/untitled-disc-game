@@ -7,6 +7,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { PropDef, Tree } from '../course/disc-types';
 import { asset } from '../assets';
+import { hingeAngle, slideOffset } from '../disc/props';
 
 export interface PropsView {
   group: THREE.Group;
@@ -32,6 +33,8 @@ export async function loadProps(defs: PropDef[], trees: Tree[], base = asset('mo
   const group = new THREE.Group();
   const mixers: THREE.AnimationMixer[] = [];
   const spinners: { obj: THREE.Object3D; omega: number; phase: number; axis: 'x' | 'y' | 'z' }[] = [];
+  /** Drawbridges and sliders: set from the clock each frame. */
+  const movers: ((t: number) => void)[] = [];
   const treeObjects = new Map<Tree, THREE.Object3D>();
 
   await Promise.all(defs.map(async (d) => {
@@ -66,6 +69,14 @@ export async function loadProps(defs: PropDef[], trees: Tree[], base = asset('mo
       const obj = model.getObjectByName(d.spin.node);
       if (obj) spinners.push({ obj, omega: d.spin.omega, phase: d.spin.phase, axis: d.spin.axis ?? 'z' });
     }
+    const mo = d.motion;
+    if (mo?.kind === 'hinge') {
+      // Model space is Y-up with its front at −Z: tipping the plank forward is −θ about X.
+      const obj = model.getObjectByName(mo.node);
+      if (obj) movers.push((t) => { obj.rotation.x = -hingeAngle(mo.swing, t); });
+    } else if (mo?.kind === 'slide') {
+      movers.push((t) => { const o = slideOffset(mo.slide, t); root.position.set(d.at[0] + o[0], d.at[1] + o[1], d.lift ?? 0); });
+    }
     if (d.tree !== undefined && trees[d.tree]) treeObjects.set(trees[d.tree], root);
   }));
 
@@ -76,6 +87,7 @@ export async function loadProps(defs: PropDef[], trees: Tree[], base = asset('mo
       for (const m of mixers) m.update(dt);
       // Same angle formula as bladeAngle() in src/disc/props.ts (rotation about the model's Z axis).
       for (const s of spinners) s.obj.rotation[s.axis] = s.phase + s.omega * t;
+      for (const m of movers) m(t); // same schedules as the colliders (src/disc/props.ts)
     },
   };
 }
@@ -109,6 +121,32 @@ function procedural(name: string): THREE.Object3D {
     box.position.y = 0.5;
     const root = new THREE.Group();
     root.add(box);
+    return root;
+  }
+  if (name === 'drawbridge') {
+    // Wooden plank 1 wide, 0.92 long, hinged at its bottom edge (node "plank" pivots at the origin),
+    // with iron bands and two chains running up its face (Fantasy Fairways' castle gate).
+    const wood = new THREE.MeshStandardMaterial({ color: '#8a5a32', roughness: 0.9 });
+    const dark = new THREE.MeshStandardMaterial({ color: '#3d3b3a', roughness: 0.6, metalness: 0.4 });
+    const plank = new THREE.Group();
+    plank.name = 'plank';
+    for (let i = 0; i < 6; i++) {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(1 / 6 - 0.006, 0.92, 0.045), wood);
+      board.position.set(-0.5 + (i + 0.5) / 6, 0.46, 0);
+      plank.add(board);
+    }
+    for (const y of [0.15, 0.46, 0.77]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(1, 0.035, 0.055), dark);
+      band.position.set(0, y, -0.002);
+      plank.add(band);
+    }
+    for (const x of [-0.42, 0.42]) {
+      const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.9, 6), dark);
+      chain.position.set(x, 0.47, 0.03);
+      plank.add(chain);
+    }
+    const root = new THREE.Group();
+    root.add(plank);
     return root;
   }
   throw new Error(`unknown procedural model ${name}`);

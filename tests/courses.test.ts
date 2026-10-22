@@ -121,7 +121,8 @@ describe('Rainbow Runs rings', () => {
   const c = load('rainbow');
   it('colliders leave the hexagonal opening clear and fill the frame', () => {
     for (const r of (c.props ?? []).filter((p) => p.hit === 'Clipped the ring!')) {
-      const boxes = r.colliders as Extract<Collider, { kind: 'box' }>[];
+      // A sweeping ring's boxes sit in a slide collider, at rest where the model stands.
+      const boxes = (r.colliders[0]?.kind === 'slide' ? r.colliders[0].parts : r.colliders) as Extract<Collider, { kind: 'box' }>[];
       const s = r.scale, lift = r.lift ?? 0;
       const yaw = r.yaw;
       const hitAt = (x: number, zUnits: number) => {
@@ -139,10 +140,10 @@ describe('Rainbow Runs rings', () => {
 
 describe('Fantasy Fairways', () => {
   const c = load('fantasy');
-  it('Castle Keep: a flat throw through the gate lands in the courtyard; walls block a low line', () => {
+  it('Castle Keep: a flat throw through the gate lands in the courtyard (drawbridge down); walls block a low line', () => {
     const h = c.holes[4];
     const aim = Math.atan2(h.pin[1] - h.tee[1], h.pin[0] - h.tee[0]);
-    const w = worldOf(c, h.pin);
+    const w = { ...worldOf(c, h.pin), clock0: 14 * 0.55 }; // the drawbridge is down from 0.5 to 0.88 of its 14 s cycle
     // Through the gate: tee shot then an approach from 20 m in front of the gate.
     const start: Vec2 = [h.pin[0] - Math.cos(aim) * 30, h.pin[1] - Math.sin(aim) * 30];
     const through = [0.3, 0.35, 0.4, 0.45].map((p) => throwAt(c, w, { start, aim, disc: PT, power: p, launch: 0.05 }));
@@ -151,6 +152,9 @@ describe('Fantasy Fairways', () => {
     const side: Vec2 = [start[0] - Math.sin(aim) * 8, start[1] + Math.cos(aim) * 8];
     const r = throwAt(c, w, { start: side, aim, disc: PT, power: 0.4, launch: 0.05 });
     expect(r.propHits).toContain('castle');
+    // With the drawbridge up, the throws that reach the gate hit it (0.3 stops short of it).
+    const up = [0.35, 0.4, 0.45].map((p) => throwAt(c, { ...w, clock0: 0 }, { start, aim, disc: PT, power: p, launch: 0.05 }));
+    expect(up.every((r) => (r.propHits ?? []).includes('drawbridge'))).toBe(true);
   });
 
   it('has the knight, the castle and the dragon on the right holes', () => {

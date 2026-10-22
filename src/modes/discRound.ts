@@ -37,9 +37,10 @@ export type RoundEvent =
   | { t: 'hole-start'; wind: Vec2 }
   /**
    * A throw landed. `perfect`: a Perfect Form charge was used on it. `twin`: Clone Disc's other
-   * throw, the one not kept (every other sample, for show only).
+   * throw, the one not kept (every other sample, for show only). `clock`: the thrower's game clock
+   * at release (s), which moving props (windmill, drawbridge, sliding ring) were simulated at.
    */
-  | { t: 'throw'; player: number; perfect: boolean; result: WireResult; twin?: Vec3[] }
+  | { t: 'throw'; player: number; perfect: boolean; result: WireResult; twin?: Vec3[]; clock?: number }
   /** Take back the player's last throw (Crazy mode). */
   | { t: 'mulligan'; player: number }
   /** Crazy mode draft: the cards offered to a player (powerup ids). */

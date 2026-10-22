@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Rings } from '../src/course/types';
 import { DISCS } from '../src/disc/discs';
 import { simulateThrow, type DiscWorld, type ThrowInput } from '../src/disc/flight';
-import { castleColliders, collideProps, windmillColliders, type Collider } from '../src/disc/props';
+import { castleColliders, collideProps, hingeAngle, slideOffset, windmillColliders, type Collider, type Swing } from '../src/disc/props';
 import { TreeIndex } from '../src/disc/trees';
 import { mulberry32 } from '../src/game/physics';
 import { SurfaceGrid } from '../src/game/surfaces';
@@ -106,5 +106,41 @@ describe('touching boxes', () => {
     const r = simulateThrow({ start: [0, 38.5], aim: NORTH, power: 0.05, disc: MR, hyzer: 0, perfect: true, launch: 1.2 }, world(wall), mulberry32(1));
     expect(r.samples.length).toBeLessThan(600);
     expect(r.samples[r.samples.length - 1][2]).toBeLessThan(0.1);
+  });
+});
+
+describe('moving hazards', () => {
+  const swing: Swing = { period: 14, phase: 0, move: 0.12 };
+  // A drawbridge 30 m north across the line, 6 m wide, 6 m tall raised, falling toward the thrower.
+  const bridge: Collider = { kind: 'hinge', c: [0, 30], yaw: Math.PI, hx: 3, len: 6, halfThick: 0.15, swing, tag: 'drawbridge' };
+
+  it('the drawbridge schedule: up, lowering, down, raising', () => {
+    expect(hingeAngle(swing, 0)).toBe(0);
+    expect(hingeAngle(swing, 14 * 0.44)).toBeGreaterThan(0.5);
+    expect(hingeAngle(swing, 14 * 0.6)).toBeCloseTo(Math.PI / 2, 6);
+    expect(hingeAngle(swing, 14 * 0.95)).toBeLessThan(Math.PI / 2);
+    expect(hingeAngle(swing, 14)).toBeCloseTo(0, 6);
+  });
+
+  it('raised, it blocks a low throw at the gate; lowered, the throw goes over it', () => {
+    const up = fly([bridge], { launch: 0.0, power: 1 }, 0);
+    expect(up.propHits).toContain('drawbridge');
+    expect(up.rest[1]).toBeLessThan(30);
+    const down = fly([bridge], { launch: 0.0, power: 1 }, 14 * 0.55);
+    expect(down.propHits ?? []).toEqual([]);
+    expect(down.rest[1]).toBeGreaterThan(40);
+  });
+
+  it('a sliding post is hit or missed depending on where it is when the disc gets there', () => {
+    // A 1 m post 30 m north that slides ±5 m east-west every 8 s.
+    const post: Collider = { kind: 'slide', parts: [{ kind: 'cyl', c: [0, 30], r: 0.5, z0: 0, z1: 6, tag: 'post' }], slide: { amp: [5, 0], period: 8, phase: 0 }, tag: 'ring' };
+    expect(slideOffset(post.slide, 2)[0]).toBeCloseTo(5, 6);
+    let hits = 0, misses = 0;
+    for (let t = 0; t < 8; t += 0.25) {
+      const r = fly([post], { launch: 0.0, power: 1 }, t);
+      if ((r.propHits ?? []).includes('ring')) hits++; else misses++;
+    }
+    expect(hits).toBeGreaterThan(0);
+    expect(misses).toBeGreaterThan(hits);
   });
 });

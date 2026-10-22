@@ -1,6 +1,6 @@
 import type { LatLon, Vec2 } from './geo';
 import type { CourseFeature, Rings } from './types';
-import type { Collider } from '../disc/props';
+import type { Collider, Slide, Swing } from '../disc/props';
 
 export interface DiscHole {
   ref: string;
@@ -44,6 +44,11 @@ export interface PropDef {
   anim?: string;
   /** Spin a named node about its local axis (default Z, matching a blades collider's clock). */
   spin?: { node: string; omega: number; phase: number; axis?: 'x' | 'y' | 'z' };
+  /**
+   * Moving on the shared game clock, like its collider: a drawbridge's plank (node, hinged at its
+   * bottom edge) or the whole prop sliding (a ring sweeping across the road).
+   */
+  motion?: { kind: 'hinge'; node: string; swing: Swing } | { kind: 'slide'; slide: Slide };
   /** Material colors by material name (e.g. a red dragon). */
   tint?: Record<string, string>;
   /** Model-space point (Y-up, model units) moved to the origin, for models authored off-center. */

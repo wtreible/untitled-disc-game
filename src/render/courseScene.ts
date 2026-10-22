@@ -15,7 +15,7 @@ import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
 import { treeSymbols, vectorGround } from './vectorCourse';
 import type { PropsView } from './props';
-import { bladeAngle, type Collider } from '../disc/props';
+import { bladeAngle, hingeAngle, slideOffset, type Collider } from '../disc/props';
 
 const OVERLAY_Z = 30;
 /** Default replay chase offset: 2.5 m back and 1.2 m up, as distance + elevation. */
@@ -325,15 +325,37 @@ export class CourseScene {
     this.updateColliderDebug(t);
   }
 
-  // ?debug=colliders: magenta wireframes of every prop collider (blades follow the clock).
+  // ?debug=colliders: magenta wireframes of every prop collider (moving ones follow the clock).
   private debugBlades: { line: THREE.LineSegments; c: Extract<Collider, { kind: 'blades' }> }[] = [];
-  showColliders(colliders: Collider[]): void {
+  private debugMovers: ((t: number) => void)[] = [];
+  showColliders(colliders: Collider[], parent: THREE.Object3D = this.scene): void {
     const mat = new THREE.LineBasicMaterial({ color: '#ff2bd6' });
     for (const c of colliders) {
       if (c.kind === 'blades') {
         const line = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
         this.debugBlades.push({ line, c });
-        this.scene.add(line);
+        parent.add(line);
+        continue;
+      }
+      if (c.kind === 'slide') {
+        const g = new THREE.Group();
+        parent.add(g);
+        this.showColliders(c.parts, g);
+        this.debugMovers.push((t) => { const o = slideOffset(c.slide, t); g.position.set(o[0], o[1], 0); });
+        continue;
+      }
+      if (c.kind === 'hinge') {
+        // Pivot at the hinge, plank standing up along local z; tipped toward local +y.
+        const pivot = new THREE.Group();
+        pivot.position.set(c.c[0], c.c[1], 0);
+        pivot.rotation.z = c.yaw;
+        const plank = new THREE.Group();
+        const m = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(c.hx * 2, c.halfThick * 2, c.len)), mat);
+        m.position.z = c.len / 2;
+        plank.add(m);
+        pivot.add(plank);
+        parent.add(pivot);
+        this.debugMovers.push((t) => { plank.rotation.x = -hingeAngle(c.swing, t); });
         continue;
       }
       const geo = c.kind === 'cyl'
@@ -342,11 +364,12 @@ export class CourseScene {
       const m = new THREE.LineSegments(new THREE.EdgesGeometry(geo), mat);
       m.position.set(c.c[0], c.c[1], (c.z0 + c.z1) / 2);
       if (c.kind === 'box') m.rotation.z = c.yaw;
-      this.scene.add(m);
+      parent.add(m);
     }
   }
 
   private updateColliderDebug(t: number): void {
+    for (const f of this.debugMovers) f(t);
     for (const { line, c } of this.debugBlades) {
       const a = bladeAngle(c, t);
       const X = new THREE.Vector3(Math.cos(c.yaw), Math.sin(c.yaw), 0);

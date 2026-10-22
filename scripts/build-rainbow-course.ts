@@ -9,7 +9,7 @@ import type { DiscCourseFile, DiscHole, PropDef } from '../src/course/disc-types
 import { encodeTrees } from '../src/course/disc-types';
 import { dist, type Vec2 } from '../src/course/geo';
 import type { CourseFeature, Rings } from '../src/course/types';
-import type { Collider } from '../src/disc/props';
+import type { Collider, Slide } from '../src/disc/props';
 import { along, courseJson, shapeColliders, heading, headingAt, makeHoles, propKit, rect, silhouetteBoxes, teeMat, type HoleSpec } from './course-kit';
 
 const { R, pick, props, trees } = propKit(4242);
@@ -150,7 +150,7 @@ function mysteryBox(at: Vec2, z = 3.2, size = 2.4): void {
  * front outline rather than upright posts (posts filled the opening's wide middle).
  */
 const RING_BOXES = silhouetteBoxes(space('gate_complex'), SPACE_OFFSET);
-function ring(at: Vec2, dir: number, s: number): void {
+function ring(at: Vec2, dir: number, s: number, slide?: Slide): void {
   const yaw = dir + Math.PI / 2; // ring plane (model X) across the direction of play
   // Sunk into the road to the top of the plinth, so the opening starts about 1 m up.
   const lift = -0.2 * s;
@@ -162,7 +162,12 @@ function ring(at: Vec2, dir: number, s: number): void {
       hx: ((b.x1 - b.x0) / 2) * s, hy: ((b.z1 - b.z0) / 2) * s, z0: Math.max(0, b.y0 * s + lift), z1: b.y1 * s + lift, tag: 'ring',
     };
   });
-  props.push({ model: space('gate_complex'), at, yaw, scale: s, offset: SPACE_OFFSET, lift, hit: 'Clipped the ring!', colliders });
+  // A sweeping ring moves its colliders together, on the same clock as the model.
+  props.push({
+    model: space('gate_complex'), at, yaw, scale: s, offset: SPACE_OFFSET, lift, hit: 'Clipped the ring!',
+    colliders: slide ? [{ kind: 'slide', parts: colliders, slide, tag: 'ring' }] : colliders,
+    ...(slide ? { motion: { kind: 'slide' as const, slide } } : {}),
+  });
 }
 /** Base, two fuel tanks and a nose cone: about 3.4 s tall. */
 function rocket(at: Vec2, s: number): void {
@@ -198,7 +203,11 @@ for (const lat of [-6, -2, 2, 6]) mysteryBox(along(H[1], 0.38, lat), 3);
 for (const lat of [-4, 0, 4]) mysteryBox(along(H[1], 0.72, lat), 4.5);
 
 // 3. Ring Road: three rings on the line.
-for (const f of [0.28, 0.5, 0.72]) ring(along(H[2], f), heading(H[2]), 15);
+// The middle one sweeps from side to side across the road (±5 m, 8 s a cycle): time your throw.
+for (const f of [0.28, 0.5, 0.72]) {
+  const dir = heading(H[2]);
+  ring(along(H[2], f), dir, 15, f === 0.5 ? { amp: [Math.cos(dir + Math.PI / 2) * 5, Math.sin(dir + Math.PI / 2) * 5], period: 8, phase: 0 } : undefined);
+}
 
 // 4. The Chicane: parked racers on the apexes.
 for (const [f, lat] of [[0.33, -5], [0.62, 5], [0.85, -4]] as const) {

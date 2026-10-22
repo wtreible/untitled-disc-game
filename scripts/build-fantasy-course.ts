@@ -110,6 +110,17 @@ for (const lat of [-12, 12]) solid('castle/rocks-large.glb', along(H[3], 0.55, l
     props.push({ model: 'castle/tower-hexagon-roof.glb', at, yaw: d, scale: S, lift: wallH, hit, colliders: shapeColliders('castle/tower-hexagon-roof.glb', at, d, S, { lift: wallH, tag: 'castle' }) });
     decor('castle/flag-pennant.glb', at, S * 0.8, d, { lift: wallH + 0.83 * S });
   }
+  // Drawbridge in the gate: hinged at the wall's outer face, it stands across the gap, lowers
+  // toward the tee (a road in), and raises again. 14 s a cycle: up ~5 s, moving 1.7 s, down ~5 s.
+  {
+    const at = P(-n - 0.45, 0);
+    const swing = { period: 14, phase: 0, move: 0.12 };
+    const yaw = d + Math.PI / 2; // hinge along v; the plank falls along −u, toward the tee
+    props.push({
+      model: 'proc:drawbridge', at, yaw, scale: S, hit: 'Drawbridge!', motion: { kind: 'hinge', node: 'plank', swing },
+      colliders: [{ kind: 'hinge', c: at, yaw, hx: 0.5 * S - 0.05, len: 0.92 * S, halfThick: 0.0225 * S, swing, tag: 'drawbridge' }],
+    });
+  }
   // Gatehouse towers either side of the gap.
   for (const b of [-1, 1]) {
     const at = P(-n - 0.15, b * 0.95);

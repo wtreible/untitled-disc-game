@@ -740,7 +740,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       other = simulateThrow(input, world());
       if (outcomeScore(other) < outcomeScore(result)) [result, other] = [other, result];
     }
-    const e: Extract<RoundEvent, { t: 'throw' }> = { t: 'throw', player: me, perfect, result: st.wire(result) };
+    const e: Extract<RoundEvent, { t: 'throw' }> = { t: 'throw', player: me, perfect, result: st.wire(result), clock: Math.round(gameClock * 1000) / 1000 }; // world() simulated at gameClock
     if (other) e.twin = st.wire(other).samples.filter((_, i) => i % 2 === 0);
     const early = sendNow(e);
     playThrow(e, puttStyle() ? 1 : prefs().playback, false);
@@ -750,6 +750,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Fly a throw event's disc (then replay it, then apply it). `remote`: another player's throw. */
   function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number, remote: boolean): void {
     hideWait();
+    // Someone else's throw: their clock is the one the moving props were simulated at, so take it.
+    if (remote && e.clock !== undefined) gameClock = e.clock;
     flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock, remote, sentEarly: false };
     if (following(flight)) flight.speed = REPLAY_SPEED; // ridden along at replay pace
     const s = e.result.samples, h0 = Math.atan2(s[Math.min(8, s.length - 1)][1] - s[0][1], s[Math.min(8, s.length - 1)][0] - s[0][0]);
@@ -940,7 +942,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!e || e.t !== 'throw' || flight) return;
     $('results').hidden = true;
     beforeHighlight = phase;
-    flight = { e, result: e.result, t0: performance.now(), speed: 1, clock0: gameClock, remote: true, sentEarly: false, show: true };
+    flight = { e, result: e.result, t0: performance.now(), speed: 1, clock0: e.clock ?? gameClock, remote: true, sentEarly: false, show: true };
     scene.lockTrees(e.result.samples.map((q): Vec2 => [q[0], q[1]]));
     startReplay();
   }

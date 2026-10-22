@@ -15,7 +15,42 @@ export type Collider =
    * local forward axis). Arm i points at angle π/4 + i·π/2 + phase + omega·t, measured in the
    * plane from local x toward up.
    */
-  | { kind: 'blades'; hub: Vec3; yaw: number; radius: number; halfWidth: number; halfThick: number; omega: number; phase: number; tag?: string };
+  | { kind: 'blades'; hub: Vec3; yaw: number; radius: number; halfWidth: number; halfThick: number; omega: number; phase: number; tag?: string }
+  /**
+   * A drawbridge: a plank hinged along a horizontal axis on the ground at c, the axis along local x
+   * (angle yaw). Up (angle 0) it stands across the gate; down (π/2) it lies flat along local +y.
+   * `hx` half its width, `len` its length from the hinge, `halfThick` half its thickness.
+   */
+  | { kind: 'hinge'; c: Vec2; yaw: number; hx: number; len: number; halfThick: number; swing: Swing; tag?: string }
+  /** Static colliders (boxes, cylinders) that slide back and forth together: a ring sweeping across the road. */
+  | { kind: 'slide'; parts: Collider[]; slide: Slide; tag?: string };
+
+/**
+ * A drawbridge's schedule: each period it is up, lowers over `move` of the period, is down, and
+ * raises again over `move`. `phase` shifts the cycle (a fraction of the period).
+ */
+export interface Swing { period: number; phase: number; move: number }
+
+/** A slider's schedule: offset = amp · sin(2π (t / period + phase)). */
+export interface Slide { amp: Vec2; period: number; phase: number }
+
+const ease = (x: number) => x * x * (3 - 2 * x);
+
+/** Drawbridge angle (0 up … π/2 down) at absolute time t (s). The renderer uses the same clock. */
+export function hingeAngle(w: Swing, t: number): number {
+  const u = (((t / w.period + w.phase) % 1) + 1) % 1;
+  const hold = 0.5 - w.move;
+  if (u < hold) return 0;
+  if (u < 0.5) return (Math.PI / 2) * ease((u - hold) / w.move);
+  if (u < 0.5 + hold) return Math.PI / 2;
+  return (Math.PI / 2) * (1 - ease((u - 0.5 - hold) / w.move));
+}
+
+/** Slider offset (m) at absolute time t (s). */
+export function slideOffset(m: Slide, t: number): Vec2 {
+  const k = Math.sin(2 * Math.PI * (t / m.period + m.phase));
+  return [m.amp[0] * k, m.amp[1] * k];
+}
 
 /** Blade rotation (rad) at absolute time t (s). The renderer uses the same clock. */
 export function bladeAngle(c: Extract<Collider, { kind: 'blades' }>, t: number): number {
@@ -64,6 +99,24 @@ export function collideProps(p: Vec3, v: Vec3, prev: Vec3, t: number, colliders:
       bounce(v, face[0] * cs - face[1] * sn, face[0] * sn + face[1] * cs);
       return c.tag ?? 'prop';
     }
+    if (c.kind === 'hinge') {
+      if (collideHinge(p, v, prev, t, c)) return c.tag ?? 'drawbridge';
+      continue;
+    }
+    if (c.kind === 'slide') {
+      // In the slider's frame the parts are still: move the disc into it, collide, move it back,
+      // and give it the slider's velocity if it was hit.
+      const o = slideOffset(c.slide, t);
+      const dt = 1e-3, o2 = slideOffset(c.slide, t + dt);
+      const gv: Vec3 = [(o2[0] - o[0]) / dt, (o2[1] - o[1]) / dt, 0];
+      const q: Vec3 = [p[0] - o[0], p[1] - o[1], p[2]];
+      const qv: Vec3 = [v[0] - gv[0], v[1] - gv[1], v[2]];
+      const tag = collideProps(q, qv, [prev[0] - o[0], prev[1] - o[1], prev[2]], t, c.parts);
+      if (!tag) continue;
+      p[0] = q[0] + o[0]; p[1] = q[1] + o[1]; p[2] = q[2];
+      v[0] = qv[0] + gv[0]; v[1] = qv[1] + gv[1]; v[2] = qv[2];
+      return c.tag ?? tag;
+    }
     // Blades.
     const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
     const X: Vec2 = [cs, sn]; // local right
@@ -101,6 +154,45 @@ export function collideProps(p: Vec3, v: Vec3, prev: Vec3, t: number, colliders:
   return null;
 }
 
+/** Drawbridge contact (mutates p, v). Lowered flat it's a road over the gap: no contact. */
+function collideHinge(p: Vec3, v: Vec3, prev: Vec3, t: number, c: Extract<Collider, { kind: 'hinge' }>): boolean {
+  const R = DISC_RADIUS;
+  const th = hingeAngle(c.swing, t);
+  if (th > 1.48) return false;
+  const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+  const X: Vec2 = [cs, sn], Y: Vec2 = [-sn, cs]; // along the hinge; outward (where it falls)
+  const local = (q: Vec3) => {
+    const dx = q[0] - c.c[0], dy = q[1] - c.c[1];
+    const lx = dx * X[0] + dy * X[1], ly = dx * Y[0] + dy * Y[1], lz = q[2];
+    // s: along the plank from the hinge; n: off its face (+ outward / up side).
+    return { lx, s: ly * Math.sin(th) + lz * Math.cos(th), n: ly * Math.cos(th) - lz * Math.sin(th) };
+  };
+  const { lx, s, n } = local(p);
+  if (Math.abs(lx) >= c.hx + R || s < -R || s > c.len + R || Math.abs(n) >= c.halfThick + R) return false;
+  // Face normal in the world, and push out to the side the disc came from.
+  const N: Vec3 = [Math.cos(th) * Y[0], Math.cos(th) * Y[1], -Math.sin(th)];
+  const side = Math.sign(local(prev).n) || 1;
+  const k = side * (c.halfThick + R + 0.01) - n;
+  p[0] += N[0] * k; p[1] += N[1] * k; p[2] += N[2] * k;
+  const vn = v[0] * N[0] + v[1] * N[1] + v[2] * N[2];
+  if (vn * side < 0) for (let i = 0; i < 3; i++) v[i] -= (1 + RESTITUTION) * vn * N[i];
+  v[0] *= KEEP; v[1] *= KEEP; v[2] *= KEEP;
+  // A moving plank shoves: its surface moves along N at (dθ/dt) · s.
+  const rate = (hingeAngle(c.swing, t + 1e-3) - th) / 1e-3;
+  for (let i = 0; i < 3; i++) v[i] += 0.8 * rate * Math.max(0, s) * N[i];
+  return true;
+}
+
+/** Where a collider can be: center and radius on the ground (movers include their whole sweep). */
+function footprint(c: Collider): [number, number, number][] {
+  if (c.kind === 'cyl') return [[c.c[0], c.c[1], c.r]];
+  if (c.kind === 'box') return [[c.c[0], c.c[1], Math.hypot(c.hx, c.hy)]];
+  if (c.kind === 'blades') return [[c.hub[0], c.hub[1], c.radius + c.halfThick]];
+  if (c.kind === 'hinge') return [[c.c[0], c.c[1], Math.hypot(c.hx, c.len)]];
+  const a = Math.hypot(c.slide.amp[0], c.slide.amp[1]);
+  return c.parts.flatMap(footprint).map(([x, y, r]): [number, number, number] => [x, y, r + a]);
+}
+
 /**
  * Colliders that might touch a disc at (x, y): a 4 m grid over the course, each collider listed in
  * every cell its footprint (plus a margin) covers. Built once per collider list. Shape-traced props
@@ -114,13 +206,15 @@ export function nearColliders(all: Collider[], x: number, y: number): Collider[]
   if (!grid) {
     grid = new Map();
     for (const c of all) {
-      const [cx, cy, r] = c.kind === 'cyl' ? [c.c[0], c.c[1], c.r] : c.kind === 'box' ? [c.c[0], c.c[1], Math.hypot(c.hx, c.hy)] : [c.hub[0], c.hub[1], c.radius + c.halfThick];
-      const m = r + 1; // margin: the disc and a step's travel
-      for (let i = Math.floor((cx - m) / INDEX_CELL); i <= Math.floor((cx + m) / INDEX_CELL); i++) {
-        for (let j = Math.floor((cy - m) / INDEX_CELL); j <= Math.floor((cy + m) / INDEX_CELL); j++) {
-          const k = i * 100003 + j;
-          const list = grid.get(k);
-          if (list) list.push(c); else grid.set(k, [c]);
+      for (const [cx, cy, r] of footprint(c)) {
+        const m = r + 1; // margin: the disc and a step's travel
+        for (let i = Math.floor((cx - m) / INDEX_CELL); i <= Math.floor((cx + m) / INDEX_CELL); i++) {
+          for (let j = Math.floor((cy - m) / INDEX_CELL); j <= Math.floor((cy + m) / INDEX_CELL); j++) {
+            const k = i * 100003 + j;
+            const list = grid.get(k);
+            if (!list) grid.set(k, [c]);
+            else if (list[list.length - 1] !== c) list.push(c); // a slider's parts share cells
+          }
         }
       }
     }
@@ -129,10 +223,10 @@ export function nearColliders(all: Collider[], x: number, y: number): Collider[]
   return grid.get(Math.floor(x / INDEX_CELL) * 100003 + Math.floor(y / INDEX_CELL)) ?? NONE;
 }
 
-/** Does the disc overlap a static collider? (Blades move, so they don't count.) */
+/** Does the disc overlap a static collider? (Moving ones don't count.) */
 function insideSolid(p: Vec3, c: Collider): boolean {
   const R = DISC_RADIUS;
-  if (c.kind === 'blades' || p[2] < c.z0 - R || p[2] > c.z1 + R) return false;
+  if (c.kind === 'blades' || c.kind === 'hinge' || c.kind === 'slide' || p[2] < c.z0 - R || p[2] > c.z1 + R) return false;
   const dx = p[0] - c.c[0], dy = p[1] - c.c[1];
   if (c.kind === 'cyl') return Math.hypot(dx, dy) < c.r + R;
   const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
