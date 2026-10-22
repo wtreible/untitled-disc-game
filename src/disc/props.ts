@@ -101,6 +101,34 @@ export function collideProps(p: Vec3, v: Vec3, prev: Vec3, t: number, colliders:
   return null;
 }
 
+/**
+ * Colliders that might touch a disc at (x, y): a 4 m grid over the course, each collider listed in
+ * every cell its footprint (plus a margin) covers. Built once per collider list. Shape-traced props
+ * have hundreds of boxes, so checking all of them every physics step got slow.
+ */
+const INDEX_CELL = 4;
+const indexCache = new WeakMap<Collider[], Map<number, Collider[]>>();
+const NONE: Collider[] = [];
+export function nearColliders(all: Collider[], x: number, y: number): Collider[] {
+  let grid = indexCache.get(all);
+  if (!grid) {
+    grid = new Map();
+    for (const c of all) {
+      const [cx, cy, r] = c.kind === 'cyl' ? [c.c[0], c.c[1], c.r] : c.kind === 'box' ? [c.c[0], c.c[1], Math.hypot(c.hx, c.hy)] : [c.hub[0], c.hub[1], c.radius + c.halfThick];
+      const m = r + 1; // margin: the disc and a step's travel
+      for (let i = Math.floor((cx - m) / INDEX_CELL); i <= Math.floor((cx + m) / INDEX_CELL); i++) {
+        for (let j = Math.floor((cy - m) / INDEX_CELL); j <= Math.floor((cy + m) / INDEX_CELL); j++) {
+          const k = i * 100003 + j;
+          const list = grid.get(k);
+          if (list) list.push(c); else grid.set(k, [c]);
+        }
+      }
+    }
+    indexCache.set(all, grid);
+  }
+  return grid.get(Math.floor(x / INDEX_CELL) * 100003 + Math.floor(y / INDEX_CELL)) ?? NONE;
+}
+
 /** Does the disc overlap a static collider? (Blades move, so they don't count.) */
 function insideSolid(p: Vec3, c: Collider): boolean {
   const R = DISC_RADIUS;

@@ -9,16 +9,8 @@ import { encodeTrees } from '../src/course/disc-types';
 import { dist, distToPolyline, type Vec2 } from '../src/course/geo';
 import type { CourseFeature, Rings } from '../src/course/types';
 import { CASTLE_SINK, castleColliders, windmillColliders, type Collider } from '../src/disc/props';
-import { along, circle, courseJson, facing, heading, makeHoles, propKit, strip, teeMat, type HoleSpec } from './course-kit';
+import { along, circle, courseJson, facing, heading, makeHoles, propKit, shapeColliders, strip, teeMat, type HoleSpec } from './course-kit';
 
-/**
- * Mushrooms are a narrow stem under a wide cap; one cylinder at cap width made the stem area solid.
- * Profiles measured from the models (heights after the −0.05 parent offset, model units).
- */
-const MUSHROOM_SHAPE: Record<string, { stemR: number; capZ0: number; capR: number; top: number }> = {
-  'nature/mushroom_redTall.glb': { stemR: 0.03, capZ0: 0.12, capR: 0.075, top: 0.2 },
-  'nature/mushroom_red.glb': { stemR: 0.068, capZ0: 0.06, capR: 0.105, top: 0.15 },
-};
 
 const { rng, R, pick, props, trees, solid, decor, tree } = propKit(12345);
 
@@ -65,26 +57,21 @@ solid('pets/animal-elephant.glb', along(H[4], 0.93, -2.5), 3.4, { anim: 'idle', 
 for (const [f, lat, sc] of [[0.3, 6, 30], [0.45, -4, 26], [0.6, 3, 34], [0.75, -6, 28], [0.88, 2.5, 22]] as const) {
   const model = pick(['nature/mushroom_redTall.glb', 'nature/mushroom_red.glb']);
   const at = along(H[5], f, lat);
-  const m = MUSHROOM_SHAPE[model];
-  props.push({
-    model, at, yaw: R(0, Math.PI * 2), scale: sc, hit: 'Boing! Mushroom',
-    colliders: [
-      { kind: 'cyl', c: at, r: m.stemR * sc, z0: 0, z1: m.capZ0 * sc, tag: 'mushroom' },
-      { kind: 'cyl', c: at, r: m.capR * sc * 0.95, z0: m.capZ0 * sc, z1: m.top * sc, tag: 'mushroom' },
-    ],
-  });
+  // Traced from the model: a narrow stem under a domed cap.
+  const yaw = R(0, Math.PI * 2);
+  props.push({ model, at, yaw, scale: sc, hit: 'Boing! Mushroom', colliders: shapeColliders(model, at, yaw, sc, { tag: 'mushroom' }) });
 }
 // 7. Ball Pit: giant golf balls as boulders.
 for (const [f, lat] of [[0.35, 5], [0.5, -3], [0.62, 6], [0.75, -5], [0.86, 1.5]] as const) {
-  const p = solid(pick(['minigolf/ball-red.glb', 'minigolf/ball-blue.glb', 'minigolf/ball-green.glb']), along(H[6], f, lat), 100, { hit: 'Fore! Giant ball', tag: 'ball', fit: 0.95 });
+  const p = solid(pick(['minigolf/ball-red.glb', 'minigolf/ball-blue.glb', 'minigolf/ball-green.glb']), along(H[6], f, lat), 100, { hit: 'Fore! Giant ball', tag: 'ball', fit: 0.95, round: true });
   // Kenney balls are centered on the origin: lift them to sit on the grass.
   p.colliders = (p.colliders as Extract<Collider, { kind: 'cyl' }>[]).map((c) => ({ ...c, z0: 0, z1: 6 }));
   p.lift = 3;
 }
 // 8. Lion's Den: a lion on a rock by the basket, palms around.
 solid('nature/rock_tallA.glb', along(H[7], 0.9, 4), 5, { hit: 'Rock!', tag: 'rock' });
-solid('pets/animal-lion.glb', along(H[7], 0.9, 4), 2.6, { anim: 'idle', hit: 'Roar!', tag: 'lion' });
-props[props.length - 1].lift = 5; // stands on the rock
+// Stands on the rock: its collider goes up with it (it used to stay on the ground).
+solid('pets/animal-lion.glb', along(H[7], 0.9, 4), 2.6, { anim: 'idle', hit: 'Roar!', tag: 'lion', lift: 5 });
 for (const f of [0.25, 0.55, 0.8]) tree('nature/tree_palmTall.glb', along(H[7], f, f > 0.5 ? -9 : 9), 9);
 // 9. Island Green: basket on an island in a pond, guarded by a crab and chicks.
 solid('pets/animal-crab.glb', along(H[8], 0.97, -3), 2, { anim: 'walk', hit: 'Snip!', tag: 'crab' });

@@ -10,7 +10,7 @@ import { encodeTrees } from '../src/course/disc-types';
 import { dist, distToPolyline, type Vec2 } from '../src/course/geo';
 import type { CourseFeature, Rings } from '../src/course/types';
 import type { Collider } from '../src/disc/props';
-import { along, bbox, courseJson, faceToward, facing, heading, headingAt, makeHoles, propKit, rect, strip, teeMat, type HoleSpec } from './course-kit';
+import { along, bbox, courseJson, shapeColliders, faceToward, facing, heading, headingAt, makeHoles, propKit, rect, strip, teeMat, type HoleSpec } from './course-kit';
 
 const { rng, R, pick, props, trees, solid, decor, tree } = propKit(20251);
 
@@ -52,7 +52,7 @@ solid('town/lantern.glb', along(H[0], 0.55, 3.4), 4, { hit: 'Clang! Lamp post', 
   const back = along(H[1], 1, 0);
   const d = heading(H[1], 1);
   const f: Vec2 = [back[0] + Math.cos(d) * 8, back[1] + Math.sin(d) * 8];
-  solid('town/fountain-round.glb', f, 5, { hit: 'Splash! Fountain', tag: 'fountain', fit: 0.95 });
+  solid('town/fountain-round.glb', f, 5, { hit: 'Splash! Fountain', tag: 'fountain', fit: 0.95, round: true });
   keepOut.push({ c: f, r: 8 });
 }
 
@@ -63,7 +63,7 @@ solid('town/lantern.glb', along(H[0], 0.55, 3.4), 4, { hit: 'Clang! Lamp post', 
   const k: Vec2 = [at[0] - Math.cos(d) * 6, at[1] - Math.sin(d) * 6];
   // KayKit knight: 2.47 tall in its rest pose (measured in three.js; the GLB's raw bounds aren't skinned).
   const s = 4;
-  props.push({ model: 'kaykit/Knight.glb', at: k, yaw: faceToward(d + Math.PI), scale: s, anim: 'Blocking', hit: 'Blocked by the knight!', colliders: [{ kind: 'cyl', c: k, r: 0.48 * s, z0: 0, z1: 2.47 * s, tag: 'knight' }] });
+  props.push({ model: 'kaykit/Knight.glb', at: k, yaw: faceToward(d + Math.PI), scale: s, anim: 'Blocking', hit: 'Blocked by the knight!', colliders: [{ kind: 'cyl', c: k, r: 0.38 * s, z0: 0, z1: 2.47 * s, tag: 'knight' }] });
   // The tilt: a hedge row down the middle of the first half.
   for (let f = 0.3; f <= 0.6; f += 0.04) {
     const c = along(H[2], f, 0);
@@ -107,14 +107,14 @@ for (const lat of [-12, 12]) solid('castle/rocks-large.glb', along(H[3], 0.55, l
   for (const [a, b] of [[-n, -n], [-n, n], [n, -n], [n, n]] as const) {
     const at = P(a, b);
     props.push({ model: 'castle/tower-square.glb', at, yaw: d, scale: S, hit, colliders: [{ kind: 'box', c: at, yaw: d, hx: 0.5 * S, hy: 0.5 * S, z0: 0, z1: wallH, tag: 'castle' }] });
-    decor('castle/tower-hexagon-roof.glb', at, S, d, { lift: wallH });
+    props.push({ model: 'castle/tower-hexagon-roof.glb', at, yaw: d, scale: S, lift: wallH, hit, colliders: shapeColliders('castle/tower-hexagon-roof.glb', at, d, S, { lift: wallH, tag: 'castle' }) });
     decor('castle/flag-pennant.glb', at, S * 0.8, d, { lift: wallH + 0.83 * S });
   }
   // Gatehouse towers either side of the gap.
   for (const b of [-1, 1]) {
     const at = P(-n - 0.15, b * 0.95);
-    props.push({ model: 'castle/tower-hexagon-base.glb', at, yaw: d, scale: S * 0.7, hit, colliders: [{ kind: 'cyl', c: at, r: 0.42 * S * 0.7, z0: 0, z1: 1.31 * S * 0.7 + 0.83 * S * 0.7, tag: 'castle' }] });
-    decor('castle/tower-hexagon-roof.glb', at, S * 0.7, d, { lift: 1.31 * S * 0.7 });
+    props.push({ model: 'castle/tower-hexagon-base.glb', at, yaw: d, scale: S * 0.7, hit, colliders: shapeColliders('castle/tower-hexagon-base.glb', at, d, S * 0.7, { tag: 'castle' }) });
+    props.push({ model: 'castle/tower-hexagon-roof.glb', at, yaw: d, scale: S * 0.7, lift: 1.31 * S * 0.7, hit, colliders: shapeColliders('castle/tower-hexagon-roof.glb', at, d, S * 0.7, { lift: 1.31 * S * 0.7, tag: 'castle' }) });
   }
   keepOut.push({ c, r: (n + 1.5) * S * Math.SQRT2 });
   // Courtyard: cobbles.
@@ -136,14 +136,14 @@ for (const lat of [-12, 12]) solid('castle/rocks-large.glb', along(H[3], 0.55, l
   const s = 6.5;
   const parts: [string, number][] = [['castle/tower-hexagon-base.glb', 1.31], ['castle/tower-hexagon-mid.glb', 0.46], ['castle/tower-hexagon-mid.glb', 0.46], ['castle/tower-hexagon-mid.glb', 0.46], ['castle/tower-hexagon-mid.glb', 0.46]];
   let z = 0;
-  for (const [m, h] of parts) {
-    const p: PropDef = { model: m, at, yaw: d, scale: s, colliders: [], hit: 'Bonk! Wizard’s tower' };
+  // Every piece, roof included, collides as its own shape at its height in the stack.
+  for (const [m, h] of [...parts, ['castle/tower-hexagon-roof.glb', 0.83] as [string, number]]) {
+    const p: PropDef = { model: m, at, yaw: d, scale: s, colliders: shapeColliders(m, at, d, s, { lift: z, tag: 'tower' }), hit: 'Bonk! Wizard’s tower' };
     if (z > 0) p.lift = z;
     props.push(p);
     z += h * s;
   }
-  props[props.length - parts.length].colliders = [{ kind: 'cyl', c: at, r: 0.44 * s, z0: 0, z1: z + 0.83 * s, tag: 'tower' }];
-  decor('castle/tower-hexagon-roof.glb', at, s, d, { lift: z });
+  z -= 0.83 * s; // the pennant sits on the roof's base, as before
   decor('castle/flag-pennant.glb', at, s * 0.8, d, { lift: z + 0.83 * s });
   const m = along(H[6], 0.88, -4);
   const ms = 2.2;

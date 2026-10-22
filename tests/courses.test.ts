@@ -108,10 +108,12 @@ describe('Rainbow Runs', () => {
       if ((r.propHits ?? []).length === 0 && [0, 1, 2].every((k) => { const x = crossing(r, k); return x !== null && Math.abs(x) < 4; })) found = true;
     }
     expect(found).toBe(true);
-    // A box on the ring's side at mid-height (the widest side box).
-    const post = (rings[0].colliders as Extract<Collider, { kind: 'box' }>[]).reduce((a, b) => (Math.hypot(b.c[0] - rings[0].at[0], b.c[1] - rings[0].at[1]) > Math.hypot(a.c[0] - rings[0].at[0], a.c[1] - rings[0].at[1]) ? b : a)).c;
-    const r2 = throwAt(c, w, { start: h.tee, aim: Math.atan2(post[1] - h.tee[1], post[0] - h.tee[0]), power: 0.85 });
-    expect(r2.propHits).toContain('ring');
+    // The side of the frame, 5.6 m either side of center: just outside the hexagonal opening at the
+    // ~4 m a disc is up there. At least one side gets clipped.
+    const [rx, ry] = rings[0].at, yaw = rings[0].yaw;
+    const side = [-5.6, 5.6].map((l): Vec2 => [rx + Math.cos(yaw) * l, ry + Math.sin(yaw) * l]);
+    const clipped = side.some((q) => (throwAt(c, w, { start: h.tee, aim: Math.atan2(q[1] - h.tee[1], q[0] - h.tee[0]), power: 0.85 }).propHits ?? []).includes('ring'));
+    expect(clipped).toBe(true);
   });
 });
 

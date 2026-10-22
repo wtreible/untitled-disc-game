@@ -10,7 +10,7 @@ import { encodeTrees } from '../src/course/disc-types';
 import { dist, type Vec2 } from '../src/course/geo';
 import type { CourseFeature, Rings } from '../src/course/types';
 import type { Collider } from '../src/disc/props';
-import { along, bbox, courseJson, heading, headingAt, makeHoles, propKit, rect, silhouetteBoxes, teeMat, type HoleSpec } from './course-kit';
+import { along, courseJson, shapeColliders, heading, headingAt, makeHoles, propKit, rect, silhouetteBoxes, teeMat, type HoleSpec } from './course-kit';
 
 const { R, pick, props, trees } = propKit(4242);
 
@@ -122,12 +122,11 @@ decals.push({ color: '#f4f4f4', rings: lines.flatMap((l) => l.white) }, { color:
 
 // ---------- props ----------
 const space = (m: string) => `space/${m}.glb`;
-/** Space Kit model with a cylinder collider from its footprint (radius fraction `fit`). */
-function solid(m: string, at: Vec2, scale: number, o: { yaw?: number; hit: string; tag: string; fit?: number; lift?: number }): PropDef {
-  const { min, max } = bbox(space(m));
-  const r = (Math.max(max[0] - min[0], max[2] - min[2]) / 2) * scale * (o.fit ?? 0.75);
+/** Space Kit model that collides as its shape (shapeColliders). */
+function solid(m: string, at: Vec2, scale: number, o: { yaw?: number; hit: string; tag: string; lift?: number }): PropDef {
   const lift = o.lift ?? 0;
-  const p: PropDef = { model: space(m), at, yaw: o.yaw ?? R(0, Math.PI * 2), scale, offset: SPACE_OFFSET, hit: o.hit, colliders: [{ kind: 'cyl', c: at, r, z0: lift, z1: lift + max[1] * scale, tag: o.tag }] };
+  const yaw = o.yaw ?? R(0, Math.PI * 2);
+  const p: PropDef = { model: space(m), at, yaw, scale, offset: SPACE_OFFSET, hit: o.hit, colliders: shapeColliders(space(m), at, yaw, scale, { offset: SPACE_OFFSET, lift, tag: o.tag }) };
   if (lift) p.lift = lift;
   props.push(p);
   return p;
@@ -170,21 +169,20 @@ function rocket(at: Vec2, s: number): void {
   const yaw = R(0, Math.PI * 2);
   let z = 0;
   for (const [m, h] of [['rocket_baseA', 1.6], ['rocket_fuelA', 0.5], ['rocket_fuelA', 0.5], ['rocket_topA', 0.8]] as const) {
-    const p: PropDef = { model: space(m), at, yaw, scale: s, offset: SPACE_OFFSET, colliders: [], hit: 'Rocket bonk!' };
+    // Each part collides as its own shape (fins and all), at its height in the stack.
+    const p: PropDef = { model: space(m), at, yaw, scale: s, offset: SPACE_OFFSET, colliders: shapeColliders(space(m), at, yaw, s, { offset: SPACE_OFFSET, lift: z, tag: 'rocket' }), hit: 'Rocket bonk!' };
     if (z) p.lift = z;
     props.push(p);
     z += h * s;
   }
-  props[props.length - 4].colliders = [{ kind: 'cyl', c: at, r: 0.5 * s, z0: 0, z1: z, tag: 'rocket' }, { kind: 'cyl', c: at, r: 0.85 * s, z0: 0, z1: 0.8 * s, tag: 'rocket' }];
 }
 /** Spectators along the road edge, facing it. */
 function crowd(h: DiscHole, f0: number, f1: number, side: 1 | -1, n: number): void {
   for (let k = 0; k < n; k++) {
     const f = f0 + ((f1 - f0) * (k + 0.5)) / n;
     const at = along(h, f, side * (ROAD_HALF + 2.5));
-    // (Their GLB node transforms scale them; three.js measures 0.48 × 0.84 units.)
-    const s = 3.2;
-    props.push({ model: space(pick(['alien', 'astronautA'])), at, yaw: headingAt(h, f) + (side > 0 ? 0 : Math.PI), scale: s, offset: SPACE_OFFSET, hit: 'Hit a spectator! Sorry!', colliders: [{ kind: 'cyl', c: at, r: 0.22 * s, z0: 0, z1: 0.84 * s, tag: 'fan' }] });
+    const s = 3.2, m = space(pick(['alien', 'astronautA'])), yaw = headingAt(h, f) + (side > 0 ? 0 : Math.PI);
+    props.push({ model: m, at, yaw, scale: s, offset: SPACE_OFFSET, hit: 'Hit a spectator! Sorry!', colliders: shapeColliders(m, at, yaw, s, { offset: SPACE_OFFSET, tag: 'fan' }) });
   }
 }
 
@@ -204,12 +202,12 @@ for (const f of [0.28, 0.5, 0.72]) ring(along(H[2], f), heading(H[2]), 15);
 
 // 4. The Chicane: parked racers on the apexes.
 for (const [f, lat] of [[0.33, -5], [0.62, 5], [0.85, -4]] as const) {
-  solid(pick(['craft_racer', 'craft_speederA']), along(H[3], f, lat), 3.5, { yaw: headingAt(H[3], f) - Math.PI / 2, hit: 'Rear-ended a racer!', tag: 'racer', fit: 0.55 });
+  solid(pick(['craft_racer', 'craft_speederA']), along(H[3], f, lat), 3.5, { yaw: headingAt(H[3], f) - Math.PI / 2, hit: 'Rear-ended a racer!', tag: 'racer' });
 }
 
 // 5. Asteroid Belt: tumbling rocks at every height, crystals on the shoulders.
 for (const [f, lat, z, s] of [[0.25, -3, 0, 5], [0.35, 4, 6, 4], [0.48, -1, 2, 6], [0.58, 5, 9, 4], [0.66, -5, 4, 5], [0.78, 1, 0, 4.5], [0.88, -3, 7, 3.5]] as const) {
-  solid('meteor_detailed', along(H[4], f, lat), s, { hit: 'Asteroid strike!', tag: 'asteroid', lift: z, fit: 0.85 });
+  solid('meteor_detailed', along(H[4], f, lat), s, { hit: 'Asteroid strike!', tag: 'asteroid', lift: z });
 }
 for (const f of [0.2, 0.5, 0.82]) for (const side of [-1, 1]) decor(pick(['rock_crystalsLargeA', 'rock_crystalsLargeB']), along(H[4], f, side * (ROAD_HALF + 3)), 6);
 
@@ -217,7 +215,7 @@ for (const f of [0.2, 0.5, 0.82]) for (const side of [-1, 1]) decor(pick(['rock_
 rocket(along(H[5], 0.42, 16), 5);
 rocket(along(H[5], 0.55, -15), 5);
 rocket(along(H[5], 0.72, 0), 4);
-solid('craft_speederA', along(H[5], 0.3, -4.5), 3, { yaw: headingAt(H[5], 0.15) - Math.PI / 2, hit: 'Rear-ended a racer!', tag: 'racer', fit: 0.55 });
+solid('craft_speederA', along(H[5], 0.3, -4.5), 3, { yaw: headingAt(H[5], 0.15) - Math.PI / 2, hit: 'Rear-ended a racer!', tag: 'racer' });
 
 // 7. Gap Jump: a box on each side of the gap; fans watch from the far side.
 mysteryBox(along(H[6], GAP[0] - 0.06, 4), 2.5);

@@ -18,7 +18,7 @@ import type { Terrain, Vec3 } from '../game/terrain';
 import { DISC_RADIUS, type Disc } from './discs';
 import type { TreeIndex } from './trees';
 import { NEUTRAL, type Mods } from './mods';
-import { collideProps, type Collider } from './props';
+import { collideProps, nearColliders, type Collider } from './props';
 import { GREEN_DENSITY_BOOST, type TreeShape } from './treeShapes';
 
 const G = 9.81;
@@ -299,7 +299,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       p = [p[0] + v[0] * DT, p[1] + v[1] * DT, ground];
       if (!opt.ghost) {
         trunkCollide(p, v, world, near, tctx, 0.2);
-        if (world.props) { const prevG: Vec3 = [p[0] - v[0] * DT, p[1] - v[1] * DT, p[2]]; const tag = collideProps(p, v, prevG, (world.clock0 ?? 0) + step * DT, world.props); if (tag) { propHits.push(tag); events.push('prop'); } }
+        if (world.props) { const prevG: Vec3 = [p[0] - v[0] * DT, p[1] - v[1] * DT, p[2]]; const tag = collideProps(p, v, prevG, (world.clock0 ?? 0) + step * DT, nearColliders(world.props, p[0], p[1])); if (tag) { propHits.push(tag); events.push('prop'); } }
       }
     } else {
       // Forces, from the disc's motion through the air (its velocity minus the wind). A headwind
@@ -360,7 +360,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
         // A tree hit usually kills the flight (tumbling). Pinball Wizard's disc keeps flying.
         if (hitTree && !m.liveKicks) { state = 'dead'; bank = (rng() - 0.5) * 1.2; }
         if (world.props) {
-          const tag = collideProps(p, v, prev, (world.clock0 ?? 0) + step * DT, world.props);
+          const tag = collideProps(p, v, prev, (world.clock0 ?? 0) + step * DT, nearColliders(world.props, p[0], p[1]));
           if (tag) { state = 'dead'; bank = (rng() - 0.5) * 1.2; if (propHits[propHits.length - 1] !== tag) propHits.push(tag); events.push('prop'); }
         }
         const b = basketCollide(prev, p, v, world.basket, rng, events, inChains, bopt);
