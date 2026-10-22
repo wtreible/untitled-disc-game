@@ -914,9 +914,9 @@ export class CourseScene {
     if (this.fxVortex?.visible) this.fxVortex.rotation.z = -tt * 2.5;
     const groups = [this.trees3d, ...(this.extras.children as THREE.Group[])];
     if (this.fp) {
-      // Big forests draw tree models only near the eye and in view.
-      const p = this.persp.position, d = this.persp.getWorldDirection(new THREE.Vector3());
-      for (const g of groups) updateTreeLod(g, p.x, p.y, d.x, d.y);
+      // Big forests draw tree models only near the eye.
+      const p = this.persp.position;
+      for (const g of groups) updateTreeLod(g, p.x, p.y);
     }
     const now = performance.now();
     for (const g of groups) tickTrees(g, now); // blob ↔ model dissolves, in any view

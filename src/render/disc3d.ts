@@ -141,15 +141,17 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
 
 /** Forests bigger than this draw models only near the first-person eye. */
 const LOD_ALL = 1500;
-/** Big forests by graphics setting: model trees within this radius of the eye, at most this many. */
-const LOD: Record<TreeQuality, { radius: number; max: number }> = { low: { radius: 0, max: 0 }, medium: { radius: 60, max: 120 }, high: { radius: 90, max: 300 } };
+/**
+ * Big forests by graphics setting: the nearest trees to the eye within this radius, all the way
+ * round, at most this many. Not by view direction: looking about would swap trees in and out.
+ */
+const LOD: Record<TreeQuality, { radius: number; max: number }> = { low: { radius: 0, max: 0 }, medium: { radius: 70, max: 170 }, high: { radius: 100, max: 360 } };
 export type TreeQuality = 'low' | 'medium' | 'high';
 /** Blob ↔ model dissolve time. */
-const FADE_S = 0.45;
-/** Re-pick the model trees after the eye moves this far or turns this much. */
+const FADE_S = 1.1;
+/** Re-pick the model trees after the eye moves this far. */
 const REPICK_M = 4;
-const REPICK_TURN = 0.14; // rad, ~8°
-/** Trees already drawn as models stay so until clearly out: farther, more behind, or outranked. */
+/** Trees already drawn as models stay so until clearly out: farther, or outranked by a good margin. */
 const KEEP_RADIUS = 1.15;
 const KEEP_BONUS_M = 12;
 /**
@@ -169,8 +171,8 @@ interface TreeState {
   blobDither: THREE.InstancedBufferAttribute;
   visible: (i: number) => boolean;
   lod: boolean;
-  /** First-person eye position and unit view direction (x, y, dx, dy). */
-  eye: [number, number, number, number] | null;
+  /** First-person eye position, where the model zone was last picked. */
+  eye: [number, number] | null;
   models: { meshes: THREE.InstancedMesh[][]; kindOf: number[]; matrices: THREE.Matrix4[] } | null;
   /** Low: no models anywhere. Medium / high: all models on small courses, LOD on big forests. */
   quality: TreeQuality;
@@ -248,20 +250,16 @@ function refresh(s: TreeState): void {
   if (s.models) {
     if (!s.lod && s.quality !== 'low') want.fill(1);
     else if (s.lod && s.eye && LOD[s.quality].max > 0) {
-      // Big forests: the nearest trees roughly in view (or within 15 m all round, for looking
-      // about). Trees already models get a head start, so the edge of the set doesn't flicker.
+      // Big forests: the nearest trees all round. Trees already models get a head start, so the
+      // edge of the set doesn't flicker as the eye moves.
       const { radius, max } = LOD[s.quality];
-      const [ex, ey, ux, uy] = s.eye;
+      const [ex, ey] = s.eye;
       const cand: [number, number][] = [];
       for (let i = 0; i < n; i++) {
         const t = s.trees[i];
-        const dx = t.x - ex, dy = t.y - ey, d = Math.hypot(dx, dy);
-        const ahead = d > 0 ? (dx * ux + dy * uy) / d : 1;
+        const d = Math.hypot(t.x - ex, t.y - ey);
         const was = s.target[i] === 1;
-        const ok = was
-          ? d < Math.min(18, radius) || (d < radius * KEEP_RADIUS && ahead > 0.0)
-          : d < Math.min(15, radius) || (d < radius && ahead > 0.2);
-        if (ok) cand.push([d - (was ? KEEP_BONUS_M : 0), i]);
+        if (d < radius * (was ? KEEP_RADIUS : 1)) cand.push([d - (was ? KEEP_BONUS_M : 0), i]);
       }
       cand.sort((a, b) => a[0] - b[0]);
       for (const [, i] of cand.slice(0, max)) want[i] = 1;
@@ -351,14 +349,12 @@ export function setTreeQuality(g: THREE.Group, q: TreeQuality): void {
   refresh(s);
 }
 
-/** Big forests: move the model zone with the first-person eye (re-picked every few meters or degrees). */
-export function updateTreeLod(g: THREE.Group, x: number, y: number, dx: number, dy: number): void {
+/** Big forests: move the model zone with the first-person eye (re-picked every few meters). */
+export function updateTreeLod(g: THREE.Group, x: number, y: number): void {
   const s = g.userData as TreeState;
   if (!s.lod || !s.models || s.locked) return;
-  const L = Math.hypot(dx, dy) || 1;
-  const ux = dx / L, uy = dy / L;
-  if (s.eye && Math.hypot(x - s.eye[0], y - s.eye[1]) < REPICK_M && ux * s.eye[2] + uy * s.eye[3] > Math.cos(REPICK_TURN)) return;
-  s.eye = [x, y, ux, uy];
+  if (s.eye && Math.hypot(x - s.eye[0], y - s.eye[1]) < REPICK_M) return;
+  s.eye = [x, y];
   refresh(s);
 }
 
