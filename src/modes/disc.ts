@@ -144,6 +144,9 @@ export interface NetPlay {
   isHost: boolean;
   mine: (player: number) => boolean;
   log: { seq: number; from: string; e: RoundEvent }[];
+  /** Each player's browser (client id), and who was connected at the start. */
+  seats: string[];
+  present: string[];
 }
 
 export async function startDisc(opts: DiscOptions): Promise<void> {
@@ -161,8 +164,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue }, blocked);
   const { round, mods, owned, mulligansLeft, perfectLeft } = st;
   const net = opts.net ?? null;
-  /** Players this browser controls (all of them in hot seat). */
-  const mine = (p: number) => !net || net.mine(p);
+  /** Away players the host is playing for until they reconnect (online). */
+  const covering = new Set<number>();
+  /** Players this browser controls (all of them in hot seat, and anyone the host covers). */
+  const mine = (p: number) => !net || net.mine(p) || covering.has(p);
   const isHost = !net || net.isHost;
   /** Events this browser knows of, ours and the room's: the next one's log position. */
   let known = net ? net.log.length : 0;
@@ -449,6 +454,54 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('release').textContent = `${releaseLabel(a.hyzer)} · ${a.forehand ? 'Forehand' : 'Backhand'}`;
     $('meter-fill').style.width = `${a.power * 100}%`;
   }
+
+  // ---------- away players (online) ----------
+  // If whoever the round is waiting on drops out, the host can play for them (throws, picks,
+  // placements). They get their seat back as soon as they reconnect.
+  const present = new Set(net?.present ?? []);
+  const here = (p: number) => !net || present.has(net.seats[p] ?? '');
+  /** How long someone must be gone before the host is offered their turn (a refresh is quicker). */
+  const AWAY_MS = 4000;
+  let awayFrom: { p: number; at: number } | null = null;
+  function waitingOn(): number | null {
+    if (st.stage === 'playing') return game().current;
+    if (st.stage === 'drafting') return st.drafting[0] ?? null;
+    if (st.stage === 'placing') return st.placing[0]?.player ?? null;
+    return null;
+  }
+  function updateAway(): void {
+    if (!net) return;
+    const p = waitingOn();
+    const busy = phase === 'flying' || phase === 'replay' || phase === 'charging' || phase === 'between';
+    const away = p !== null && !mine(p) && !here(p) && !busy;
+    if (!away) { awayFrom = null; $('away-bar').hidden = true; return; }
+    if (awayFrom?.p !== p) awayFrom = { p, at: performance.now() };
+    if (performance.now() - awayFrom.at < AWAY_MS) return;
+    $('away-text').textContent = isHost ? `${opts.names[p]} has disconnected.` : `${opts.names[p]} has disconnected: the host can play for them.`;
+    $('away-cover').hidden = !isHost;
+    $('away-cover').textContent = `Play for ${opts.names[p]}`;
+    $('away-bar').hidden = false;
+  }
+  $('away-cover').addEventListener('click', () => {
+    const p = waitingOn();
+    if (!isHost || p === null || here(p)) return;
+    covering.add(p);
+    $('away-bar').hidden = true;
+    chip(`Playing for ${opts.names[p]} until they're back`, 'info');
+    advance();
+  });
+  /** The room's member list changed: hand covered players back as they return. */
+  function membersChanged(clients: string[]): void {
+    present.clear();
+    for (const c of clients) present.add(c);
+    let back = false;
+    for (const p of [...covering]) if (here(p)) { covering.delete(p); back = true; chip(`${opts.names[p]} is back`, 'info'); }
+    // Mid-aim (not mid-throw) for someone who just came back: their turn again.
+    const p = waitingOn();
+    if (back && p !== null && !mine(p) && (phase === 'aim' || st.stage !== 'playing')) { phase = 'idle'; advance(); }
+    updateAway();
+  }
+  if (net) window.setInterval(updateAway, 1000);
 
   // ---------- flow: the round's stage decides what happens next ----------
   /**
@@ -1285,6 +1338,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         pump();
       },
       reject: () => resync(),
+      members: (m) => membersChanged(m.map((x) => x.client)),
       live: (_from, s) => {
         const a = s as LiveAim | null;
         if (a && a.player === game().current && !mine(a.player) && phase === 'watching') liveAim = a;

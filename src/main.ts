@@ -250,10 +250,29 @@ function pushLobby(): void {
     const k = lobby?.seats.findIndex((q) => q.client === m.client) ?? -1;
     return k >= 0 ? k : MAX_PLAYERS;
   };
-  const order = [...members].sort((a, b) => seatOf(a) - seatOf(b)); // stable: newcomers keep arrival order
+  // A seat whose player dropped is kept for SEAT_GRACE_MS, so a refresh or a wobbly connection
+  // doesn't lose it.
+  const kept = (lobby?.seats ?? []).filter((q) => !members.some((m) => m.client === q.client) && Date.now() - (awaySince.get(q.client) ?? 0) < SEAT_GRACE_MS);
+  const order = [...members, ...kept].sort((a, b) => seatOf(a) - seatOf(b)); // stable: newcomers keep arrival order
   const seated = order.slice(0, MAX_PLAYERS);
   const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
   room.setLobby({ course, first, count, crazy: crazy.checked, seats: seated.map((m, i) => ({ name: names[i], client: m.client })) });
+}
+
+/** How long a lobby seat waits for a player who dropped. */
+const SEAT_GRACE_MS = 60_000;
+/** Seated players who dropped out of the lobby, and since when. */
+const awaySince = new Map<string, number>();
+let graceTimer = 0;
+/** Members changed: note who dropped from a seat (and drop their seat once the grace runs out). */
+function trackAway(): void {
+  const now = Date.now();
+  for (const q of lobby?.seats ?? []) {
+    if (members.some((m) => m.client === q.client)) awaySince.delete(q.client);
+    else if (!awaySince.has(q.client)) awaySince.set(q.client, now);
+  }
+  clearTimeout(graceTimer);
+  if (awaySince.size && amHost()) graceTimer = window.setTimeout(() => { pushLobby(); renderRoom(); }, SEAT_GRACE_MS + 500);
 }
 
 /** Guests: show the host's setup. */
@@ -283,7 +302,7 @@ function renderRoom(): void {
   const seats = lobby?.seats ?? members.map((m) => ({ name: m.name, client: m.client }));
   const watching = members.filter((m) => !seats.some((q) => q.client === m.client));
   $('room-members').innerHTML = [
-    ...seats.map((q, i) => `<div class="m"><i style="background:${PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${q.client === me ? 'you' : ''}${q.client === host ? `${q.client === me ? ' · ' : ''}host` : ''}${members.some((m) => m.client === q.client) ? '' : ' · away'}</small></div>`),
+    ...seats.map((q, i) => `<div class="m"><i style="background:${PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${q.client === me ? 'you' : ''}${q.client === host ? `${q.client === me ? ' · ' : ''}host` : ''}${members.some((m) => m.client === q.client) ? '' : ' · away, seat kept 1 min'}</small></div>`),
     ...watching.map((m) => `<div class="m"><i style="background:#555"></i><span>${escapeHtml(m.name)}</span><small>watching</small></div>`),
   ].join('');
   $('room-note').textContent = amHost()
@@ -349,7 +368,7 @@ function joinRoom(code: string): void {
       if (w.started && w.lobby) launch(w.lobby);
       else pushLobby();
     },
-    members: (m) => { members = m; if (!launched) { pushLobby(); renderRoom(); } },
+    members: (m) => { members = m; if (!launched) { trackAway(); pushLobby(); renderRoom(); } },
     lobby: (l) => { lobby = l; if (!launched) { if (!amHost()) showLobby(l); renderRoom(); } },
     started: (l) => { lobby = l; launch(l); },
     // Until the game takes over (it replaces this handler), keep the room's events for it.
@@ -415,7 +434,7 @@ async function launch(l: Lobby): Promise<void> {
   const { startDisc } = await import('./modes/disc');
   await startDisc({
     names: l.seats.map((q) => q.name), course: id, first: l.first, count: l.count, rogue: l.crazy,
-    net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog },
+    net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog, seats: l.seats.map((q) => q.client), present: members.map((m) => m.client) },
     rules, // only the host's are used: they send them as the round's first event
   });
 }
