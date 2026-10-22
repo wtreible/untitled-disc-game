@@ -269,13 +269,14 @@ export interface SimOptions {
 
 export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Math.random, opt: SimOptions = {}): ThrowResult {
   const m = input.mods ?? NEUTRAL;
-  const disc: Disc = { ...input.disc, glide: input.disc.glide + m.glide, turn: input.disc.turn + m.turn, fade: input.disc.fade + m.fade };
+  // Laser Disc: no turn and no fade at all.
+  const disc: Disc = { ...input.disc, glide: input.disc.glide + m.glide, turn: m.straight ? 0 : input.disc.turn + m.turn, fade: m.straight ? 0 : input.disc.fade + m.fade };
   const putt = input.style === 'putt';
-  const err = putt ? m.puttAimError : m.aimError;
-  const noise = opt.ghost || input.perfect ? () => 0 : () => gaussian(rng) * err;
   const mirror = input.mirror ? -1 : 1;
   const shot: Shot = putt ? 'standard' : input.shot ?? 'standard';
   const overhand = shot === 'tomahawk' || shot === 'thumber';
+  const err = putt ? m.puttAimError : m.aimError * (overhand ? m.overhandAim : 1);
+  const noise = opt.ghost || input.perfect ? () => 0 : () => gaussian(rng) * err;
   /** Overhand: which way it rolls over (tomahawk: to the left of travel). */
   const side = shot === 'thumber' ? -1 : 1;
 
@@ -284,7 +285,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const yaw = input.aim + (noise() * (putt ? 0.5 : 1.4 + over * 2) * Math.PI) / 180;
   // Distance bonuses scale the meter, which maps ~linearly to distance; past full power, release
   // speed grows with the measured full-power sensitivity (distance ∝ v^~1.8 there).
-  const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange : m.distance * (input.fromTee ? m.teeDistance : 1));
+  const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange : m.distance * (input.fromTee ? m.teeDistance : 1) * (overhand ? m.overhandDistance : 1));
   const power = (meter <= 1 ? meterToSpeed(meter, input.disc) : meter ** 0.55) * (1 + noise() * (putt ? 0.015 : 0.02));
   const launch = (input.launch ?? (putt ? 0.12 : shotLaunch(shot, input.disc))) + noise() * 0.01;
   let bank = overhand ? side * FLIGHT.overBank + noise() * 0.04
@@ -315,6 +316,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     B: scaledBasket(m.basketScale),
     catchBonus: m.catchBonus + (input.fromTee ? m.teeCatchBonus : 0),
     cutToCatch: m.cutToCatch,
+    metalIn: m.metalIn,
   };
   let state: 'flight' | 'dead' | 'ground' | 'rolling' = 'flight';
   /** Roller: the speed it started rolling at, and which way it curls. */
@@ -341,7 +343,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
         const w = curl * (FLIGHT.rollCurl + FLIGHT.rollCurlSlow * slow * slow);
         const c = Math.cos(w * DT), sn = Math.sin(w * DT);
         v = [v[0] * c - v[1] * sn, v[0] * sn + v[1] * c, 0];
-        const ns = Math.max(0, sh - (FLIGHT.roll[surf] ?? FLIGHT.roll.default) / m.skid * DT);
+        const ns = Math.max(0, sh - (FLIGHT.roll[surf] ?? FLIGHT.roll.default) / (m.skid * m.roll) * DT);
         v = [(v[0] / sh) * ns, (v[1] / sh) * ns, 0];
         bank = curl * -(1.2 + 0.3 * slow);
         if (ns < FLIGHT.rollFall) { state = 'ground'; bank = 0; }
@@ -618,6 +620,8 @@ interface BasketOpts {
   B: typeof BASKET;
   catchBonus: number;
   cutToCatch: number;
+  /** Chance a band, tray or pole hit drops in anyway (Rattle Trap). */
+  metalIn: number;
 }
 
 /** Basket with radii scaled (Wide Basket etc.); heights unchanged. */
@@ -645,6 +649,7 @@ function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, eve
     const vn = v[0] * nx + v[1] * ny;
     if (d < R) { p[0] = basket[0] + nx * (R + 0.005); p[1] = basket[1] + ny * (R + 0.005); }
     if (vn >= 0) return { holed: false, hit: false, inChains: false }; // already moving away
+    if (o.metalIn > 0 && rng() < o.metalIn) { events.push(ev); return { holed: true, hit: false, inChains: false }; } // rattled in off the metal
     v[0] -= 1.4 * vn * nx; v[1] -= 1.4 * vn * ny;
     v[0] *= keep; v[1] *= keep; v[2] = Math.min(v[2], 0) * keep;
     events.push(ev);

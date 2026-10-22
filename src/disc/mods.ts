@@ -46,6 +46,15 @@ export interface Mods {
   liveKicks: boolean;
   /** × skid distance after landing; sticky = no skid and near-misses of OB/water are saved. */
   skid: number;
+  /** × how far rollers roll. */
+  roll: number;
+  /** Overhand throws (tomahawk, thumber): × distance, × wobble. */
+  overhandDistance: number;
+  overhandAim: number;
+  /** Discs fly dead straight: no turn and no fade. */
+  straight: boolean;
+  /** Chance a hit on the band, tray or pole drops in anyway. */
+  metalIn: number;
   sticky: boolean;
   /** No penalty strokes for OB/water. */
   obInsurance: boolean;
@@ -94,6 +103,12 @@ export interface Mods {
   hexShrink: number;
   /** × wind for opponents. */
   hexWind: number;
+  /** × opponents' wobble (throws and putts). */
+  hexWobble: number;
+  /** × opponents' distance. */
+  hexDistance: number;
+  /** × opponents' ghost line (0 hides it). */
+  hexGhost: number;
 }
 
 export function neutralMods(): Mods {
@@ -102,10 +117,10 @@ export function neutralMods(): Mods {
     glide: 0, turn: 0, fade: 0, shape: 1,
     catchBonus: 0, teeCatchBonus: 0, cutToCatch: 0, basketScale: 1, tapIn: 1, gimme: 0, magnet: 0, magnetPull: 1.5,
     branch: 1, branchPass: 0, trunkKeep: 1, phaseTrees: 0, kickToward: false, kickKeep: 1, liveKicks: false,
-    skid: 1, sticky: false, obInsurance: false, puttRange: 1, homing: 0, windScale: 1, tailwind: false,
+    skid: 1, roll: 1, overhandDistance: 1, overhandAim: 1, straight: false, metalIn: 0, sticky: false, obInsurance: false, puttRange: 1, homing: 0, windScale: 1, tailwind: false,
     meterSpeed: 1, pickupBonus: 0, mulligans: 0, perfectForm: 0, clone: false, treeChopper: false, rerolls: 0, extraCard: 0, bagSlots: 0,
     ghost: 1, ghostCone: false, teeForward: 0, pinCloser: 0, clearCut: 0,
-    hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1, hexWind: 1,
+    hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1, hexWind: 1, hexWobble: 1, hexDistance: 1, hexGhost: 1,
   };
 }
 
@@ -125,6 +140,10 @@ export function effectiveMods(all: Mods[], player: number): Mods {
     m.meterSpeed *= o.hexMeter;
     m.basketScale *= o.hexShrink;
     m.windScale *= o.hexWind;
+    m.aimError *= o.hexWobble;
+    m.puttAimError *= o.hexWobble;
+    m.distance *= o.hexDistance;
+    m.ghost *= o.hexGhost;
   });
   return m;
 }

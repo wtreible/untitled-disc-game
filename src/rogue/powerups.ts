@@ -71,6 +71,10 @@ export const POWERUPS: Powerup[] = [
   hex('common', 'heckler', 'Heckler', "Opponents' power meters run 28% faster.", (m) => { m.hexMeter *= 1.28; }),
   hex('common', 'back-tees', 'Back Tees', 'Opponents tee off 15 m farther back.', (m) => { m.hexBackTee += 15; }),
   hex('common', 'crosswind', 'Crosswind', 'Opponents feel 40% more wind.', (m) => { m.hexWind *= 1.4; }),
+  P('common', 'flight', 'roller-skates', 'Roller Skates', 'Rollers roll 60% farther.', (m) => { m.roll *= 1.6; }),
+  P('common', 'power', 'tomahawk-training', 'Tomahawk Training', 'Tomahawks and thumbers fly 15% farther and wobble 30% less.', (m) => { m.overhandDistance *= 1.15; m.overhandAim *= 0.7; }),
+  hex('common', 'jitters', 'Jitters', 'Opponents’ throws and putts wobble 25% more.', (m) => { m.hexWobble *= 1.25; }),
+  hex('common', 'heavy-plastic', 'Heavy Plastic', 'Opponents’ throws fly 7% shorter.', (m) => { m.hexDistance *= 0.93; }),
 
   // ---- Epic: bigger bumps and new tricks ----
   P('epic', 'accuracy', 'laser-line', 'Laser Line', '55% less aim wobble on every throw and putt.', (m) => { m.aimError *= 0.45; m.puttAimError *= 0.45; }),
@@ -95,6 +99,9 @@ export const POWERUPS: Powerup[] = [
   hex('epic', 'thicket', 'Thicket', 'Before each hole, plant 4 trees on the hole. Opponents see and hit them; you never do.', (m) => { m.hexThicket += 4; }),
   hex('epic', 'pond-prank', 'Pond Prank', 'Before each hole, drop a pond on the hole. For opponents it is water (+1).', (m) => { m.hexPond += 1; }),
   hex('epic', 'storm-caller', 'Storm Caller', 'Opponents feel 80% more wind.', (m) => { m.hexWind *= 1.8; }),
+  P('epic', 'putting', 'rattle-trap', 'Rattle Trap', 'Band, tray and pole hits drop in 40% of the time.', (m) => { m.metalIn = 1 - (1 - m.metalIn) * 0.6; }),
+  P('epic', 'putting', 'ice-veins', 'Ice Veins', 'Your putts never wobble.', (m) => { m.puttAimError = 0; }, true),
+  hex('epic', 'fog-bank', 'Fog Bank', 'Opponents can’t see their ghost flight line (an armed Perfect Form still shows it).', (m) => { m.hexGhost = 0; }, true),
 
   // ---- Legendary: rule-breakers, most of them visible on the course ----
   P('legendary', 'trees', 'phase-disc', 'Phase Disc', 'Your disc passes through every tree, and you see through them.', (m) => { m.phaseTrees = Infinity; }, true),
@@ -112,6 +119,9 @@ export const POWERUPS: Powerup[] = [
   personal('legendary', 'short-pin', 'Short Pin', 'Your basket sits 25% closer to the tee on every hole (only for you).', (m) => { m.pinCloser += 0.25; }, true),
   personal('legendary', 'weather-control', 'Weather Control', 'No wind for you, and twice the wind for everyone else.', (m) => { m.windScale = 0; m.hexWind *= 2; }, true),
   hex('legendary', 'shrink-ray', 'Shrink Ray', "Opponents' baskets are 45% smaller.", (m) => { m.hexShrink *= 0.55; }, true),
+  P('legendary', 'flight', 'laser-disc', 'Laser Disc', 'Your discs fly dead straight: no turn, no fade, and the wind can’t move them.', (m) => { m.straight = true; m.windScale = 0; }, true),
+  P('legendary', 'power', 'cannon-arm', 'Cannon Arm', '+50% distance, but your power meter runs 50% faster.', (m) => { m.distance *= 1.5; m.meterSpeed *= 1.5; }, true),
+  hex('legendary', 'butterfingers', 'Butterfingers', 'Opponents’ throws and putts wobble twice as much, and their power meters run 40% faster.', (m) => { m.hexWobble *= 2; m.hexMeter *= 1.4; }, true),
 ];
 
 export const byId = (id: string) => POWERUPS.find((p) => p.id === id)!; // undefined for unknown ids

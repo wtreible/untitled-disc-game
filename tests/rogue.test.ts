@@ -29,9 +29,9 @@ const withPower = (...ids: string[]): Mods => { const m = neutralMods(); for (co
 const rate = (n: number, f: (seed: number) => boolean) => { let k = 0; for (let s = 1; s <= n; s++) if (f(s)) k++; return k / n; };
 
 describe('catalog', () => {
-  it('has 29 common, 22 epic, 15 legendary with unique ids, each in a category', () => {
+  it('has 33 common, 25 epic, 18 legendary with unique ids, each in a category', () => {
     const count = (t: string) => POWERUPS.filter((p) => p.tier === t).length;
-    expect([count('common'), count('epic'), count('legendary')]).toEqual([29, 22, 15]);
+    expect([count('common'), count('epic'), count('legendary')]).toEqual([33, 25, 18]);
     for (const p of POWERUPS) expect(CATEGORIES.map((c) => c.id)).toContain(p.category);
     expect(new Set(POWERUPS.map((p) => p.id)).size).toBe(POWERUPS.length);
   });
@@ -180,9 +180,63 @@ describe('effects in the flight model', () => {
     expect(spread(withPower('laser-line'))).toBeLessThan(spread(neutralMods()) * 0.7);
   });
 
+  it('Roller Skates: a roller rolls farther', () => {
+    const far = (m: Mods) => throwIt(m, world(), 1, { shot: 'roller', power: 0.6, perfect: true }).rest[1];
+    expect(far(withPower('roller-skates'))).toBeGreaterThan(far(neutralMods()) + 5);
+  });
+
+  it('Tomahawk Training: overhand throws go farther and tighter; flat throws are unchanged', () => {
+    const tom = (m: Mods, seed = 1) => throwIt(m, world(), seed, { shot: 'tomahawk', power: 0.8 });
+    expect(tom(withPower('tomahawk-training')).rest[1]).toBeGreaterThan(tom(neutralMods()).rest[1] * 1.05);
+    const spread = (m: Mods) => { const xs = [...Array(40).keys()].map((k) => tom(m, k + 1).rest[0]); const mu = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - mu) ** 2, 0) / xs.length); };
+    expect(spread(withPower('tomahawk-training'))).toBeLessThan(spread(neutralMods()) * 0.85);
+    expect(throwIt(withPower('tomahawk-training'), world(), 1).rest).toEqual(throwIt(neutralMods(), world(), 1).rest);
+  });
+
+  it('Laser Disc: a hyzer-free throw finishes on the line and ignores a crosswind', () => {
+    const DD = DISCS.find((d) => d.id === 'DD')!;
+    const w = { ...world(), wind: [5, 0] as Vec2 };
+    const off = (m: Mods) => Math.abs(throwIt(m, w, 1, { disc: DD, perfect: true }).rest[0]);
+    expect(off(withPower('laser-disc'))).toBeLessThan(1);
+    expect(off(neutralMods())).toBeGreaterThan(5);
+  });
+
+  it('Rattle Trap: band, tray and pole hits drop in some of the time; never without it', () => {
+    // Low putts at the tray from 5 m: they hit the cage and bounce off.
+    const B: Vec2 = [0, 5];
+    const putt = (m: Mods, seed: number) => simulateThrow({ start: [0, 0], aim: NORTH, power: 0.35, disc: PUTTER_DISC, hyzer: 0, style: 'putt', launch: -0.02, mods: m }, world([], B), mulberry32(seed));
+    const metal = (r: ReturnType<typeof putt>) => r.events.some((e) => e === 'tray' || e === 'pole' || e === 'band');
+    const base = [...Array(60).keys()].map((k) => putt(neutralMods(), k + 1));
+    expect(base.filter(metal).length).toBeGreaterThan(10);
+    expect(base.filter((r) => metal(r) && r.holed && !r.events.includes('chains')).length).toBe(0);
+    const trap = [...Array(60).keys()].map((k) => putt(withPower('rattle-trap'), k + 1));
+    expect(trap.filter((r) => metal(r) && r.holed).length).toBeGreaterThan(3);
+  });
+
+  it('Ice Veins: putts fly the same line every time', () => {
+    const m = withPower('ice-veins');
+    const rests = [1, 2, 3].map((k) => simulateThrow({ start: [0, 0], aim: NORTH, power: 0.4, disc: PUTTER_DISC, hyzer: 0, style: 'putt', mods: m }, world(), mulberry32(k)).rest[0]);
+    expect(rests[1]).toBeCloseTo(rests[0], 6);
+    expect(rests[2]).toBeCloseTo(rests[0], 6);
+  });
+
   it('Lumberjack: hit trees are reported for removal', () => {
     const t: Tree = { x: 0, y: 20, h: 15, r: 0.01, b: 14.9, t: 0.6 };
     expect(throwIt(withPower('lumberjack'), world([t]), 1, { perfect: true }).treesHit).toContain(t);
+  });
+});
+
+describe('new hexes act on opponents only', () => {
+  it('Jitters, Heavy Plastic, Fog Bank and Butterfingers', () => {
+    const all = [withPower('jitters', 'heavy-plastic', 'fog-bank', 'butterfingers'), rogueStartMods()];
+    all[1].ghost = 1;
+    const them = effectiveMods(all, 1), me = effectiveMods(all, 0);
+    expect(them.aimError).toBeCloseTo(2.5, 6); // ×1.25 ×2
+    expect(them.puttAimError).toBeCloseTo(2.5, 6);
+    expect(them.distance).toBeCloseTo(0.93, 6);
+    expect(them.ghost).toBe(0);
+    expect(them.meterSpeed).toBeCloseTo(1.4, 6);
+    expect([me.aimError, me.distance, me.meterSpeed]).toEqual([1, 1, 1]);
   });
 });
 

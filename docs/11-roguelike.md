@@ -39,9 +39,9 @@ Placed hexes (Sapling, Thicket, Pond Prank) and Clear-Cut are placed by their ow
 
 Roguelike players start with **no ghost line** (the aim line, target ring and power tick remain). Scout's Eye (+50%) and Flight Plan (+75%) reveal the start of the predicted flight; Oracle shows all of it plus the ±1σ wobble spread.
 
-## Catalog (66: 29 common, 22 epic, 15 legendary)
+## Catalog (76: 33 common, 25 epic, 18 legendary)
 
-Generated from `src/rogue/powerups.ts` (2026-10-21). “Unique” augments can be owned once; the rest stack.
+Generated from `src/rogue/powerups.ts` (2026-10-22; ten added that day, marked *new*). “Unique” augments can be owned once; the rest stack.
 
 ### Power
 
@@ -53,8 +53,10 @@ Distance and the power meter.
 | common | Tee Pad Grip | +18% distance on tee throws. |
 | common | Smooth Release | The power meter moves 35% slower. |
 | common | Run-Up (unique) | +5% distance, and throws past 90% power no longer add wobble. |
+| common | Tomahawk Training *new* | Tomahawks and thumbers fly 15% farther and wobble 30% less. |
 | epic | Big Arm | +19% distance. |
 | legendary | Golden Arm (unique) | +35% distance, no wobble when muscling a throw, and a golden disc. |
+| legendary | Cannon Arm (unique) *new* | +50% distance, but your power meter runs 50% faster. |
 
 ### Accuracy & Sight
 
@@ -84,10 +86,12 @@ Flight numbers, shaping, skids and wind.
 | common | Overstable Stamp | +1 turn and +1 fade: dependable fade. |
 | common | Wind Cheater | Wind pushes your disc around 40% less. |
 | common | Bag Pocket | Carry one more disc: pick it before the next hole. Only offered with bag building. |
+| common | Roller Skates *new* | Rollers roll 60% farther. |
 | epic | Hover Plastic | +2.5 glide and −1.25 fade on every disc. |
 | epic | Sticky Plastic (unique) | Discs stop where they land; landing within 2 m of OB or water is saved. |
 | epic | Featherweight | +3 glide, and wind pushes your disc around 25% less. |
 | legendary | Homing Chains | Discs bend toward the basket late in flight. |
+| legendary | Laser Disc (unique) *new* | Your discs fly dead straight: no turn, no fade, and the wind can’t move them. |
 
 ### Putting & Chains
 
@@ -102,6 +106,8 @@ Catching, tap-ins and putt range.
 | epic | Chain Monster | +25% catch chance; 60% of cut-throughs get caught. |
 | epic | Ace Hunter | +38% catch chance on throws from the tee. |
 | epic | Jump Putt | Putts reach 50% farther. |
+| epic | Rattle Trap *new* | Band, tray and pole hits drop in 40% of the time. |
+| epic | Ice Veins (unique) *new* | Your putts never wobble. |
 | legendary | Black Hole (unique) | Chains catch anything they touch; baskets 45% bigger. A vortex swirls in your chains. |
 | legendary | Gimme Circle (unique) | Anything that stops within 6 m of the basket is in. You see the circle. |
 
@@ -147,10 +153,14 @@ Changes to everyone else’s course, never yours.
 | common | Heckler | Opponents' power meters run 28% faster. |
 | common | Back Tees | Opponents tee off 15 m farther back. |
 | common | Crosswind | Opponents feel 40% more wind. |
+| common | Jitters *new* | Opponents’ throws and putts wobble 25% more. |
+| common | Heavy Plastic *new* | Opponents’ throws fly 7% shorter. |
 | epic | Thicket | Before each hole, plant 4 trees on the hole. Opponents see and hit them; you never do. |
 | epic | Pond Prank | Before each hole, drop a pond on the hole. For opponents it is water (+1). |
 | epic | Storm Caller | Opponents feel 80% more wind. |
+| epic | Fog Bank (unique) *new* | Opponents can’t see their ghost flight line (an armed Perfect Form still shows it). |
 | legendary | Shrink Ray (unique) | Opponents' baskets are 45% smaller. |
+| legendary | Butterfingers (unique) *new* | Opponents’ throws and putts wobble twice as much, and their power meters run 40% faster. |
 
 ### Second Chances
 
