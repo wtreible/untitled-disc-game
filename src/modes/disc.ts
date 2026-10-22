@@ -1130,7 +1130,6 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('card-close').hidden = !readOnly;
     $('results').hidden = false;
     if (!readOnly) { $('hud').hidden = true; clearBroadcast(); }
-    if (!readOnly && last && game().finished) sfx('jingle-round');
   }
   $('card-close').addEventListener('click', () => { $('results').hidden = true; });
 

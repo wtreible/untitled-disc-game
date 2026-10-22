@@ -35,7 +35,6 @@ const SFX = {
   'jingle-birdie': ['jingle-birdie.ogg'],
   'jingle-par': ['jingle-par.ogg'],
   'jingle-bogey': ['jingle-bogey.ogg'],
-  'jingle-round': ['jingle-round.ogg'],
 } as const;
 export type Sfx = keyof typeof SFX;
 
@@ -44,7 +43,7 @@ const LEVEL: Record<Sfx, number> = {
   swish: -6, tree: 0, branch: -3, leaves: -6, bonk: -2, chain: 1, clank: -2, tray: -3,
   'land-grass': -3, 'land-hard': -3, 'land-sand': -3, splash: 0, ob: -3, applause: -4,
   click: -10, select: -12, toggle: -10, confirm: -6, card: -8, deal: -8,
-  'jingle-great': -3, 'jingle-birdie': -3, 'jingle-par': -3, 'jingle-bogey': -3, 'jingle-round': -2,
+  'jingle-great': -3, 'jingle-birdie': -3, 'jingle-par': -3, 'jingle-bogey': -3,
 };
 /** The common loudness: RMS of a clip's loudest 300 ms, dBFS. */
 const TARGET_DB = -18;
