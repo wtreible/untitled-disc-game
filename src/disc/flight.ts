@@ -129,6 +129,8 @@ export interface DiscWorld {
   terrain: Terrain;
   trees: TreeIndex;
   basket: Vec2;
+  /** More baskets the disc can hit or hole into (the driving range). Aim helpers use `basket` only. */
+  extraBaskets?: Vec2[];
   /** Branch hits per meter inside a crown; defaults to FLIGHT.branchDensity. */
   branchDensity?: number;
   /** Extra water circles for this thrower only (roguelike Pond Prank). */
@@ -319,8 +321,11 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   let roll0 = 0;
   const curl = mirror * (disc.turn + disc.fade < 1 ? -1 : 1);
   let holedAt: Vec3 | null = null;
+  const baskets = [world.basket, ...(world.extraBaskets ?? [])];
+  /** The basket it went into. */
+  let holedIn = world.basket;
   const near: Tree[] = [];
-  let inChains = false;
+  const inChains = baskets.map(() => false);
 
   for (let step = 1; step * DT < MAX_T; step++) {
     const s = Math.hypot(v[0], v[1], v[2]);
@@ -419,10 +424,13 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
           const tag = collideProps(p, v, prev, (world.clock0 ?? 0) + step * DT, nearColliders(world.props, p[0], p[1]));
           if (tag) { state = 'dead'; bank = (rng() - 0.5) * 1.2; if (propHits[propHits.length - 1] !== tag) propHits.push(tag); events.push('prop'); }
         }
-        const b = basketCollide(prev, p, v, world.basket, rng, events, inChains, bopt);
-        inChains = b.inChains;
-        if (b.holed) { holedAt = p; break; }
-        if (b.hit) { state = 'dead'; }
+        for (let k = 0; k < baskets.length && !holedAt; k++) {
+          const b = basketCollide(prev, p, v, baskets[k], rng, events, inChains[k], bopt);
+          inChains[k] = b.inChains;
+          if (b.holed) { holedAt = p; holedIn = baskets[k]; }
+          if (b.hit) { state = 'dead'; }
+        }
+        if (holedAt) break;
       }
 
       if (p[2] <= ground) {
@@ -448,7 +456,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const treesHit = tctx.hits;
   const holedResult = (from: Vec3, ev: ThrowEvent): ThrowResult => {
     // Drop into the tray.
-    const [bx, by] = world.basket;
+    const [bx, by] = holedIn;
     const z0 = from[2];
     for (let k = 1; k <= 18; k++) {
       const t = k / 18;
@@ -457,7 +465,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     }
     if (ev !== 'holed') events.push(ev);
     events.push('holed');
-    return { samples, banks, rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events, treesHit, propHits };
+    return { samples, banks, rest: holedIn, restSurface: 'green', holed: true, penalty: 0, events, treesHit, propHits };
   };
   if (holedAt) return holedResult(holedAt, 'holed');
 

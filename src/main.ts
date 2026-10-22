@@ -21,12 +21,13 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'fantasy' | 'rainbow';
+type CourseId = 'simple' | 'silly' | 'forest' | 'fantasy' | 'rainbow' | 'range';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
-type Group = 'real' | 'arcade';
+type Group = 'real' | 'arcade' | 'practice';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
   { id: 'real', label: 'Real', sub: 'Mapped from the real world' },
   { id: 'arcade', label: 'Arcade', sub: 'Themed and a little ridiculous' },
+  { id: 'practice', label: 'Practice', sub: 'No score, just throwing' },
 ];
 const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: number; blurb: string; art: string }[] = [
   {
@@ -54,6 +55,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     blurb: 'Nine laps of a rainbow road floating in space. Stay on the track (off it is lost in space, +1), dodge mystery boxes and asteroids, thread the rings, and jump the gap.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#0b0b26"/>${Array.from({ length: 14 }, (_, i) => `<circle cx="${(i * 41) % 64}" cy="${(i * 17) % 64}" r="${i % 3 ? 0.8 : 1.3}" fill="#fff"/>`).join('')}${['#ff4d6d', '#ff9f43', '#ffe066', '#5ee07a', '#4dabf7', '#9b6bff'].map((c, i) => `<path d="M${-4 + i * 3} 64 C 14 30, 40 50, ${52 + i * 3} 0" stroke="${c}" stroke-width="3.2" fill="none"/>`).join('')}<rect x="40" y="24" width="10" height="10" rx="2" fill="#ffb347" transform="rotate(15 45 29)"/><text x="45" y="32.5" font-size="9" font-weight="700" fill="#fff" text-anchor="middle" transform="rotate(15 45 29)">?</text></svg>`,
   },
+  {
+    id: 'range', group: 'practice', name: 'Driving Range', meta: 'Distance lines every 50 ft · your wind and weather', holes: 1,
+    blurb: 'Get a feel for the discs: a long open range with a line every 50 ft and big signs every 100 ft. Set the wind and weather, place or remove baskets and trees, and see how far and how far off line each throw goes. One thrower, nothing scored.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#6f9a4f"/><rect x="18" y="0" width="28" height="64" fill="#8cc063"/>${[12, 26, 40, 54].map((y, i) => `<rect x="${i % 2 ? 18 : 12}" y="${y}" width="${i % 2 ? 28 : 40}" height="${i % 2 ? 1.2 : 2.2}" fill="#fff"/>`).join('')}<circle cx="38" cy="20" r="3.5" fill="#f2c230"/><path d="M32 62 C 30 44, 40 34, 36 16" stroke="#ff7a45" stroke-width="2" fill="none" stroke-dasharray="3 2"/></svg>`,
+  },
 ];
 
 const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean }>('sat-golf:menu', {});
@@ -69,7 +75,7 @@ function renderCourses(): void {
     <button class="course-card ${c.id === course ? 'on' : ''}" data-id="${c.id}">
       <span class="art">${c.art}</span>
       <span><div class="name">${c.name}</div><div class="meta">${c.meta}</div></span>
-      <span class="holes">${c.holes}<small>HOLES</small></span>
+      <span class="holes">${c.id === 'range' ? '∞' : c.holes}<small>${c.id === 'range' ? 'THROWS' : 'HOLES'}</small></span>
     </button>`).join('')}`).join('');
   $('course-cards').querySelectorAll<HTMLButtonElement>('.course-card').forEach((b) => b.addEventListener('click', () => {
     course = b.dataset.id as CourseId;
@@ -78,6 +84,8 @@ function renderCourses(): void {
     pushLobby();
   }));
   $('setup-hole').textContent = COURSES.find((c) => c.id === course)!.blurb;
+  // The range has no holes to pick and nothing to draft or bag.
+  document.querySelector<HTMLElement>('.panel-card.round')!.hidden = course === 'range';
   renderCourseInfo();
 }
 
@@ -461,7 +469,7 @@ window.addEventListener('hashchange', () => {
 async function launch(l: Lobby): Promise<void> {
   if (launched || !room) return;
   launched = true;
-  const id = (COURSES.some((c) => c.id === l.course) ? l.course : 'simple') as CourseId;
+  const id = (COURSES.some((c) => c.id === l.course) && l.course !== 'range' ? l.course : 'simple') as CourseId;
   $('setup').hidden = true;
   showGameButtons();
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === id)!.name}${l.crazy ? ' · Crazy mode' : ''} · Room ${room.code}`;
@@ -479,12 +487,23 @@ $('start').addEventListener('click', async () => {
   sfx('confirm');
   if (room) {
     if (!amHost()) return;
+    if (course === 'range') { $('room-note').textContent = 'The driving range is for one thrower: pick a course to play online.'; return; }
     save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
     pushLobby();
     room.start();
     return;
   }
   const typed = [...$('player-names').querySelectorAll('input')].map((i, k) => i.value.trim() || `Player ${k + 1}`);
+  if (course === 'range') {
+    save('sat-golf:names', typed);
+    save('sat-golf:menu', { ...last, course, players });
+    $('setup').hidden = true;
+    showGameButtons();
+    $('pause-sub').textContent = 'Driving Range';
+    const { startDisc } = await import('./modes/disc');
+    await startDisc({ names: [uniqueNames(typed)[0]], course: 'range', first: 0, count: 1 });
+    return;
+  }
   const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
   save('sat-golf:names', typed);

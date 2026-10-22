@@ -15,6 +15,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | **Mini Golf Madness** | 9 | Full-size disc golf themed like mini golf: a windmill with spinning blades, a castle gate, giant animals. |
 | **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
 | **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
+| **Driving Range** | – | Practice: a long open range with a line every 50 ft and big signs every 100 ft. Set the wind and weather, place and remove baskets and trees, and see how far and how far off line each throw went. One thrower, nothing scored, not online. |
 
 **Play online:** host a room from the Players panel and send friends the link; everyone plays from their own browser. See [docs/14-online.md](docs/14-online.md).
 

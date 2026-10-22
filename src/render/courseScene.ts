@@ -264,9 +264,41 @@ export class CourseScene {
     return this.fp ? [this.persp.position.x, this.persp.position.y, this.persp.position.z] : null;
   }
 
-  /** The current basket's chains take a hit: they swing and settle. */
-  shakeChains(): void {
+  /** The current basket's chains take a hit: they swing and settle. On the range, the basket at `at`. */
+  shakeChains(at?: Vec2): void {
     this.chainHit = performance.now();
+    this.shaking = at ? this.rangeBaskets.find((b) => Math.hypot(b.position.x - at[0], b.position.y - at[1]) < 1) ?? null : null;
+  }
+
+  // ---------- driving range: any number of baskets, added and removed at will ----------
+  private readonly rangeBaskets: THREE.Group[] = [];
+  private readonly rangeBasketMarkers: THREE.Group[] = [];
+  private shaking: THREE.Group | null = null;
+
+  /** Replace the holes' own baskets with these (the first call takes the holes' away). */
+  setBaskets(pins: Vec2[]): void {
+    for (const b of this.baskets) this.world3d.remove(b);
+    this.overlays.remove(this.basketMarker);
+    for (const b of this.rangeBaskets.splice(0)) this.world3d.remove(b);
+    for (const m of this.rangeBasketMarkers.splice(0)) {
+      this.overlays.remove(m);
+      this.pixelScaled.splice(this.pixelScaled.indexOf(m), 1);
+    }
+    for (const p of pins) {
+      const b = basketModel();
+      b.position.set(p[0], p[1], 0);
+      b.visible = this.fp;
+      this.rangeBaskets.push(b);
+      this.world3d.add(b);
+      const m = new THREE.Group();
+      m.add(disc2d(9, '#222222'), disc2d(7, '#f2c230'), disc2d(3, '#9aa1a8'));
+      m.position.set(p[0], p[1], OVERLAY_Z);
+      m.traverse((o) => { o.renderOrder = 10; });
+      this.rangeBasketMarkers.push(m);
+      this.pixelScaled.push(m);
+      this.overlays.add(m);
+    }
+    this.shaking = null;
   }
 
   setView(mode: ViewMode): void {
@@ -935,7 +967,7 @@ export class CourseScene {
 
   /** A hit sets the current basket's chains swinging around the pole, dying out over ~1.5 s. */
   private swingChains(now: number): void {
-    const chains = this.baskets[this.holeIndex]?.children.at(-1);
+    const chains = (this.shaking ?? this.baskets[this.holeIndex])?.children.at(-1);
     if (!chains) return;
     const t = (now - this.chainHit) / 1000;
     if (t > 1.8) { chains.rotation.set(0, 0, 0); return; }
