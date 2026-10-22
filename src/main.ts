@@ -105,11 +105,16 @@ function renderCourseInfo(): void {
 window.addEventListener('unitschange', renderCourseInfo);
 
 // ---------- holes ----------
+/** [first, count] blocks of `size` holes covering the course (the last may be shorter). */
+const holeBlocks = (n: number, size: number): [number, number][] =>
+  n <= size ? [] : Array.from({ length: Math.ceil(n / size) }, (_, i): [number, number] => [i * size, Math.min(size, n - i * size)]);
 function renderHoles(): void {
   const n = COURSES.find((c) => c.id === course)!.holes;
   const opts = [
     { v: `0:${n}`, label: `Full round (${n})` },
     ...(n >= 18 ? [{ v: '0:9', label: 'Front 9' }, { v: '9:9', label: 'Back 9' }] : []),
+    // Short rounds: blocks of 3 on a 9-hole course, 6 on an 18.
+    ...holeBlocks(n, n >= 18 ? 6 : 3).map(([a, k]) => ({ v: `${a}:${k}`, label: `Holes ${a + 1}–${a + k}` })),
     ...Array.from({ length: n }, (_, i) => ({ v: `${i}:1`, label: `Hole ${i + 1} only` })),
   ];
   const sel = $<HTMLSelectElement>('holes');

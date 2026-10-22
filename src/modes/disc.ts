@@ -13,6 +13,7 @@ import { chipFor, openAugmentBrowser, renderSidePanel, stacked } from '../ui/aug
 import { CATEGORIES } from '../rogue/powerups';
 import { PLAYER_COLORS } from '../game/game';
 import { DiscRound, type RoundEvent, type WireResult } from './discRound';
+import { roundStats, type ShotRef } from './roundStats';
 import type { RoomClient } from '../net/room';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
@@ -289,7 +290,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let preferFP = prefs().firstPerson; // C switches (persists across turns)
   let fpOverride: boolean | null = null; // inside putting range, C overrides auto first person for this turn
   /** A throw being shown (local or, later, another player's): the event is applied when it lands. */
-  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number; remote: boolean; sentEarly: boolean } | null = null;
+  /** The throw in the air. `show`: a highlight replayed from the final card (already applied). */
+  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t0: number; speed: number; clock0: number; remote: boolean; sentEarly: boolean; show?: boolean } | null = null;
   /** Online: the current thrower's aim, as they last sent it (another player's turn only). */
   let liveAim: LiveAim | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
@@ -695,7 +697,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function startReplay(): void {
     const s = flight!.result.samples;
-    if (!replaysOn() || s.length < REPLAY_MIN_SAMPLES) return finishThrow();
+    if (!flight!.show && (!replaysOn() || s.length < REPLAY_MIN_SAMPLES)) return finishThrow();
     phase = 'replay';
     // Start behind the disc, looking along its first few meters (the thrower's aim).
     const h0 = Math.atan2(s[Math.min(8, s.length - 1)][1] - s[0][1], s[Math.min(8, s.length - 1)][0] - s[0][0]);
@@ -715,6 +717,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.minimapEnabled = true;
     $('replay-bar').hidden = true;
     $('hud').hidden = false;
+    if (flight?.show) return endHighlight();
     finishThrow();
   }
 
@@ -813,6 +816,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       $('results-augs').innerHTML = order.map((p) => `<div class="who"><b><i style="background:${PLAYER_COLORS[p]}"></i>${esc(opts.names[p])}</b>${
         owned[p].length ? stacked(owned[p]).map(([q, n]) => chipFor(q, n)).join('') : '<span class="none">no augments yet</span>'}</div>`).join('');
     }
+    renderSummary(last && game().finished);
     $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
     $('results-table').innerHTML = head + '<tbody>' + par + rows.join('') + '</tbody>';
     // Online, only the host moves everyone on to the next hole.
@@ -825,6 +829,52 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!readOnly) { $('hud').hidden = true; clearBroadcast(); }
   }
   $('card-close').addEventListener('click', () => { $('results').hidden = true; });
+
+  // ---------- round summary (final card) ----------
+  /** Highlights over the whole round, each big shot with a Watch button that replays it. */
+  function renderSummary(show: boolean): void {
+    const box = $('results-summary');
+    box.hidden = !show;
+    if (!show) return;
+    const r = roundStats(st.log, opts.names.length, round.first);
+    const who = (p: number) => `<i style="background:${PLAYER_COLORS[p]}"></i>${esc(opts.names[p])}`;
+    const watch = (k: ShotRef) => `<button data-at="${k.at}">▶ Watch</button>`;
+    const tiles: string[] = [];
+    const tile = (label: string, big: string, line: string, extra = '') => tiles.push(`<div class="hl"><small>${label}</small><b>${big}</b><span>${line}</span>${extra}</div>`);
+    if (r.longest) tile('Longest throw', fmtLen(r.longest.dist), `${who(r.longest.player)} · hole ${course.holes[r.longest.hole].ref}`, watch(r.longest));
+    if (r.bestMake) tile('Longest make', fmtLen(r.bestMake.dist), `${who(r.bestMake.player)} · hole ${course.holes[r.bestMake.hole].ref}`, watch(r.bestMake));
+    const trees = r.players.map((q, p) => ({ p, n: q.trees })).sort((a, b) => b.n - a.n)[0];
+    if (trees && trees.n > 0) tile('Tree magnet', `${trees.n} ${trees.n === 1 ? 'tree' : 'trees'}`, who(trees.p));
+    else tile('Tree magnet', 'Nobody', 'not one tree hit all round');
+    const aces = r.players.map((q, p) => ({ p, n: q.aces })).filter((a) => a.n > 0);
+    if (aces.length) tile(aces.reduce((a, b) => a + b.n, 0) === 1 ? 'Ace' : 'Aces', aces.map((a) => (a.n > 1 ? `${a.n}×` : '★')).join(' '), aces.map((a) => who(a.p)).join(' '));
+    const clean = r.players.map((q, p) => ({ p, n: q.penalties })).sort((a, b) => a.n - b.n);
+    if (opts.names.length > 1 && clean.length && clean[0].n === 0) tile('Clean card', 'No penalties', clean.filter((c) => c.n === 0).map((c) => who(c.p)).join(' '));
+    box.innerHTML = tiles.join('');
+    box.querySelectorAll<HTMLButtonElement>('button[data-at]').forEach((b) => b.addEventListener('click', () => watchShot(parseInt(b.dataset.at!, 10))));
+  }
+
+  let beforeHighlight: Phase | null = null;
+  /** Replay a throw from the log with the chase camera, then come back to the card. */
+  function watchShot(at: number): void {
+    const e = st.log[at];
+    if (!e || e.t !== 'throw' || flight) return;
+    $('results').hidden = true;
+    beforeHighlight = phase;
+    flight = { e, result: e.result, t0: performance.now(), speed: 1, clock0: gameClock, remote: true, sentEarly: false, show: true };
+    scene.lockTrees(e.result.samples.map((q): Vec2 => [q[0], q[1]]));
+    startReplay();
+  }
+
+  function endHighlight(): void {
+    scene.lockTrees(null);
+    flight = null;
+    phase = beforeHighlight ?? 'idle';
+    beforeHighlight = null;
+    applyCamera(true);
+    $('hud').hidden = true;
+    $('results').hidden = false;
+  }
   window.addEventListener('show-scorecard', () => showCard(true));
 
   $('next').addEventListener('click', () => {
@@ -1141,7 +1191,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     };
     PLAYER_COLORS.forEach((_, i) => {
       const q = g.players[i];
-      scene.setDisc(i, q && !q.holed && !(flight && i === g.current) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
+      scene.setDisc(i, q && !q.holed && !(flight && i === flight.e.player) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     sendLiveAim(now);
@@ -1161,7 +1211,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       replay.last = now;
       const dh = Math.atan2(Math.sin(replay.heading - replay.smoothHeading), Math.cos(replay.heading - replay.smoothHeading));
       replay.smoothHeading += dh * (replay.started ? 1 - Math.exp(-dt * 5) : 1);
-      scene.setDisc(g.current, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
       scene.chase(pos, replay.smoothHeading, !replay.started, dt);
       showTwin(t);
       replay.started = true;
@@ -1175,7 +1225,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       // rAF's timestamp can be slightly earlier than the performance.now() taken at release.
       const kk = Math.max(0, Math.min(k, s.length - 1));
       const pos = sampleAt(s, Math.max(0, ((now - flight.t0) / 1000) * 60 * flight.speed));
-      scene.setDisc(g.current, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
       showTwin(((now - flight.t0) / 1000) * 60 * flight.speed);
       // First person: turn the head to follow the disc.
       if (isFP()) scene.lookToward(pos, 0.12);
