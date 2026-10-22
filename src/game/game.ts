@@ -86,15 +86,18 @@ export class HoleGame {
     this.advance();
   }
 
-  /** "Away" rule (golf and disc golf): the farthest active player plays next; ties go to tee order. */
+  /**
+   * "Away" rule (golf and disc golf): the farthest active player plays next; ties go to tee order.
+   * The whole order, as it stands: everyone still playing, farthest first.
+   */
+  order(): number[] {
+    const d = this.players.map((p) => this.distanceToPin(p));
+    return this.players.map((_, i) => i).filter((i) => !this.players[i].holed && !this.players[i].pickedUp)
+      .sort((a, b) => (Math.abs(d[a] - d[b]) <= 1e-6 ? this.rank[a] - this.rank[b] : d[b] - d[a]));
+  }
+
   private advance(): void {
-    let best = -1;
-    let bestD = -1;
-    this.players.forEach((p, i) => {
-      if (p.holed || p.pickedUp) return;
-      const d = this.distanceToPin(p);
-      if (d > bestD + 1e-6 || (Math.abs(d - bestD) <= 1e-6 && this.rank[i] < this.rank[best])) { best = i; bestD = d; }
-    });
-    if (best >= 0) this.current = best;
+    const o = this.order();
+    if (o.length) this.current = o[0];
   }
 }

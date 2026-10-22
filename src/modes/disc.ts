@@ -737,11 +737,23 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number, remote: boolean): void {
     hideWait();
     flight = { e, result: e.result, t0: performance.now(), speed, clock0: gameClock, remote, sentEarly: false };
+    if (following(flight)) flight.speed = REPLAY_SPEED; // ridden along at replay pace
+    const s = e.result.samples, h0 = Math.atan2(s[Math.min(8, s.length - 1)][1] - s[0][1], s[Math.min(8, s.length - 1)][0] - s[0][0]);
+    Object.assign(follow, { heading: h0, smooth: h0, started: false, last: performance.now() });
     scene.lockTrees(e.result.samples.map((q): Vec2 => [q[0], q[1]])); // no tree LOD changes while following it
     liveAim = null;
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
+  }
+
+  /** Live chase camera for a friend's throw (online, Settings → Follow friends' throws). */
+  const follow = { heading: 0, smooth: 0, started: false, last: 0 };
+  const following = (f: NonNullable<typeof flight>) => f.remote && !f.show && !!net && prefs().follow;
+  function endFollow(): void {
+    scene.endChase();
+    scene.minimapEnabled = true;
+    finishThrow();
   }
 
   let pendingTimer = 0;
@@ -1031,7 +1043,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const tp = liveToPar(i);
       const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${fmtLen(dist(q.ball, pinOf(i)))} · ${LIE_LABELS[q.lie] ?? q.lie}`;
       return `<div class="row ${i === game().current && !game().finished ? 'active' : ''}"><span class="bar" style="background:${q.color}"></span><span><div class="name">${esc(q.name)}</div><div class="state">${state}</div></span><span class="strokes">${q.strokes}</span><span class="topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</span></div>`;
-    }).join('');
+    }).join('') + upNext();
+  }
+
+  /** Who throws after the current player, by the away rule as things stand (it can change). */
+  function upNext(): string {
+    if (game().finished || st.stage !== 'playing') return '';
+    const next = game().order().filter((i) => i !== game().current).slice(0, 3);
+    if (!next.length) return '';
+    return `<div class="lb-next"><small>UP NEXT</small>${next.map((i) => `<span><i style="background:${PLAYER_COLORS[i]}"></i>${esc(opts.names[i])}</span>`).join('›')}</div>`;
   }
 
   // ---------- input ----------
@@ -1272,6 +1292,26 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.setTarget3d(null, [0, 0], '#fff');
       scene.setPreview(null, '#fff');
       if (k >= s.length + 30) endReplay();
+    } else if (flight && following(flight)) {
+      // Online: a friend's throw, ridden along live with the chase camera (no replay after).
+      const s = flight.result.samples;
+      const t = Math.max(0, ((now - flight.t0) / 1000) * 60 * flight.speed);
+      const k = Math.floor(t), kk = Math.min(k, s.length - 1);
+      const pos = sampleAt(s, t);
+      const a = s[Math.max(0, kk - 2)], b = s[Math.min(s.length - 1, kk + 2)];
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.02) follow.heading = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      const dt = Math.min(0.1, (now - follow.last) / 1000);
+      follow.last = now;
+      const dh = Math.atan2(Math.sin(follow.heading - follow.smooth), Math.cos(follow.heading - follow.smooth));
+      follow.smooth += dh * (follow.started ? 1 - Math.exp(-dt * 5) : 1);
+      if (!follow.started) { scene.setFirstPerson(true); $('minimap').hidden = true; $('reticle').hidden = true; scene.minimapEnabled = false; }
+      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      scene.chase(pos, follow.smooth, !follow.started, dt);
+      showTwin(t);
+      follow.started = true;
+      scene.setAim(null, [0, 0], '#fff');
+      scene.setTarget3d(null, [0, 0], '#fff');
+      if (k >= s.length + 25 && phase === 'flying') endFollow();
     } else if (flight) {
       const s = flight.result.samples;
       const k = Math.floor(((now - flight.t0) / 1000) * 60 * flight.speed);

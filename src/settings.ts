@@ -3,6 +3,8 @@
 export interface Prefs {
   /** Replay each throw from a chase camera. */
   replays: boolean;
+  /** Online: follow other players' throws live with the chase camera (instead of a replay after). */
+  follow: boolean;
   /** Start every turn in first person (C still toggles). */
   firstPerson: boolean;
   /** First-person field of view, degrees. */
@@ -20,7 +22,7 @@ export interface Prefs {
 export type Graphics = 'low' | 'medium' | 'high';
 
 const KEY = 'sat-golf:prefs';
-const DEFAULTS: Prefs = { replays: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false };
+const DEFAULTS: Prefs = { replays: true, follow: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false };
 
 let cache: Prefs | null = null;
 

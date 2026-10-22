@@ -14,6 +14,8 @@ export function mountSettings(el: HTMLElement): void {
         <span class="toggle-text"><b>Start in first person</b><small>C switches to the map any time</small></span></label>
       <label class="toggle"><input type="checkbox" data-k="replays" ${p.replays ? 'checked' : ''}><span class="switch"></span>
         <span class="toggle-text"><b>Throw replays</b><small>Chase-cam replay after each throw</small></span></label>
+      <label class="toggle"><input type="checkbox" data-k="follow" ${p.follow ? 'checked' : ''}><span class="switch"></span>
+        <span class="toggle-text"><b>Follow friends' throws</b><small>Online: ride along with the chase cam as they fly</small></span></label>
       <div class="row"><span>Field of view</span><input type="range" min="45" max="100" step="1" data-k="fov" value="${p.fov}"><span class="val">${p.fov}°</span></div>
       <div class="row"><span>Flight speed</span><div class="seg" data-k="playback">
         ${[1, 1.5, 2].map((v) => `<button data-v="${v}" class="${p.playback === v ? 'on' : ''}">${v}×</button>`).join('')}</div></div>
@@ -30,7 +32,7 @@ export function mountSettings(el: HTMLElement): void {
       else if (k === 'graphics') setPref('graphics', b.dataset.v as Graphics);
     }));
     el.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((i) => i.addEventListener('change', () => {
-      setPref(i.dataset.k as 'firstPerson' | 'replays' | 'help' | 'fps', i.checked);
+      setPref(i.dataset.k as 'firstPerson' | 'replays' | 'follow' | 'help' | 'fps', i.checked);
     }));
     const fov = el.querySelector<HTMLInputElement>('input[type=range]')!;
     fov.addEventListener('input', () => { el.querySelector('.val')!.textContent = `${fov.value}°`; });
