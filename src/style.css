@@ -94,7 +94,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   animation: drift 40s linear infinite;
 }
 @keyframes drift { to { transform: translate(92px, 0); } }
-.menu-shell { max-width: 1180px; margin: 0 auto; padding: 32px 28px 28px; display: flex; flex-direction: column; gap: 28px; min-height: 100%; }
+.menu-shell { max-width: 1480px; margin: 0 auto; padding: 32px 28px 28px; display: flex; flex-direction: column; gap: 28px; min-height: 100%; }
 .brand { display: flex; align-items: center; gap: 22px; animation: rise 0.6s ease-out both; }
 .logo { width: 108px; height: 108px; filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45)); }
 .wordmark { display: flex; flex-direction: column; line-height: 0.9; }
@@ -103,7 +103,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .wordmark .tag { font: 500 14px var(--body); color: var(--muted); margin-top: 10px; letter-spacing: 0.02em; }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 
-.menu-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; align-items: start; animation: rise 0.6s 0.1s ease-out both; }
+/* Three columns: courses and Tee off · the course card and round · players and settings. */
+.menu-grid { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 18px; align-items: start; animation: rise 0.6s 0.1s ease-out both; }
 .menu-grid .col { display: flex; flex-direction: column; gap: 18px; }
 .panel-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 14px; }
 .panel-card h3, .settings-pane h3 { margin: 0; font: 700 15px var(--head); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
@@ -161,7 +162,14 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .credits { margin: 0; font-size: 11.5px; color: #6f8597; }
 .credits a { color: #9fb4c4; text-decoration: none; border-bottom: 1px solid rgba(159, 180, 196, 0.35); }
 .credits a:hover { color: var(--accent); border-bottom-color: var(--accent); }
-@media (max-width: 860px) { .menu-grid { grid-template-columns: 1fr; } .wordmark .title { font-size: 54px; } }
+/* Narrower: courses on the left, the other two columns stacked on the right. */
+@media (max-width: 1180px) {
+  .menu-grid { grid-template-columns: 1fr 1fr; grid-template-areas: 'a b' 'a c'; }
+  .menu-grid > .col:nth-child(1) { grid-area: a; }
+  .menu-grid > .col:nth-child(2) { grid-area: b; }
+  .menu-grid > .col:nth-child(3) { grid-area: c; }
+}
+@media (max-width: 860px) { .menu-grid { grid-template-columns: 1fr; grid-template-areas: 'a' 'b' 'c'; } .wordmark .title { font-size: 54px; } }
 
 /* ---------- in-game HUD ---------- */
 .bug {

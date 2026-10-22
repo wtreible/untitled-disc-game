@@ -1416,8 +1416,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const m = modsFor(game().current);
       const pw = phase === 'charging' ? Math.max(power, 0.01) : tick;
       if (phase === 'aim' && tickStale) { recomputeTick(); $('meter-target').style.left = `${tick * 100}%`; }
-      const cut = (q: Vec3[]) => cutByDistance(q, m.ghost);
-      if (m.ghost <= 0) scene.setPreview(null, p.color);
+      // Perfect Form armed: the throw flies exactly the ghost line, so show all of it.
+      const shown = perfectArmed ? 1 : m.ghost;
+      const cut = (q: Vec3[]) => cutByDistance(q, shown);
+      if (shown <= 0) scene.setPreview(null, p.color);
       else {
         const spread = m.ghostCone ? [-1, 1].map((k) => {
           const sigma = ((puttStyle() ? 0.5 : 1.4) * (puttStyle() ? m.puttAimError : m.aimError) * Math.PI) / 180;

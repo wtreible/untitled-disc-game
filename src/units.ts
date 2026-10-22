@@ -7,8 +7,9 @@ const KEY = 'sat-golf:units';
 const FT = 3.28084;
 const YD = 1 / 0.9144;
 
+// Feet (yards for golf) unless the player picked meters.
 let units: Units = (() => {
-  try { return localStorage.getItem(KEY) === 'imperial' ? 'imperial' : 'metric'; } catch { return 'metric'; }
+  try { return localStorage.getItem(KEY) === 'metric' ? 'metric' : 'imperial'; } catch { return 'imperial'; }
 })();
 
 export function getUnits(): Units {

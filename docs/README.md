@@ -87,6 +87,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D61 | Throw styles: tomahawk / thumber (overhand, over trees) and roller (on edge, under them). | 2026-10-21 |
 | D62 | Optional bag building: 4 of 7 discs per player for the round; Bag Pocket augment adds a slot. | 2026-10-21 |
 | D63 | Moving hazards (drawbridge, sweeping ring) as `hinge` and `slide` colliders; throws carry the game clock so moving props match on every screen. Hole editor recorded as planned work (08). | 2026-10-21 |
+| D64 | Feet are the default units (Feet listed before Meters). An armed Perfect Form throw shows its whole ghost line. Main menu in three columns: courses and Tee off · course card and round · players and settings. | 2026-10-21 |
 
 ## Open questions
 

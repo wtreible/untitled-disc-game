@@ -105,11 +105,6 @@
           </section>
 
           <div class="menu-foot">
-          <section class="panel-card course-info" id="course-info">
-            <div class="ci-head"><h3 id="ci-name"></h3><span id="ci-meta"></span></div>
-            <p id="setup-hole" class="course-blurb"></p>
-            <div class="ci-stats" id="ci-stats"></div>
-          </section>
           <button id="start" class="primary huge">Tee off <span class="arrow">→</span></button>
           <p class="credits">
             Course data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> ·
@@ -122,24 +117,10 @@
           </div>
           </div>
           <div class="col">
-          <section class="panel-card players">
-            <h3>Players</h3>
-            <div class="seg" id="player-seg"></div>
-            <select id="player-count" hidden><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
-            <div id="player-names"></div>
-            <div class="online" id="online">
-              <div class="online-start" id="online-start">
-                <span class="online-label">Play online</span>
-                <button id="host-room">Host a room</button>
-                <input id="join-code" maxlength="8" placeholder="CODE" autocomplete="off" spellcheck="false" />
-                <button id="join-room">Join</button>
-              </div>
-              <div class="online-room" id="online-room" hidden>
-                <div class="online-head"><span>Room <b id="room-code"></b></span><button id="copy-link" class="chip-btn">Copy link</button><button id="leave-room" class="chip-btn">Leave</button></div>
-                <div id="room-members" class="room-members"></div>
-                <p id="room-note" class="course-blurb"></p>
-              </div>
-            </div>
+          <section class="panel-card course-info" id="course-info">
+            <div class="ci-head"><h3 id="ci-name"></h3><span id="ci-meta"></span></div>
+            <p id="setup-hole" class="course-blurb"></p>
+            <div class="ci-stats" id="ci-stats"></div>
           </section>
 
           <section class="panel-card round">
@@ -170,6 +151,27 @@
               <div class="odds-bar" id="odds-bar"></div>
               <div class="row presets"><span>Presets</span><div class="seg" id="odds-presets"></div></div>
               <button id="browse-augments" class="chip-btn">Browse all augments</button>
+            </div>
+          </section>
+          </div>
+          <div class="col">
+          <section class="panel-card players">
+            <h3>Players</h3>
+            <div class="seg" id="player-seg"></div>
+            <select id="player-count" hidden><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+            <div id="player-names"></div>
+            <div class="online" id="online">
+              <div class="online-start" id="online-start">
+                <span class="online-label">Play online</span>
+                <button id="host-room">Host a room</button>
+                <input id="join-code" maxlength="8" placeholder="CODE" autocomplete="off" spellcheck="false" />
+                <button id="join-room">Join</button>
+              </div>
+              <div class="online-room" id="online-room" hidden>
+                <div class="online-head"><span>Room <b id="room-code"></b></span><button id="copy-link" class="chip-btn">Copy link</button><button id="leave-room" class="chip-btn">Leave</button></div>
+                <div id="room-members" class="room-members"></div>
+                <p id="room-note" class="course-blurb"></p>
+              </div>
             </div>
           </section>
 

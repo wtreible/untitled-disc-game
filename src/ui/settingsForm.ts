@@ -8,8 +8,8 @@ export function mountSettings(el: HTMLElement): void {
     const p = prefs();
     el.innerHTML = `
       <div class="row"><span>Units</span><div class="seg" data-k="units">
-        <button data-v="metric" class="${getUnits() === 'metric' ? 'on' : ''}">Meters</button>
-        <button data-v="imperial" class="${getUnits() === 'imperial' ? 'on' : ''}">Feet</button></div></div>
+        <button data-v="imperial" class="${getUnits() === 'imperial' ? 'on' : ''}">Feet</button>
+        <button data-v="metric" class="${getUnits() === 'metric' ? 'on' : ''}">Meters</button></div></div>
       <label class="toggle"><input type="checkbox" data-k="firstPerson" ${p.firstPerson ? 'checked' : ''}><span class="switch"></span>
         <span class="toggle-text"><b>Start in first person</b><small>C switches to the map any time</small></span></label>
       <label class="toggle"><input type="checkbox" data-k="replays" ${p.replays ? 'checked' : ''}><span class="switch"></span>
