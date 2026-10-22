@@ -99,14 +99,14 @@ function playCue(c: Cue, gain: number): void {
     case 'branch': sfx('branch', { gain: gain * 0.6 }); sfx('leaves', { gain: gain * 0.8 }); break;
     case 'bonk': sfx('bonk', { gain }); break;
     case 'chains':
-      // A jangle with a few links rattling after it.
-      sfx('jangle', { gain });
-      [0.03, 0.09, 0.17].forEach((delay, i) => sfx('chain', { gain: gain * (0.8 - i * 0.2), delay }));
+      // Into the chains, then the disc dropping into the tray.
+      sfx('chain', { gain });
+      sfx('tray', { gain: gain * 0.4, delay: 0.3 });
       break;
     case 'clank': sfx(Math.random() < 0.5 ? 'clank' : 'tray', { gain }); break;
     case 'land': sfx(c.surface === 'path' ? 'land-hard' : c.surface === 'bunker' ? 'land-sand' : 'land-grass', { gain: gain * 0.8 }); break;
     case 'splash': sfx('splash', { gain }); break;
-    case 'ob': sfx('ob', { gain: 0.7 }); break;
+    case 'ob': sfx('ob'); break;
   }
 }
 
@@ -332,7 +332,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     ambience(w.rain ? null : 'outdoors');
   }
   window.addEventListener('prefschange', applyWeather);
-  preload(['swish', 'tree', 'branch', 'leaves', 'bonk', 'chain', 'jangle', 'clank', 'tray', 'land-grass', 'splash', 'ob']);
+  preload(['swish', 'tree', 'branch', 'leaves', 'bonk', 'chain', 'clank', 'tray', 'land-grass', 'splash', 'ob']);
   if (new URLSearchParams(location.search).get('debug') === 'colliders') scene.showColliders(propColliders);
   if (course.props?.length) {
     $('status').textContent = 'Loading models…';
@@ -1036,12 +1036,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       });
       if (r.events.includes('chains')) chip('Chains', 'birdie');
       const tone = scoreTone(done.strokes, par);
-      sfx(JINGLES[tone], { gain: 0.8, delay: 0.15 });
+      sfx(JINGLES[tone], { delay: 0.15 });
       if (tone === 'ace' || tone === 'eagle') sfx('applause', { gain: 0.7, fadeAfter: 3 });
       else if (tone === 'birdie') sfx('applause', { gain: 0.35, fadeAfter: 1.2 });
       shown = true;
     } else if (done.pickedUp) {
-      sfx('jingle-bogey', { gain: 0.6 });
+      sfx('jingle-bogey');
       banner({ word: 'PICKED UP', tone: 'double', who: done.name, color: done.color, what: `Hole ${hole().ref} · max ${done.strokes}`, score: fmtPar(liveToPar(idx)) });
       shown = true;
     }
@@ -1130,7 +1130,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('card-close').hidden = !readOnly;
     $('results').hidden = false;
     if (!readOnly) { $('hud').hidden = true; clearBroadcast(); }
-    if (!readOnly && last && game().finished) sfx('jingle-round', { gain: 0.8 });
+    if (!readOnly && last && game().finished) sfx('jingle-round');
   }
   $('card-close').addEventListener('click', () => { $('results').hidden = true; });
 
@@ -1263,7 +1263,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function renderDraft(pi: number): void {
     const offer = { ...st.offer!, cards: st.offer!.cards.map(byId) };
-    sfx('deal', { gain: 0.6 });
+    sfx('deal');
     $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${st.starter ? 'pick your starter augment' : 'pick an augment'}`;
     $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
     $('draft-tier').className = `tier ${offer.tier}`;
@@ -1459,7 +1459,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (phase !== 'aim') return;
     const bag = bagOf(game().current);
     disc = bag[(bag.indexOf(disc) + dir + bag.length) % bag.length];
-    sfx('select', { gain: 0.4 });
+    sfx('select');
     recomputeTick();
     updateHud();
   }
@@ -1467,7 +1467,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function setHyzer(dir: 1 | -1): void {
     if (phase !== 'aim') return;
     hyzer = Math.max(-1, Math.min(1, hyzer + dir * 0.25));
-    sfx('select', { gain: 0.4 });
+    sfx('select');
     recomputeTick();
     updateHud();
   }
@@ -1505,7 +1505,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (k === 'p' && rogue && phase === 'aim' && perfectLeft[game().current] > 0) { perfectArmed = !perfectArmed; updateHud(); }
     else if (k === 'q') setHyzer(1);
     else if (k === 'e') setHyzer(-1);
-    else if (k === 't') { if (phase === 'aim') { forehand = !forehand; sfx('select', { gain: 0.4 }); recomputeTick(); updateHud(); } }
+    else if (k === 't') { if (phase === 'aim') { forehand = !forehand; sfx('select'); recomputeTick(); updateHud(); } }
     else if (k === 'g') cycleShot();
     else if (k === 'c') toggleFP();
     else if (k === 'v') cycleView();
@@ -1521,12 +1521,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function cycleShot(): void {
     if (phase !== 'aim' || puttStyle()) return;
     shot = SHOTS[(SHOTS.indexOf(shot) + 1) % SHOTS.length];
-    sfx('select', { gain: 0.4 });
+    sfx('select');
     recomputeTick();
     updateHud();
   }
   $('shot').addEventListener('click', cycleShot);
-  $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; sfx('select', { gain: 0.4 }); recomputeTick(); updateHud(); } });
+  $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; sfx('select'); recomputeTick(); updateHud(); } });
 
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
   const applyGraphics = () => { scene.setGraphics(prefs().graphics); $('fps').hidden = !prefs().fps; };

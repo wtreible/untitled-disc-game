@@ -3,6 +3,9 @@
 // Effects are decoded once and cached; music and ambience stream from <audio> elements, one track
 // at a time, and crossfade. Volumes come from prefs (Settings → Music / Effects). Files and their
 // licenses: public/audio/CREDITS.md.
+//
+// The effect files come from different packs at very different levels (15 dB apart), so each one
+// is measured when it loads and scaled to the same loudness; LEVEL then sets the mix on purpose.
 import { asset } from '../assets';
 import { prefs } from '../settings';
 
@@ -13,8 +16,7 @@ const SFX = {
   branch: ['branch-0.ogg', 'branch-1.ogg', 'branch-2.ogg', 'branch-3.ogg'],
   leaves: ['leaves-0.ogg', 'leaves-1.ogg', 'leaves-2.ogg', 'leaves-3.ogg'],
   bonk: ['bonk-0.ogg', 'bonk-1.ogg', 'bonk-2.ogg', 'bonk-3.ogg'],
-  chain: ['chain-0.ogg', 'chain-1.ogg', 'chain-2.ogg', 'chain-3.ogg', 'chain-4.ogg'],
-  jangle: ['jangle-0.ogg', 'jangle-1.ogg'],
+  chain: ['chain-0.ogg', 'chain-1.ogg', 'chain-2.ogg'],
   clank: ['clank-0.ogg', 'clank-1.ogg', 'clank-2.ogg'],
   tray: ['tray-0.ogg', 'tray-1.ogg', 'tray-2.ogg'],
   'land-grass': ['land-grass-0.ogg', 'land-grass-1.ogg', 'land-grass-2.ogg', 'land-grass-3.ogg'],
@@ -37,6 +39,20 @@ const SFX = {
 } as const;
 export type Sfx = keyof typeof SFX;
 
+/** Mix level of each effect, dB from the common loudness (0 = as loud as a tree hit). */
+const LEVEL: Record<Sfx, number> = {
+  swish: -6, tree: 0, branch: -3, leaves: -6, bonk: -2, chain: 1, clank: -2, tray: -3,
+  'land-grass': -3, 'land-hard': -3, 'land-sand': -3, splash: 0, ob: -3, applause: -4,
+  click: -10, select: -12, toggle: -10, confirm: -6, card: -8, deal: -8,
+  'jingle-great': -3, 'jingle-birdie': -3, 'jingle-par': -3, 'jingle-bogey': -3, 'jingle-round': -2,
+};
+/** The common loudness: RMS of a clip's loudest 300 ms, dBFS. */
+const TARGET_DB = -18;
+/** Scale at most this much either way (a near-silent tail shouldn't be blown up). */
+const MAX_BOOST = 4;
+/** How far past full scale a normalized peak may go (the limiter takes it). */
+const PEAK_ROOM = 2;
+
 export type Track = 'menu' | 'park' | 'minigolf' | 'fantasy' | 'space';
 const TRACKS: Record<Track, string> = {
   menu: 'music/menu.mp3', park: 'music/park.ogg', minigolf: 'music/minigolf.ogg', fantasy: 'music/fantasy.mp3', space: 'music/space.ogg',
@@ -54,7 +70,8 @@ const FADE = 1.2;
 
 let ctx: AudioContext | null = null;
 let sfxBus: GainNode, musicBus: GainNode, ambBus: GainNode;
-const buffers = new Map<string, Promise<AudioBuffer | null>>();
+/** Decoded effects, with the gain that brings each to TARGET_DB. */
+const buffers = new Map<string, Promise<{ buf: AudioBuffer; norm: number } | null>>();
 
 /** The audio graph, made on the first click or key (browsers refuse earlier). */
 function audio(): AudioContext | null {
@@ -62,6 +79,15 @@ function audio(): AudioContext | null {
   ctx = new AudioContext();
   const bus = (v: number) => { const g = ctx!.createGain(); g.gain.value = v; g.connect(ctx!.destination); return g; };
   sfxBus = bus(0); musicBus = bus(0); ambBus = bus(0);
+  // A limiter on the effects, so a few landing at once (chains, jingle, applause) don't clip.
+  const limit = ctx.createDynamicsCompressor();
+  limit.threshold.value = -3;
+  limit.knee.value = 3;
+  limit.ratio.value = 12;
+  limit.attack.value = 0.003;
+  limit.release.value = 0.2;
+  sfxBus.disconnect();
+  sfxBus.connect(limit).connect(ctx.destination);
   applyVolumes();
   return ctx;
 }
@@ -76,13 +102,40 @@ function applyVolumes(): void {
   ambBus.gain.setTargetAtTime(p.sfx * AMBIENCE_LEVEL * on, t, 0.05);
 }
 
-function load(file: string): Promise<AudioBuffer | null> {
+function load(file: string): Promise<{ buf: AudioBuffer; norm: number } | null> {
   let b = buffers.get(file);
   if (!b) {
-    b = fetch(asset(`audio/sfx/${file}`)).then((r) => r.arrayBuffer()).then((a) => ctx!.decodeAudioData(a)).catch(() => null);
+    b = fetch(asset(`audio/sfx/${file}`)).then((r) => r.arrayBuffer()).then((a) => ctx!.decodeAudioData(a))
+      .then((buf) => ({ buf, norm: normGain(buf) })).catch(() => null);
     buffers.set(file, b);
   }
   return b;
+}
+
+/**
+ * Gain that brings a clip's loudest 300 ms to TARGET_DB. A spiky clip (a thud's sharp attack) may
+ * push its peak up to 2× full scale: the limiter on the effects bus rounds that off.
+ */
+export function normGain(buf: { length: number; sampleRate: number; numberOfChannels: number; getChannelData(c: number): Float32Array }): number {
+  const n = buf.length, chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+  const w = Math.max(1, Math.min(n, Math.round(buf.sampleRate * 0.3)));
+  let peak = 0, sum = 0, best = 0;
+  const sq = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let m = 0;
+    for (const c of chans) m += c[i];
+    m /= chans.length;
+    peak = Math.max(peak, Math.abs(m));
+    sq[i] = m * m;
+    sum += sq[i];
+    if (i >= w) sum -= sq[i - w];
+    if (i >= w - 1) best = Math.max(best, sum / w);
+  }
+  if (n < w) best = sum / w;
+  const rms = Math.sqrt(best);
+  if (rms <= 0 || peak <= 0) return 1;
+  const g = Math.pow(10, TARGET_DB / 20) / rms;
+  return Math.max(1 / MAX_BOOST, Math.min(MAX_BOOST, g, PEAK_ROOM / peak));
 }
 
 /** Play an effect. `gain` 0–1 (distance falloff, softer replays), `rate` pitch, `delay` seconds. */
@@ -90,19 +143,20 @@ export function sfx(name: Sfx, o: { gain?: number; rate?: number; delay?: number
   const c = audio();
   if (!c || c.state !== 'running' || prefs().sfx <= 0 || prefs().muted) return;
   const files = SFX[name];
-  void load(files[Math.floor(Math.random() * files.length)]).then((buf) => {
-    if (!buf) return;
+  void load(files[Math.floor(Math.random() * files.length)]).then((clip) => {
+    if (!clip) return;
     const src = c.createBufferSource();
-    src.buffer = buf;
+    src.buffer = clip.buf;
     src.playbackRate.value = (o.rate ?? 1) * (0.95 + Math.random() * 0.1);
     const g = c.createGain();
-    g.gain.value = o.gain ?? 1;
+    const level = (o.gain ?? 1) * clip.norm * Math.pow(10, LEVEL[name] / 20);
+    g.gain.value = level;
     src.connect(g).connect(sfxBus);
     const at = c.currentTime + (o.delay ?? 0);
     src.start(at);
     // Long clips (applause): fade out and stop.
     if (o.fadeAfter !== undefined) {
-      g.gain.setValueAtTime(o.gain ?? 1, at + o.fadeAfter);
+      g.gain.setValueAtTime(level, at + o.fadeAfter);
       g.gain.linearRampToValueAtTime(0, at + o.fadeAfter + 1.5);
       src.stop(at + o.fadeAfter + 1.6);
     }
@@ -208,6 +262,6 @@ export function initSound(): void {
   document.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest?.('button, .toggle input, select');
     if (!b || (b as HTMLElement).dataset.sound === 'off' || (b as HTMLButtonElement).disabled) return;
-    sfx(b.matches('.toggle input') ? 'toggle' : 'click', { gain: 0.6 });
+    sfx(b.matches('.toggle input') ? 'toggle' : 'click');
   });
 }

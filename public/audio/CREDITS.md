@@ -25,8 +25,9 @@ Everything here is **CC0** (public domain dedication): free for any use, no attr
 
 | Files | From | Author | Source |
 |---|---|---|---|
-| `tree-*`, `branch-*`, `bonk-*`, `chain-*`, `clank-*`, `tray-*`, `land-*` | Impact Sounds | Kenney | https://kenney.nl/assets/impact-sounds |
-| `jangle-*`, `leaves-*` | RPG Audio (handleCoins, cloth) | Kenney | https://kenney.nl/assets/rpg-audio |
+| `tree-*`, `branch-*`, `bonk-*`, `clank-*`, `tray-*`, `land-*` | Impact Sounds | Kenney | https://kenney.nl/assets/impact-sounds |
+| `leaves-*` | RPG Audio (cloth) | Kenney | https://kenney.nl/assets/rpg-audio |
+| `chain-*` | 80 CC0 RPG SFX (chain_01–03) | rubberduck | https://opengameart.org/content/80-cc0-rpg-sfx |
 | `click`, `select`, `toggle`, `confirm`, `card`, `deal`, `ob` | Interface Sounds | Kenney | https://kenney.nl/assets/interface-sounds |
 | `jingle-*` | Music Jingles | Kenney | https://kenney.nl/assets/music-jingles |
 | `splash-*` | 40 CC0 water / splash / slime SFX | rubberduck | https://opengameart.org/content/40-cc0-water-splash-slime-sfx |

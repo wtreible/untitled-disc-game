@@ -1,9 +1,10 @@
-// Sound cues read back off simulated throws (src/audio/cues.ts).
+// Sound cues read back off simulated throws (src/audio/cues.ts), and effect loudness (sound.ts).
 import { describe, expect, it } from 'vitest';
 import type { Vec2 } from '../src/course/geo';
 import type { Tree } from '../src/course/disc-types';
 import type { Rings } from '../src/course/types';
 import { throwCues } from '../src/audio/cues';
+import { normGain } from '../src/audio/sound';
 import { DISCS, PUTTER_DISC } from '../src/disc/discs';
 import { simulateThrow, type DiscWorld } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
@@ -68,5 +69,22 @@ describe('throw sound cues', () => {
     const r = simulateThrow({ start: [0, -140], aim: NORTH, power: 1, disc: DD, hyzer: 0 }, w, () => 0.25, { ghost: true });
     expect(r.events).toContain('water');
     expect(cuesOf(w, r)).toEqual(['splash']);
+  });
+});
+
+describe('effect loudness', () => {
+  // A clip as Web Audio decodes it: one channel of a sine at amplitude a, 0.5 s at 8 kHz.
+  const clip = (a: number) => ({ length: 4000, sampleRate: 8000, numberOfChannels: 1, getChannelData: () => Float32Array.from({ length: 4000 }, (_, i) => a * Math.sin(i * 0.3)) });
+  const loud300 = (a: number, g: number) => 20 * Math.log10((a * g) / Math.SQRT2);
+
+  it('brings quiet and loud clips to the same level', () => {
+    expect(loud300(0.05, normGain(clip(0.05)))).toBeCloseTo(-18, 1);
+    expect(loud300(0.5, normGain(clip(0.5)))).toBeCloseTo(-18, 1);
+  });
+
+  it('never boosts more than 4×, or a peak past 2× full scale', () => {
+    expect(normGain(clip(0.001))).toBe(4);
+    const g = normGain({ ...clip(0.05), getChannelData: () => Float32Array.from({ length: 4000 }, (_, i) => (i === 10 ? 0.9 : 0.05 * Math.sin(i * 0.3))) });
+    expect(0.9 * g).toBeLessThanOrEqual(2 + 1e-6); // the peak is stored as float32
   });
 });
