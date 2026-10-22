@@ -34,8 +34,11 @@ export interface WireResult {
 export type RoundEvent =
   /** Start the next hole (the first one, the first time) with its wind (m/s, blowing toward). */
   | { t: 'hole-start'; wind: Vec2 }
-  /** A throw landed. `perfect`: a Perfect Form charge was used on it. */
-  | { t: 'throw'; player: number; perfect: boolean; result: WireResult }
+  /**
+   * A throw landed. `perfect`: a Perfect Form charge was used on it. `twin`: Clone Disc's other
+   * throw, the one not kept (every other sample, for show only).
+   */
+  | { t: 'throw'; player: number; perfect: boolean; result: WireResult; twin?: Vec3[] }
   /** Take back the player's last throw (Crazy mode). */
   | { t: 'mulligan'; player: number }
   /** Crazy mode draft: the cards offered to a player (powerup ids). */

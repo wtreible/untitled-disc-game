@@ -41,6 +41,28 @@ const PUTT_RANGE = 20;
 const PUTT_LAUNCH_OFFSET = 0.12;
 /** …or, for throws, the disc's own best launch angle (fast discs want it flatter). */
 const launchOffset = (disc: Disc, putt: boolean) => (putt ? PUTT_LAUNCH_OFFSET : disc.launch);
+
+/**
+ * The first `frac` of a ghost path by ground distance covered, not by sample count: a high throw
+ * hangs in the air and a low one rolls, so half the samples isn't half the line.
+ */
+function cutByDistance(q: Vec3[], frac: number): Vec3[] {
+  if (frac >= 1) return q;
+  if (frac <= 0 || q.length < 2) return [];
+  const seg = (i: number) => Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]);
+  let total = 0;
+  for (let i = 1; i < q.length; i++) total += seg(i);
+  let want = total * frac;
+  for (let i = 1; i < q.length; i++) {
+    const s = seg(i);
+    if (s >= want) {
+      const t = s > 0 ? want / s : 0, a = q[i - 1], b = q[i];
+      return [...q.slice(0, i), [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]];
+    }
+    want -= s;
+  }
+  return q;
+}
 const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2;
 const LIE_LABELS: Record<string, string> = {
   tee: 'Tee pad', fairway: 'Fairway', rough: 'Open', trees: 'Woods', bunker: 'Sand', green: 'Basket', path: 'Path', water: 'Water', oob: 'OB',
@@ -464,8 +486,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.setHole(hole());
     scene.clearTrails();
     startHoleInfo();
-    // Every hole starts from a flat backhand; startTurn picks the suggested disc.
-    hyzer = 0;
+    // Every hole starts backhand; startTurn resets the release angle and picks the suggested disc.
     forehand = false;
   }
 
@@ -556,6 +577,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     phase = mine(game().current) ? 'aim' : 'watching';
     liveAim = null;
     lastLive = '';
+    hyzer = 0; // every throw starts flat (forehand / backhand carries through the hole)
     $('hud').hidden = false;
     power = 0;
     fpOverride = null;
@@ -598,6 +620,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     };
   }
 
+  /** First-person look changed the launch angle: recompute the tick on the next frame. */
+  let tickStale = false;
   const ghost = (pw: number) => simulateThrow(throwInput(pw), world(), () => 0.25, { ghost: true });
 
   /**
@@ -605,6 +629,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
    * whose ghost crosses the target distance at mid-chain height (more power → higher there).
    */
   function recomputeTick(): void {
+    tickStale = false;
     const p = player();
     const d = dist(p.ball, aimTarget);
     const putting = puttStyle();
@@ -640,12 +665,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     perfectArmed = false;
     const input = { ...throwInput(Math.max(0.01, power)), perfect };
     let result = simulateThrow(input, world());
+    let other: ThrowResult | null = null;
     if (modsFor(me).clone) {
-      // Clone Disc: throw twice, keep the better one.
-      const twin = simulateThrow(input, world());
-      if (outcomeScore(twin) < outcomeScore(result)) result = twin;
+      // Clone Disc: throw twice, keep the better one. Both fly; the other is shown faded.
+      other = simulateThrow(input, world());
+      if (outcomeScore(other) < outcomeScore(result)) [result, other] = [other, result];
     }
     const e: Extract<RoundEvent, { t: 'throw' }> = { t: 'throw', player: me, perfect, result: st.wire(result) };
+    if (other) e.twin = st.wire(other).samples.filter((_, i) => i % 2 === 0);
     const early = sendNow(e);
     playThrow(e, puttStyle() ? 1 : prefs().playback, false);
     if (flight) flight.sentEarly = early;
@@ -696,6 +723,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.lockTrees(null);
     const r = e.result;
     const idx = e.player;
+    if (e.twin) scene.addTrail(e.twin, game().players[idx].color, 0.25);
     scene.addTrail(r.samples, game().players[idx].color);
     flight = null;
     // The throw lands: strokes, lie, Lumberjack, the hole's score if it's over. Ours is sent now.
@@ -965,6 +993,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const d = dist(b, aimTarget) || toBasket();
     aimTarget = [b[0] + Math.cos(yaw) * d, b[1] + Math.sin(yaw) * d];
     scene.setEye(b, yaw, pitch);
+    if (phase === 'aim') tickStale = true; // recomputed once per frame, not per pointer event
     updateHud();
   }
 
@@ -1040,8 +1069,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (k === ']') cycleDisc(1);
     else if (k === 'arrowleft') rotateAim(e.shiftKey ? 0.2 : 1);
     else if (k === 'arrowright') rotateAim(e.shiftKey ? -0.2 : -1);
-    else if (k === 'arrowup' && isFP() && phase === 'aim') { look(0, (e.shiftKey ? 0.2 : 1) * Math.PI / 180); recomputeTick(); }
-    else if (k === 'arrowdown' && isFP() && phase === 'aim') { look(0, -(e.shiftKey ? 0.2 : 1) * Math.PI / 180); recomputeTick(); }
+    else if (k === 'arrowup' && isFP() && phase === 'aim') { look(0, (e.shiftKey ? 0.2 : 1) * Math.PI / 180); }
+    else if (k === 'arrowdown' && isFP() && phase === 'aim') { look(0, -(e.shiftKey ? 0.2 : 1) * Math.PI / 180); }
     else if (k === 'r' && phase === 'replay') scene.resetOrbit();
     else if (k === 'w' && isFP()) nudgeTargetDistance(e.shiftKey ? 5 : 1);
     else if (k === 's' && isFP()) nudgeTargetDistance(e.shiftKey ? -5 : -1);
@@ -1074,6 +1103,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   // ---------- frame loop ----------
   let lastFrame = performance.now();
+  /** Clone Disc: the other throw's disc, `t` samples into the flight (its path is every other sample). */
+  function showTwin(t: number): void {
+    const tw = flight?.e.twin;
+    if (!tw || tw.length < 2) return;
+    const k = Math.min(tw.length - 1, Math.floor(t / 2));
+    const a = tw[Math.max(0, k - 1)], b = tw[Math.min(tw.length - 1, k + 1)];
+    scene.setTwin(sampleAt(tw, t / 2), game().players[flight!.e.player].color, Math.atan2(b[1] - a[1], b[0] - a[0]));
+  }
+
   function frameLoop(now: number): void {
     const dt = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
     lastFrame = now;
@@ -1105,6 +1143,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const q = g.players[i];
       scene.setDisc(i, q && !q.holed && !(flight && i === g.current) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
     });
+    if (!flight?.e.twin) scene.setTwin(null, '#fff');
     sendLiveAim(now);
     if (phase === 'watching') showLiveAim();
     if (flight && replay) {
@@ -1124,6 +1163,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       replay.smoothHeading += dh * (replay.started ? 1 - Math.exp(-dt * 5) : 1);
       scene.setDisc(g.current, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
       scene.chase(pos, replay.smoothHeading, !replay.started, dt);
+      showTwin(t);
       replay.started = true;
       scene.setAim(null, [0, 0], '#fff');
       scene.setTarget3d(null, [0, 0], '#fff');
@@ -1136,6 +1176,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const kk = Math.max(0, Math.min(k, s.length - 1));
       const pos = sampleAt(s, Math.max(0, ((now - flight.t0) / 1000) * 60 * flight.speed));
       scene.setDisc(g.current, pos, flight.result.banks[kk] ?? 0, heading(s, kk), true);
+      showTwin(((now - flight.t0) / 1000) * 60 * flight.speed);
       // First person: turn the head to follow the disc.
       if (isFP()) scene.lookToward(pos, 0.12);
       scene.setAim(null, [0, 0], '#fff');
@@ -1148,7 +1189,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       // Ghost line: earned in the roguelike (fraction of the flight shown); Oracle adds the wobble spread.
       const m = modsFor(game().current);
       const pw = phase === 'charging' ? Math.max(power, 0.01) : tick;
-      const cut = (q: Vec3[]) => q.slice(0, Math.max(0, Math.round(q.length * Math.min(1, m.ghost))));
+      if (phase === 'aim' && tickStale) { recomputeTick(); $('meter-target').style.left = `${tick * 100}%`; }
+      const cut = (q: Vec3[]) => cutByDistance(q, m.ghost);
       if (m.ghost <= 0) scene.setPreview(null, p.color);
       else {
         const spread = m.ghostCone ? [-1, 1].map((k) => {
@@ -1170,7 +1212,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // Dev builds only: a handle for automated browser checks.
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__satgolf = {
-      scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log, live: () => liveAim,
+      scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log, live: () => liveAim, aim: () => ({ pitch, yaw, tick }),
     };
   }
   // Joining (or rejoining) a room: replay its log, redraw this hole's throws, then carry on.
@@ -1180,7 +1222,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       presentHole();
       const from = st.log.map((e) => e.t).lastIndexOf('hole-start');
       for (const e of st.log.slice(from + 1)) {
-        if (e.t === 'throw') scene.addTrail(e.result.samples, PLAYER_COLORS[e.player]);
+        if (e.t === 'throw') { if (e.twin) scene.addTrail(e.twin, PLAYER_COLORS[e.player], 0.25); scene.addTrail(e.result.samples, PLAYER_COLORS[e.player]); }
         if (e.t === 'mulligan') scene.popTrail();
       }
     }

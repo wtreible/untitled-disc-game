@@ -689,18 +689,53 @@ export class CourseScene {
     this.previewMat.opacity = this.fp ? 0.5 : 0.9;
   }
 
-  addTrail(samples: Vec3[], color: string): void {
+  /** A throw's top-down trail. A fainter one (Clone Disc's other throw) belongs to the next trail added. */
+  addTrail(samples: Vec3[], color: string, opacity = 0.7): void {
     const pts = samples.map((s) => new THREE.Vector3(s[0], s[1], OVERLAY_Z - 1));
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7, depthTest: false }));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthTest: false }));
     line.renderOrder = 9;
+    line.userData.twin = opacity < 0.7;
     this.trails.add(line);
   }
 
-  /** Remove the most recent trail (mulligan). */
+  /** Remove the most recent throw's trail, and its Clone Disc twin (mulligan). */
   popTrail(): void {
-    const c = this.trails.children[this.trails.children.length - 1] as THREE.Line | undefined;
+    const last = () => this.trails.children[this.trails.children.length - 1] as THREE.Line | undefined;
+    let c = last();
     if (c) { this.trails.remove(c); c.geometry.dispose(); }
+    c = last();
+    if (c?.userData.twin) { this.trails.remove(c); c.geometry.dispose(); }
   }
+
+  /** Clone Disc: the other throw's disc, see-through, in either view. */
+  setTwin(p: Vec3 | null, color: string, heading = 0): void {
+    if (!this.twin) {
+      const d3 = discMesh('#ffffff');
+      const m = d3.material as THREE.MeshLambertMaterial;
+      m.transparent = true;
+      m.opacity = 0.45;
+      m.depthWrite = false;
+      const mark = new THREE.Group();
+      mark.add(disc2d(6.5, '#111111', 0.4), disc2d(5, '#ffffff', 0.5));
+      this.pixelScaled.push(mark);
+      this.overlays.add(mark);
+      this.scene.add(d3);
+      this.twin = { d3, mark };
+    }
+    const { d3, mark } = this.twin;
+    d3.visible = p !== null && this.fp;
+    d3.layers.set(this.fp ? 0 : 1);
+    mark.visible = p !== null;
+    if (!p) return;
+    (d3.material as THREE.MeshLambertMaterial).color.set(color);
+    for (const c of mark.children) ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(c === mark.children[0] ? '#111111' : color);
+    mark.position.set(p[0], p[1], OVERLAY_Z + 1.5);
+    d3.position.set(p[0], p[1], Math.max(p[2], 0.012));
+    d3.scale.setScalar(Math.min(8, Math.max(1, Math.sqrt(this.persp.position.distanceTo(d3.position) / 3))));
+    d3.rotation.set(0, 0, heading);
+  }
+
+  private twin: { d3: THREE.Mesh; mark: THREE.Group } | null = null;
 
   clearTrails(): void {
     for (const c of [...this.trails.children]) {
