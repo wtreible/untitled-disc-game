@@ -1206,10 +1206,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
     $('results-table').innerHTML = head + '<tbody>' + par + rows.join('') + '</tbody>';
     // Online, only the host moves everyone on to the next hole.
+    // Online, the final card's way on is the host's: everyone back to the room's lobby together.
     $('next').hidden = readOnly || last || !isHost;
-    $('card-wait').hidden = readOnly || last || isHost;
-    $('again').hidden = readOnly || !last;
-    $('again').textContent = net ? 'Leave room' : 'Play again';
+    $('card-wait').hidden = readOnly || isHost;
+    $('card-wait').textContent = last ? 'Waiting for the host to go back to the lobby…' : 'Waiting for the host to continue…';
+    $('again').hidden = readOnly || !last || !isHost;
+    $('again').textContent = net ? 'Back to lobby' : 'Play again';
+    $('leave').hidden = readOnly || !last || !net;
     $('card-close').hidden = !readOnly;
     $('results').hidden = false;
     if (!readOnly) { $('hud').hidden = true; clearBroadcast(); }
@@ -1371,9 +1374,26 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('draft').hidden = false;
   }
   $('again').addEventListener('click', () => {
-    if (net) { net.room.close(); history.replaceState(null, '', location.pathname + location.search); }
+    if (net) { if (isHost) net.room.end(); return; } // the room's 'ended' brings everyone back, us too
     location.reload();
   });
+  $('leave').addEventListener('click', () => {
+    net?.room.close();
+    history.replaceState(null, '', location.pathname + location.search);
+    location.reload();
+  });
+  // Online host: end the game early (the range never ends on its own).
+  $('pause-lobby').hidden = !net || !isHost;
+  $('pause-lobby').addEventListener('click', () => {
+    if (net && isHost && confirm('End this game and take everyone back to the lobby?')) net.room.end();
+  });
+  /** The room is back in its lobby: reload into it (the menu rejoins the room without asking names). */
+  function backToLobby(): void {
+    if (!net) return;
+    try { sessionStorage.setItem('sat-golf:rejoin', net.room.code); } catch { /* storage unavailable: the name prompt shows */ }
+    net.room.close();
+    location.reload(); // the address still has #room=CODE
+  }
 
   // ---------- HUD ----------
 
@@ -1888,8 +1908,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         const a = s as LiveAim | null;
         if (a && a.player === game().current && !mine(a.player) && phase === 'watching') liveAim = a;
       },
+      ended: () => backToLobby(),
       // Reconnected: pick up what we missed, resend what the room didn't get.
       welcome: (w) => {
+        if (!w.started) return backToLobby(); // the game ended while we were away
         for (const x of w.log) if (x.seq >= known) { known++; inbox.push(x.e); }
         for (let q = w.log.length; q < known; q++) {
           const e = sent.get(q);
@@ -1899,7 +1921,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         pump();
       },
       status: (s) => { $('status').textContent = s === 'open' ? '' : s === 'connecting' ? 'Connecting to the room…' : 'Connection lost: reconnecting…'; },
-      error: (reason) => chip(reason, 'hot'),
+      error: (reason) => chip(/unknown message end/.test(reason) ? 'This room server is too old to go back to the lobby' : reason, 'hot'),
     });
   }
   // Dev/play-test: ?grant=0:sapling,1:the-bucket gives augments to players at the start of a run.

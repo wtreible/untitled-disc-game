@@ -87,6 +87,46 @@ describe.skipIf(!BASE)('room server', () => {
     for (const x of [a, b, c]) x.close();
   });
 
+  it('the host ends the game: everyone is back in the same lobby, and the next game starts clean', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    await a.until('welcome');
+    const b = await connect(code, 'client-bbbb', 'Bo');
+    await b.until('welcome');
+    const seats = [{ name: 'Ann', client: 'client-aaaa' }, { name: 'Bo', client: 'client-bbbb' }];
+    a.send({ type: 'lobby', lobby: lobby(seats) });
+    a.send({ type: 'start' });
+    await b.until('started');
+    a.send({ type: 'event', seq: 0, e: { t: 'hole-start', wind: [1, 0] } });
+    await a.until('ack');
+    await b.until('event');
+
+    // Only the host can end it.
+    b.send({ type: 'end' });
+    expect((await b.until('error')).reason).toMatch(/host/);
+    a.send({ type: 'end' });
+    const ended = await b.until('ended');
+    expect(ended.lobby.seats).toEqual(seats);
+    await a.until('ended');
+
+    // A browser coming back (a reload) sees the lobby, not the old game.
+    b.close();
+    const b2 = await connect(code, 'client-bbbb', 'Bo');
+    const w = await b2.until('welcome');
+    expect(w.started).toBe(false);
+    expect(w.log).toEqual([]);
+    expect(w.lobby.seats).toEqual(seats);
+
+    // The next game: a new setup, and the log starts again at 0.
+    a.send({ type: 'lobby', lobby: { ...lobby(seats), course: 'range', count: 1 } });
+    expect((await b2.until('lobby')).lobby.course).toBe('range');
+    a.send({ type: 'start' });
+    await b2.until('started');
+    b2.send({ type: 'event', seq: 0, e: { t: 'hole-start', wind: [0, 0] } });
+    expect((await b2.until('ack')).seq).toBe(0);
+    a.close(); b2.close();
+  });
+
   it('the room survives everyone leaving: rejoining gets the same log', async () => {
     const code = room();
     const a = await connect(code, 'client-dddd', 'Di');

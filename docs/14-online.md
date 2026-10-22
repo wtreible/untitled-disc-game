@@ -16,6 +16,8 @@ Friends play together from their own browsers: one hosts a room, the others open
 - **Away players:** when the round waits on someone who has disconnected (their throw, draft pick or placement), the host gets **Play for them** after 4 s. The host then controls that player until they reconnect, when control goes straight back.
 - **Following throws:** a friend's throw is ridden along live with the chase camera at replay pace, with no replay after (Settings → Follow friends' throws). The leaderboard's **Up next** strip shows the away-rule order as it stands.
 - **The game clock travels with each throw.** Moving props (windmill blades, the drawbridge, the sweeping ring) are simulated at the thrower's clock; the throw event carries it, and every browser takes it when the throw flies, so the props on screen are where the physics had them.
+- **After a game,** the host's **Back to lobby** on the final card (or **Everyone back to the lobby** in the pause menu, any time, e.g. on the driving range, which never ends) sends the room an `end`. The room clears the game's log and reopens its lobby with the same seats and setup; every browser reloads straight back into it (no name prompt) for the host to pick the next game. Anyone else can **Leave room** from the final card.
+- **The driving range online:** players take turns from the tee. Its baskets, trees, wind and weather are a `range` event, sent by whoever is up (everyone else's panel is locked), so everyone throws on the same range.
 - **Rooms delete themselves** after a week idle.
 
 ## Free tier
@@ -38,4 +40,5 @@ Without `ROOMS_URL`, public builds hide "Play online".
 - One player per browser online (no hot seat inside a room yet).
 - Renaming in the lobby, 6 seats and bag building in the lobby need the room server from 2026-10-21 (evening) or later (`npm run server:deploy`).
 - If the host drops mid-game, nobody else can play for an away player.
+- Back to lobby needs the room server from 2026-10-22 or later (`npm run server:deploy`). An older server refuses `end`, and the host sees that it's too old.
 - Live aim needs the room server from 2026-10-21 or later (`npm run server:deploy`). An older server refuses those messages, and the game ignores the refusal, so it still plays without live aim.

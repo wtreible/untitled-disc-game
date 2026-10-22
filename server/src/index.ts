@@ -9,12 +9,13 @@
 // Messages are JSON. Client → room:
 //   { type: 'lobby', lobby }        host only, before the start: course, holes, crazy, bag, seats
 //   { type: 'start' }               host only: freeze the lobby; game events may follow
+//   { type: 'end' }                 host only: the game is over; clear its log and reopen the lobby
 //   { type: 'event', seq, e }       a game event, valid only if seq is the next log position
 //   { type: 'live', s }             passing state (the thrower's aim, power): relayed, not stored
 //   { type: 'name', name }          change our name (the host's lobby picks it up before the start)
 // Room → client:
 //   { type: 'welcome', you, host, lobby, started, log, members }   on connect (full catch-up)
-//   { type: 'lobby', lobby } · { type: 'started', lobby } · { type: 'members', members }
+//   { type: 'lobby', lobby } · { type: 'started', lobby } · { type: 'ended', lobby } · { type: 'members', members }
 //   { type: 'event', seq, from, e }  to everyone else · { type: 'ack', seq } to the sender
 //   { type: 'live', from, s }        someone's passing state
 //   { type: 'reject', seq, expected, reason }   seq was stale (someone else got there first)
@@ -122,6 +123,15 @@ export class Room extends DurableObject<Env> {
         if (!lobby || lobby.seats.length === 0) return this.fail(ws, 'no players');
         this.set('started', '1');
         this.broadcast({ type: 'started', lobby });
+        return;
+      }
+      case 'end': {
+        // Everyone goes back to the same lobby (same seats and setup) for the next game.
+        if (!isHost) return this.fail(ws, 'only the host ends the game');
+        if (!started) return;
+        this.sql.exec('DELETE FROM events');
+        this.set('started', '0');
+        this.broadcast({ type: 'ended', lobby: this.lobby() });
         return;
       }
       case 'event': {

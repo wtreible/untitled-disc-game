@@ -89,6 +89,8 @@ export interface RoomHandlers {
   welcome?(w: Welcome): void;
   lobby?(l: Lobby): void;
   started?(l: Lobby): void;
+  /** The host ended the game: the room is back in its lobby (log cleared). */
+  ended?(l: Lobby | null): void;
   members?(m: Member[]): void;
   /** Someone else's event, at log position seq. */
   event?(seq: number, from: string, e: RoundEvent): void;
@@ -127,6 +129,7 @@ export class RoomClient {
         case 'welcome': h.welcome?.(m as unknown as Welcome); break;
         case 'lobby': h.lobby?.(m.lobby as Lobby); break;
         case 'started': h.started?.(m.lobby as Lobby); break;
+        case 'ended': h.ended?.(m.lobby as Lobby | null); break;
         case 'members': h.members?.(m.members as Member[]); break;
         case 'event': h.event?.(m.seq as number, m.from as string, m.e as RoundEvent); break;
         case 'reject': h.reject?.(m.expected as number); break;
@@ -162,6 +165,8 @@ export class RoomClient {
 
   setLobby(l: Lobby): void { this.send({ type: 'lobby', lobby: l }); }
   start(): void { this.send({ type: 'start' }); }
+  /** Host: the game is over, everyone back to the lobby for the next one. */
+  end(): void { this.send({ type: 'end' }); }
   /** Passing state for the others (dropped if not connected; the next update replaces it). */
   sendLive(s: unknown): void { this.send({ type: 'live', s }); }
   /** Our event at log position seq (the number of events before it). */

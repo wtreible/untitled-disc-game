@@ -459,7 +459,10 @@ $('leave-room').addEventListener('click', () => {
 // pasted into a tab that's already open (only the #hash changes, so the page doesn't reload).
 const roomInHash = () => location.hash.match(/^#room=([A-Za-z0-9]{4,8})$/)?.[1].toUpperCase() ?? null;
 const linked = roomInHash();
-if (ROOMS_URL && linked) void enterRoom(linked, false);
+/** Back from a finished game (src/modes/disc.ts): straight into the same room, no name prompt. */
+const rejoin = (() => { try { const c = sessionStorage.getItem('sat-golf:rejoin'); sessionStorage.removeItem('sat-golf:rejoin'); return c; } catch { return null; } })();
+if (ROOMS_URL && linked && rejoin === linked) joinRoom(linked);
+else if (ROOMS_URL && linked) void enterRoom(linked, false);
 window.addEventListener('hashchange', () => {
   const code = roomInHash();
   if (!ROOMS_URL || !code || launched || room?.code === code || !$('name-ask').hidden) return;
