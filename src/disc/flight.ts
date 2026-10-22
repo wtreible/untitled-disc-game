@@ -73,6 +73,21 @@ export const FLIGHT = {
   branchDensity: 0.11,
   /** Skid deceleration after landing, m/s², by surface. */
   skid: { default: 7, trees: 11, path: 3.5, tee: 4, fairway: 6 } as Record<string, number>,
+  /** Rollers: deceleration (m/s²) rolling on edge, by surface. */
+  roll: { default: 2.6, trees: 4.5, path: 1.2, tee: 1.4, fairway: 1.6, green: 1.6 } as Record<string, number>,
+  /** Rollers: how fast the path curls (rad/s) at full speed, and extra as the disc slows and leans. */
+  rollCurl: 0.06,
+  rollCurlSlow: 0.55,
+  /** Rollers: below this speed (m/s) the disc falls flat and skids to a stop. */
+  rollFall: 1.4,
+  /** Overhand (tomahawk / thumber): release on edge, roll toward upside down at this rate (rad/s). */
+  overBank: 1.35,
+  overRoll: 0.7,
+  overFlip: 2.6,
+  /** Overhand: release speed vs a backhand (they're thrown with the arm, not the body). */
+  overSpeed: 1,
+  overLift: 0.07,
+  overDrag: 0.045,
 };
 
 /**
@@ -160,6 +175,12 @@ export interface ThrowInput {
   releaseZ?: number;
   /** Putts: more accurate, less spin-driven curve. */
   style?: 'drive' | 'putt';
+  /**
+   * The kind of throw (not for putts): the usual flat-ish one, overhand (tomahawk curls left and
+   * dives, thumber the mirror image; both go up over trees), or a roller (out on a big anhyzer,
+   * then rolling on edge under them).
+   */
+  shot?: Shot;
   /** Mirror the curve for left-handed backhand / right-handed forehand. */
   mirror?: boolean;
   /** Player modifiers (roguelike powerups). Omitted = base game. */
@@ -168,6 +189,13 @@ export interface ThrowInput {
   fromTee?: boolean;
   /** Zero execution error: fly exactly the ghost line (Perfect Form). */
   perfect?: boolean;
+}
+
+export type Shot = 'standard' | 'tomahawk' | 'thumber' | 'roller';
+
+/** Default launch angle for a shot (radians); the standard one is the disc's own. */
+export function shotLaunch(shot: Shot | undefined, disc: Disc): number {
+  return shot === 'tomahawk' || shot === 'thumber' ? 0.72 : shot === 'roller' ? -0.03 : disc.launch;
 }
 
 export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed' | 'phased' | 'saved' | 'gimme' | 'magnet' | 'prop';
@@ -244,6 +272,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const err = putt ? m.puttAimError : m.aimError;
   const noise = opt.ghost || input.perfect ? () => 0 : () => gaussian(rng) * err;
   const mirror = input.mirror ? -1 : 1;
+  const shot: Shot = putt ? 'standard' : input.shot ?? 'standard';
+  const overhand = shot === 'tomahawk' || shot === 'thumber';
+  /** Overhand: which way it rolls over (tomahawk: to the left of travel). */
+  const side = shot === 'thumber' ? -1 : 1;
 
   // Release, with execution error (bigger when muscling past ~90%).
   const over = m.noOverpowerWobble ? 0 : Math.max(0, input.power - 0.9) * 10;
@@ -252,9 +284,11 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   // speed grows with the measured full-power sensitivity (distance ∝ v^~1.8 there).
   const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange : m.distance * (input.fromTee ? m.teeDistance : 1));
   const power = (meter <= 1 ? meterToSpeed(meter, input.disc) : meter ** 0.55) * (1 + noise() * (putt ? 0.015 : 0.02));
-  const launch = (input.launch ?? (putt ? 0.12 : input.disc.launch)) + noise() * 0.01;
-  let bank = mirror * (input.hyzer * FLIGHT.maxReleaseBank * m.shape + noise() * 0.04);
-  const speed0 = disc.v0 * power;
+  const launch = (input.launch ?? (putt ? 0.12 : shotLaunch(shot, input.disc))) + noise() * 0.01;
+  let bank = overhand ? side * FLIGHT.overBank + noise() * 0.04
+    : shot === 'roller' ? mirror * (-0.95 + input.hyzer * 0.2 + noise() * 0.04) // a big anhyzer; hyzer softens it
+      : mirror * (input.hyzer * FLIGHT.maxReleaseBank * m.shape + noise() * 0.04);
+  const speed0 = disc.v0 * power * (overhand ? FLIGHT.overSpeed : 1);
   let p: Vec3 = [input.start[0], input.start[1], world.terrain.heightAt(input.start[0], input.start[1]) + (input.releaseZ ?? 1.0)];
   let v: Vec3 = [Math.cos(yaw) * Math.cos(launch) * speed0, Math.sin(yaw) * Math.cos(launch) * speed0, Math.sin(launch) * speed0];
 
@@ -280,7 +314,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     catchBonus: m.catchBonus + (input.fromTee ? m.teeCatchBonus : 0),
     cutToCatch: m.cutToCatch,
   };
-  let state: 'flight' | 'dead' | 'ground' = 'flight';
+  let state: 'flight' | 'dead' | 'ground' | 'rolling' = 'flight';
+  /** Roller: the speed it started rolling at, and which way it curls. */
+  let roll0 = 0;
+  const curl = mirror * (disc.turn + disc.fade < 1 ? -1 : 1);
   let holedAt: Vec3 | null = null;
   const near: Tree[] = [];
   let inChains = false;
@@ -289,14 +326,28 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     const s = Math.hypot(v[0], v[1], v[2]);
     const ground = world.terrain.heightAt(p[0], p[1]);
 
-    if (state === 'ground') {
-      const sh = Math.hypot(v[0], v[1]);
+    if (state === 'ground' || state === 'rolling') {
+      let sh = Math.hypot(v[0], v[1]);
       if (sh < 0.05) break;
       const surf = surfaceAt(world, p[0], p[1]);
-      const decel = (FLIGHT.skid[surf] ?? FLIGHT.skid.default) / m.skid;
-      const ns = Math.max(0, sh - decel * DT);
-      v = [(v[0] / sh) * ns, (v[1] / sh) * ns, 0];
-      p = [p[0] + v[0] * DT, p[1] + v[1] * DT, ground];
+      if (state === 'rolling') {
+        // On edge: it rolls far, curling more as it slows and leans, then falls flat.
+        const slow = 1 - Math.min(1, sh / Math.max(1e-6, roll0));
+        const w = curl * (FLIGHT.rollCurl + FLIGHT.rollCurlSlow * slow * slow);
+        const c = Math.cos(w * DT), sn = Math.sin(w * DT);
+        v = [v[0] * c - v[1] * sn, v[0] * sn + v[1] * c, 0];
+        const ns = Math.max(0, sh - (FLIGHT.roll[surf] ?? FLIGHT.roll.default) / m.skid * DT);
+        v = [(v[0] / sh) * ns, (v[1] / sh) * ns, 0];
+        bank = curl * -(1.2 + 0.3 * slow);
+        if (ns < FLIGHT.rollFall) { state = 'ground'; bank = 0; }
+        sh = ns;
+      } else {
+        const decel = (FLIGHT.skid[surf] ?? FLIGHT.skid.default) / m.skid;
+        const ns = Math.max(0, sh - decel * DT);
+        v = [(v[0] / sh) * ns, (v[1] / sh) * ns, 0];
+      }
+      p = [p[0] + v[0] * DT, p[1] + v[1] * DT, ground + (state === 'rolling' ? DISC_RADIUS : 0)];
+      if (state === 'rolling' && (surf === 'water' || surf === 'oob')) break; // rolled in
       if (!opt.ghost) {
         trunkCollide(p, v, world, near, tctx, 0.2);
         if (world.props) { const prevG: Vec3 = [p[0] - v[0] * DT, p[1] - v[1] * DT, p[2]]; const tag = collideProps(p, v, prevG, (world.clock0 ?? 0) + step * DT, nearColliders(world.props, p[0], p[1])); if (tag) { propHits.push(tag); events.push('prop'); } }
@@ -316,7 +367,9 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       // gets a fraction of the lift and extra drag.
       const alpha = nose - Math.atan2(air[2], Math.hypot(air[0], air[1])); // −π/2 … +π/2-ish
       const dead = state === 'dead';
-      const { CL: cl, CD: cd } = aero(alpha, cl0, cd0);
+      // Overhand: the disc flies rim first (on edge, then upside down), so it barely stalls: low
+      // drag and a small lift that, banked over, mostly pushes it sideways and then down.
+      const { CL: cl, CD: cd } = overhand && !dead ? { CL: FLIGHT.overLift, CD: FLIGHT.overDrag } : aero(alpha, cl0, cd0);
       const CL = cl * (dead ? 0.2 : 1);
       const CD = cd + (dead ? 0.3 : 0);
       const L = FLIGHT.K * sa * sa * CL;
@@ -339,7 +392,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       const prev: Vec3 = p;
       p = [p[0] + v[0] * DT, p[1] + v[1] * DT, p[2] + v[2] * DT];
 
-      if (state === 'flight') {
+      if (state === 'flight' && overhand) {
+        // Overhand: released on edge, it corkscrews over onto its back and dives.
+        bank += side * FLIGHT.overRoll * DT * (side * bank < FLIGHT.overFlip ? 1 : 0);
+      } else if (state === 'flight') {
         // Turn needs speed (> ~60% of full release); fade grows as the disc slows. Each drives the
         // bank toward a limit set by the flight numbers and eases off near it. Unbounded, fade
         // kept rolling until drivers landed upside down (bank ~175°).
@@ -372,9 +428,12 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       if (p[2] <= ground) {
         // Landing: keep a fraction of horizontal speed as a skid.
         p = [p[0], p[1], ground];
-        const keep = m.sticky ? 0 : state === 'dead' ? 0.25 : 0.4;
+        // A roller lands on edge and rolls on; an overhand throw lands upside down and stops.
+        const rolls: boolean = shot === 'roller' && state === 'flight' && !m.sticky;
+        const keep = m.sticky ? 0 : rolls ? 0.85 : state === 'dead' ? 0.25 : overhand ? 0.12 : 0.4;
         v = [v[0] * keep, v[1] * keep, 0];
-        state = 'ground';
+        state = rolls ? 'rolling' : 'ground';
+        roll0 = Math.hypot(v[0], v[1]);
         const surf = surfaceAt(world, p[0], p[1]);
         if (surf === 'water' || surf === 'oob') break;
       }

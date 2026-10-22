@@ -3,7 +3,7 @@ import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from '../
 import { simplify } from '../course/disc-build';
 import { decodeTrees, type DiscCourseFile, type Tree } from '../course/disc-types';
 import { DISCS, PUTTER_DISC, suggestDisc, type Disc } from '../disc/discs';
-import { BASKET, simulateThrow, type DiscWorld, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
+import { BASKET, shotLaunch, simulateThrow, type DiscWorld, type Shot, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
 import { TreeIndex } from '../disc/trees';
 import { effectiveMods } from '../disc/mods';
 import { PLACE_TEXT, place, pondsFor, teeFor, treesFor } from '../rogue/course';
@@ -41,7 +41,10 @@ const PUTT_RANGE = 20;
 /** First person: launch = view pitch + this, so a level view gives a putt's gentle arc… */
 const PUTT_LAUNCH_OFFSET = 0.12;
 /** …or, for throws, the disc's own best launch angle (fast discs want it flatter). */
-const launchOffset = (disc: Disc, putt: boolean) => (putt ? PUTT_LAUNCH_OFFSET : disc.launch);
+const launchOffset = (disc: Disc, putt: boolean, shot: Shot) => (putt ? PUTT_LAUNCH_OFFSET : shotLaunch(shot, disc));
+/** The shot chip cycles through these (G). */
+const SHOTS: Shot[] = ['standard', 'tomahawk', 'thumber', 'roller'];
+const SHOT_LABELS: Record<Shot, string> = { standard: 'Normal', tomahawk: 'Tomahawk', thumber: 'Thumber', roller: 'Roller' };
 
 /**
  * The first `frac` of a ghost path by ground distance covered, not by sample count: a high throw
@@ -134,6 +137,7 @@ interface LiveAim {
   disc: string;
   hyzer: number;
   forehand: boolean;
+  shot?: Shot;
   fp: boolean;
   /** Meter fill while charging, else 0. */
   power: number;
@@ -287,6 +291,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let disc: Disc = DISCS[0];
   let hyzer = 0; // -1..1 in quarter steps
   let forehand = false;
+  /** The kind of throw: normal, overhand (tomahawk / thumber) or roller. Back to normal each throw. */
+  let shot: Shot = 'standard';
   let aimTarget: Vec2 = hole().pin;
   let yaw = 0;
   let pitch = 0;
@@ -432,7 +438,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!net || (phase !== 'aim' && phase !== 'charging') || !mine(game().current)) return;
     const a: LiveAim = {
       player: game().current, yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), target: [+aimTarget[0].toFixed(2), +aimTarget[1].toFixed(2)],
-      disc: disc.id, hyzer, forehand, fp: isFP(), power: phase === 'charging' ? +power.toFixed(2) : 0,
+      disc: disc.id, hyzer, forehand, shot, fp: isFP(), power: phase === 'charging' ? +power.toFixed(2) : 0,
     };
     const key = JSON.stringify(a);
     if (key === lastLive || now - lastLiveAt < 100) return;
@@ -451,7 +457,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (isFP()) scene.setEye(p.ball, a.yaw, a.pitch);
     const d = DISCS.find((x) => x.id === a.disc);
     if (d) picker.update(d, a.forehand);
-    $('release').textContent = `${releaseLabel(a.hyzer)} · ${a.forehand ? 'Forehand' : 'Backhand'}`;
+    $('release').textContent = releaseText(a.hyzer, a.forehand, a.shot ?? 'standard');
+    $('shot').textContent = SHOT_LABELS[a.shot ?? 'standard'];
     $('meter-fill').style.width = `${a.power * 100}%`;
   }
 
@@ -632,7 +639,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     phase = mine(game().current) ? 'aim' : 'watching';
     liveAim = null;
     lastLive = '';
-    hyzer = 0; // every throw starts flat (forehand / backhand carries through the hole)
+    hyzer = 0; // every throw starts flat and normal (forehand / backhand carries through the hole)
+    shot = 'standard';
     $('hud').hidden = false;
     power = 0;
     fpOverride = null;
@@ -667,8 +675,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function throwInput(pw: number): ThrowInput {
     const fp = isFP();
     return {
-      start: player().ball, aim: yaw, power: pw, disc, hyzer, mirror: forehand,
-      launch: fp ? pitch + launchOffset(disc, puttStyle()) : undefined,
+      start: player().ball, aim: yaw, power: pw, disc, hyzer, mirror: forehand, shot: puttStyle() ? 'standard' : shot,
+      launch: fp ? pitch + launchOffset(disc, puttStyle(), shot) : undefined,
       style: puttStyle() ? 'putt' : 'drive',
       mods: modsFor(game().current),
       fromTee: player().strokes === 0,
@@ -1006,6 +1014,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // ---------- HUD ----------
 
 
+  /** The release chip: angle and hand; overhand shots have neither (they're thrown on edge). */
+  function releaseText(h: number, fh: boolean, sh: Shot): string {
+    if (sh === 'tomahawk' || sh === 'thumber') return 'Overhand';
+    return sh === 'roller' ? (fh ? 'Forehand' : 'Backhand') : `${releaseLabel(h)} · ${fh ? 'Forehand' : 'Backhand'}`;
+  }
+
   function releaseLabel(h = hyzer): string {
     if (h === 0) return 'Flat';
     const deg = Math.round(Math.abs(h) * 20);
@@ -1016,7 +1030,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const p = player();
     $('turn').innerHTML = `<span style="color:${p.color}">●</span> ${esc(p.name)}`;
     picker.update(disc, forehand);
-    $('release').textContent = `${releaseLabel()} · ${forehand ? 'Forehand' : 'Backhand'}`;
+    $('release').textContent = releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
+    $('shot').textContent = SHOT_LABELS[puttStyle() ? 'standard' : shot];
+    $('shot').hidden = puttStyle();
     const me = game().current;
     $('rogue-bar').hidden = !rogue;
     if (rogue) {
@@ -1034,8 +1050,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('swing').toggleAttribute('disabled', phase !== 'aim' && phase !== 'charging');
     $('swing').innerHTML = `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>Space</kbd>`;
     $('help').textContent = (isFP()
-      ? 'Drag or arrows to aim (up/down = launch) · W/S target distance · scroll zoom · click minimap to aim · Q/E release angle · [ / ] disc · T forehand · C top-down · V view'
-      : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
+      ? 'Drag or arrows to aim (up/down = launch) · W/S target distance · scroll zoom · click minimap to aim · Q/E release angle · [ / ] disc · T forehand · G shot · C top-down · V view'
+      : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · G shot · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
       .replace(vector ? ' · V view' : '\u0000', '');
     const lbOrder = game().players.map((_, i) => i).sort((a, b) => liveToPar(a) - liveToPar(b));
     $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + lbOrder.map((i) => {
@@ -1202,6 +1218,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (k === 'q') setHyzer(1);
     else if (k === 'e') setHyzer(-1);
     else if (k === 't') { if (phase === 'aim') { forehand = !forehand; recomputeTick(); updateHud(); } }
+    else if (k === 'g') cycleShot();
     else if (k === 'c') toggleFP();
     else if (k === 'v') cycleView();
     else if (k === 'f') applyCamera(true);
@@ -1213,6 +1230,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   swingBtn.addEventListener('pointerup', release);
   $('view-toggle').addEventListener('click', cycleView);
   $('fp-toggle').addEventListener('click', toggleFP);
+  function cycleShot(): void {
+    if (phase !== 'aim' || puttStyle()) return;
+    shot = SHOTS[(SHOTS.indexOf(shot) + 1) % SHOTS.length];
+    recomputeTick();
+    updateHud();
+  }
+  $('shot').addEventListener('click', cycleShot);
   $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; recomputeTick(); updateHud(); } });
 
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
