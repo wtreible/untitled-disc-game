@@ -94,6 +94,8 @@ export interface RoundOptions {
   bag?: boolean;
   /** The driving range: throws don't move anyone or score, they just pass the turn round. */
   range?: boolean;
+  /** Each player's color (src/game/game.ts playerColors). */
+  colors?: string[];
 }
 
 /** Discs in a bag (Bag Pocket adds more, up to every disc). */
@@ -148,7 +150,7 @@ export class DiscRound {
     readonly blocked: (q: Vec2) => boolean,
   ) {
     const n = opts.names.length;
-    this.round = new Round(holes, opts.names, opts.first, opts.count);
+    this.round = new Round(holes, opts.names, opts.first, opts.count, opts.colors);
     this.mods = opts.names.map(() => (opts.rogue ? rogueStartMods() : neutralMods()));
     this.owned = opts.names.map(() => []);
     this.mulligansLeft = opts.names.map(() => 0);

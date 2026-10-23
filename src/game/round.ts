@@ -15,12 +15,12 @@ export class Round {
   /** Optional per-player tees and baskets for a hole (roguelike personal course changes). */
   setup?: (holeIndex: number) => { tees: Vec2[]; pins: Vec2[] };
 
-  constructor(readonly holes: HoleLike[], readonly names: string[], readonly first = 0, readonly count = holes.length) {
+  constructor(readonly holes: HoleLike[], readonly names: string[], readonly first = 0, readonly count = holes.length, readonly colors?: string[]) {
     this.scores = names.map(() => holes.map(() => undefined));
     this.index = first;
     this.order = names.map((_, i) => i);
     this.capBonus = names.map(() => 0);
-    this.game = new HoleGame(holes[first], names, this.order, this.capBonus);
+    this.game = new HoleGame(holes[first], names, this.order, this.capBonus, undefined, undefined, colors);
   }
 
   get hole(): HoleLike {
@@ -53,7 +53,7 @@ export class Round {
 
   private makeGame(): HoleGame {
     const s = this.setup?.(this.index);
-    return new HoleGame(this.holes[this.index], this.names, this.order, this.capBonus, s?.tees, s?.pins);
+    return new HoleGame(this.holes[this.index], this.names, this.order, this.capBonus, s?.tees, s?.pins, this.colors);
   }
 
   recordCurrent(): void {

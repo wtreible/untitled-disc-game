@@ -4,7 +4,7 @@
 // append-only log of game events (src/modes/discRound.ts) stored in SQLite. The room doesn't run
 // the game: it orders events, stores them and relays them. Each browser applies them.
 //
-//   wss://<worker>/room/<CODE>?client=<id>&name=<name>
+//   wss://<worker>/room/<CODE>?client=<id>&name=<name>[&color=<#rrggbb>]
 //
 // Messages are JSON. Client → room:
 //   { type: 'lobby', lobby }        host only, before the start: course, holes, crazy, bag, seats
@@ -13,6 +13,7 @@
 //   { type: 'event', seq, e }       a game event, valid only if seq is the next log position
 //   { type: 'live', s }             passing state (the thrower's aim, power): relayed, not stored
 //   { type: 'name', name }          change our name (the host's lobby picks it up before the start)
+//   { type: 'color', color }        change our color (#rrggbb), likewise
 // Room → client:
 //   { type: 'welcome', you, host, lobby, started, log, members }   on connect (full catch-up)
 //   { type: 'lobby', lobby } · { type: 'started', lobby } · { type: 'ended', lobby } · { type: 'members', members }
@@ -26,10 +27,11 @@ export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
 }
 
-/** One player in the lobby: a name and the browser (client id) that controls them. */
+/** One player in the lobby: a name, a color, and the browser (client id) that controls them. */
 export interface Seat {
   name: string;
   client: string;
+  color?: string;
 }
 
 export interface Lobby {
@@ -44,6 +46,7 @@ export interface Lobby {
 interface Attachment {
   client: string;
   name: string;
+  color?: string;
 }
 
 const MAX_MESSAGE = 256 * 1024;
@@ -55,6 +58,7 @@ const MAX_SEATS = 6;
 const IDLE_MS = 7 * 24 * 3600 * 1000;
 const CODE = /^[A-Z0-9]{4,8}$/;
 const ID = /^[A-Za-z0-9_-]{6,40}$/;
+const COLOR = /^#[0-9a-fA-F]{6}$/;
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -83,11 +87,12 @@ export class Room extends DurableObject<Env> {
     const client = url.searchParams.get('client') ?? '';
     const name = (url.searchParams.get('name') ?? '').trim().slice(0, 16) || 'Player';
     if (!ID.test(client)) return new Response('bad client id', { status: 400 });
+    const color = url.searchParams.get('color') ?? '';
     const pair = new WebSocketPair();
     const [browser, server] = [pair[0], pair[1]];
     // Hibernation API: the room isn't billed for duration while everyone is just connected.
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ client, name } satisfies Attachment);
+    server.serializeAttachment({ client, name, ...(COLOR.test(color) ? { color } : {}) } satisfies Attachment);
     if (!this.get('host')) this.set('host', client); // whoever opens the room hosts it
     this.touch();
     server.send(JSON.stringify({
@@ -100,7 +105,7 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== 'string' || raw.length > MAX_MESSAGE) return this.fail(ws, 'message too large');
-    let msg: { type?: string; seq?: number; e?: unknown; lobby?: Lobby; name?: unknown };
+    let msg: { type?: string; seq?: number; e?: unknown; lobby?: Lobby; name?: unknown; color?: unknown };
     try { msg = JSON.parse(raw); } catch { return this.fail(ws, 'not JSON'); }
     const me = ws.deserializeAttachment() as Attachment;
     const isHost = me.client === this.get('host');
@@ -155,6 +160,16 @@ export class Room extends DurableObject<Env> {
         for (const s of this.ctx.getWebSockets()) {
           const a = s.deserializeAttachment() as Attachment;
           if (a.client === me.client) s.serializeAttachment({ ...a, name } satisfies Attachment);
+        }
+        this.broadcast({ type: 'members', members: this.members() });
+        return;
+      }
+      case 'color': {
+        const color = typeof msg.color === 'string' && COLOR.test(msg.color) ? msg.color : '';
+        if (!color) return this.fail(ws, 'bad color');
+        for (const s of this.ctx.getWebSockets()) {
+          const a = s.deserializeAttachment() as Attachment;
+          if (a.client === me.client) s.serializeAttachment({ ...a, color } satisfies Attachment);
         }
         this.broadcast({ type: 'members', members: this.members() });
         return;
@@ -250,7 +265,7 @@ function cleanLobby(l: unknown): Lobby | null {
   const seats: Seat[] = [];
   for (const s of o.seats) {
     if (!s || typeof s.name !== 'string' || typeof s.client !== 'string' || !ID.test(s.client)) return null;
-    seats.push({ name: s.name.trim().slice(0, 16) || 'Player', client: s.client });
+    seats.push({ name: s.name.trim().slice(0, 16) || 'Player', client: s.client, ...(typeof s.color === 'string' && COLOR.test(s.color) ? { color: s.color } : {}) });
   }
   return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, seats };
 }

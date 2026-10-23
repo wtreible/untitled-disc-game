@@ -11,7 +11,7 @@ import { byId, drawOffer, rollTier, type Tier } from '../rogue/powerups';
 import { cleanRules, tierWeights, type CrazyRules } from '../rogue/rules';
 import { chipFor, openAugmentBrowser, renderSidePanel, stacked } from '../ui/augments';
 import { CATEGORIES } from '../rogue/powerups';
-import { PLAYER_COLORS } from '../game/game';
+import { playerColors } from '../game/game';
 import { DiscRound, type RoundEvent, type WireResult } from './discRound';
 import { roundStats, type ShotRef } from './roundStats';
 import type { RoomClient } from '../net/room';
@@ -35,6 +35,7 @@ import { Life } from '../render/life';
 import { WEATHER, pickWeather, type Weather } from '../render/weather';
 import { setTreeWind } from '../render/disc3d';
 import { commentary } from '../ui/commentary';
+import { CHAT_LINES, mountQuickChat, showChat } from '../ui/quickChat';
 import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
 import { rangeMarkers } from '../render/rangeMarkers';
 import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
@@ -176,6 +177,8 @@ export interface DiscOptions {
   rules?: CrazyRules;
   /** Bag building: everyone picks the discs they carry before hole 1. */
   bag?: boolean;
+  /** Each player's picked color (missing or taken ones get a default). */
+  colors?: string[];
 }
 
 /** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
@@ -216,7 +219,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // Everything the players share lives in the round state and changes only through events
   // (src/modes/discRound.ts). This file presents it and turns input into events.
   const rogue = !!opts.rogue && !range;
-  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range }, blocked);
+  /** Each player's color, as picked on the menu (or the defaults). */
+  const COLORS = playerColors(opts.names.map((_, i) => opts.colors?.[i]));
+  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range, colors: COLORS }, blocked);
   const { round, mods, owned, mulligansLeft, perfectLeft } = st;
   const net = opts.net ?? null;
   /** Away players the host is playing for until they reconnect (online). */
@@ -330,7 +335,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     return [d.id, dist([0, 0], r.rest)];
   }));
 
-  const scene = new CourseScene($('stage'), course, grid, trees, PLAYER_COLORS);
+  const scene = new CourseScene($('stage'), course, grid, trees, COLORS);
   if (range) { scene.addObject(rangeMarkers()); scene.setBaskets(rs.baskets); }
   music(TRACKS[opts.course]);
   const space = opts.course === 'rainbow';
@@ -530,7 +535,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const key = JSON.stringify([i, owned[i], hexes]);
     if (key !== augKey || el.hidden) {
       augKey = key;
-      renderSidePanel(el, { name: opts.names[i], color: PLAYER_COLORS[i] }, owned[i], hexes);
+      renderSidePanel(el, { name: opts.names[i], color: COLORS[i] }, owned[i], hexes);
     }
   }
   $('pause-augments').hidden = !rogue;
@@ -717,13 +722,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       return;
     }
     const left = st.placing.filter((q) => q.player === step.player && q.kind === step.kind).length;
-    $('place-text').innerHTML = `<span style="color:${PLAYER_COLORS[step.player]}">●</span> <b>${esc(opts.names[step.player])}</b>: ${convertText(PLACE_TEXT[step.kind])} <small>(${left} left; click the map)</small>`;
+    $('place-text').innerHTML = `<span style="color:${COLORS[step.player]}">●</span> <b>${esc(opts.names[step.player])}</b>: ${convertText(PLACE_TEXT[step.kind])} <small>(${left} left; click the map)</small>`;
     $('place-bar').hidden = false;
   }
 
   function showPlacementPreview(me: number): void {
     scene.setPlacementPreview([
-      ...st.changes.trees.filter((t) => t.owner === me).map((t) => ({ at: [t.tree.x, t.tree.y] as Vec2, r: t.tree.r, color: PLAYER_COLORS[me] })),
+      ...st.changes.trees.filter((t) => t.owner === me).map((t) => ({ at: [t.tree.x, t.tree.y] as Vec2, r: t.tree.r, color: COLORS[me] })),
       ...st.changes.ponds.filter((q) => q.owner === me).map((q) => ({ at: q.c, r: q.r, color: '#4f8fcf' })),
     ]);
   }
@@ -1193,7 +1198,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const order = opts.names.map((_, p) => p).sort((a, b) => liveToPar(a) - liveToPar(b));
     const rows = order.map((p) => {
       const tp = liveToPar(p);
-      return `<tr><td class="player"><i style="background:${PLAYER_COLORS[p]}"></i>${esc(opts.names[p])}</td>${idx.map((i) => {
+      return `<tr><td class="player"><i style="background:${COLORS[p]}"></i>${esc(opts.names[p])}</td>${idx.map((i) => {
         const v = round.scores[p][i];
         return `<td>${v === undefined ? '' : mark(v, course.holes[i].par)}</td>`;
       }).join('')}<td class="tot">${round.total(p) || ''}</td><td class="pm topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</td></tr>`;
@@ -1201,7 +1206,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Crazy mode: everyone's augments under the card (hover a chip for what it does).
     $('results-augs').hidden = !rogue;
     if (rogue) {
-      $('results-augs').innerHTML = order.map((p) => `<div class="who"><b><i style="background:${PLAYER_COLORS[p]}"></i>${esc(opts.names[p])}</b>${
+      $('results-augs').innerHTML = order.map((p) => `<div class="who"><b><i style="background:${COLORS[p]}"></i>${esc(opts.names[p])}</b>${
         owned[p].length ? stacked(owned[p]).map(([q, n]) => chipFor(q, n)).join('') : '<span class="none">no augments yet</span>'}</div>`).join('');
     }
     renderSummary(last && game().finished);
@@ -1228,7 +1233,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     box.hidden = !show;
     if (!show) return;
     const r = roundStats(st.log, opts.names.length, round.first);
-    const who = (p: number) => `<i style="background:${PLAYER_COLORS[p]}"></i>${esc(opts.names[p])}`;
+    const who = (p: number) => `<i style="background:${COLORS[p]}"></i>${esc(opts.names[p])}`;
     const watch = (k: ShotRef) => `<button data-at="${k.at}">▶ Watch</button>`;
     const tiles: string[] = [];
     const tile = (label: string, big: string, line: string, extra = '') => tiles.push(`<div class="hl"><small>${label}</small><b>${big}</b><span>${line}</span>${extra}</div>`);
@@ -1295,7 +1300,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!bagDraft.has(pi)) bagDraft.set(pi, st.bags[pi] ? [...st.bags[pi]!] : DISCS.filter((d) => d.suggest).map((d) => d.id).slice(0, size));
     const pick = bagDraft.get(pi)!;
     const render = () => {
-      $('bag-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: pick your bag`;
+      $('bag-title').innerHTML = `<span style="color:${COLORS[pi]}">●</span> ${esc(opts.names[pi])}: pick your bag`;
       $('bag-count').textContent = `${pick.length} / ${size}`;
       $('bag-sub').textContent = st.bags[pi]
         ? `Bag Pocket: room for ${size} discs now. Add one.`
@@ -1351,7 +1356,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function renderDraft(pi: number): void {
     const offer = { ...st.offer!, cards: st.offer!.cards.map(byId) };
     sfx('deal');
-    $('draft-title').innerHTML = `<span style="color:${PLAYER_COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${st.starter ? 'pick your starter augment' : 'pick an augment'}`;
+    $('draft-title').innerHTML = `<span style="color:${COLORS[pi]}">●</span> ${esc(opts.names[pi])}: ${st.starter ? 'pick your starter augment' : 'pick an augment'}`;
     $('draft-tier').textContent = `${offer.tier[0].toUpperCase()}${offer.tier.slice(1)} draft`;
     $('draft-tier').className = `tier ${offer.tier}`;
     $('draft-cards').innerHTML = offer.cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
@@ -1441,7 +1446,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('swing').innerHTML = `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>Space</kbd>`;
     $('help').textContent = (isFP()
       ? 'Drag or arrows to aim (up/down = launch) · W/S target distance · scroll zoom · click minimap to aim · Q/E release angle · [ / ] disc · T forehand · G shot · C top-down · V view'
-      : 'Click to aim · ←/→ fine aim · Q/E release angle · [ / ] disc · T forehand · G shot · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
+      : 'Click to aim · ←/→ fine aim · W/S target distance · Q/E release angle · [ / ] disc · T forehand · G shot · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
       .replace(vector ? ' · V view' : '\u0000', '');
     if (range) { rangeBoard(); return; }
     const lbOrder = game().players.map((_, i) => i).sort((a, b) => liveToPar(a) - liveToPar(b));
@@ -1467,7 +1472,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (game().finished || st.stage !== 'playing') return '';
     const next = game().order().filter((i) => i !== game().current).slice(0, 3);
     if (!next.length) return '';
-    return `<div class="lb-next"><small>UP NEXT</small>${next.map((i) => `<span><i style="background:${PLAYER_COLORS[i]}"></i>${esc(opts.names[i])}</span>`).join('›')}</div>`;
+    return `<div class="lb-next"><small>UP NEXT</small>${next.map((i) => `<span><i style="background:${COLORS[i]}"></i>${esc(opts.names[i])}</span>`).join('›')}</div>`;
   }
 
   // ---------- input ----------
@@ -1547,7 +1552,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     setAimTarget([b[0] + Math.cos(a) * d, b[1] + Math.sin(a) * d]);
   }
 
-  /** First person: move the target along the aim line (W/S), keeping direction. */
+  /** Move the target along the aim line (W/S), keeping direction. */
   function nudgeTargetDistance(dm: number): void {
     if (phase !== 'aim') return;
     const b = player().ball;
@@ -1573,6 +1578,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     recomputeTick();
     updateHud();
   });
+
+  // ---------- quick chat ----------
+  /** Who this browser speaks as: online, our seat; hot seat, whoever is up. */
+  const chatter = () => (net ? opts.names.findIndex((_, p) => net.mine(p)) : game().current);
+  mountQuickChat((line) => {
+    const p = chatter();
+    showChat(opts.names[p], COLORS[p], line);
+    net?.room.sendLive({ chat: line, player: p });
+  }, () => chatter() >= 0 && $('setup').hidden === true);
 
   // ---------- driving range panel: wind, weather, baskets and trees ----------
   /** Only whoever's turn it is sets the range, while lining up their throw. */
@@ -1698,8 +1712,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (k === 'arrowup' && isFP() && phase === 'aim') { look(0, (e.shiftKey ? 0.2 : 1) * Math.PI / 180); }
     else if (k === 'arrowdown' && isFP() && phase === 'aim') { look(0, -(e.shiftKey ? 0.2 : 1) * Math.PI / 180); }
     else if (k === 'r' && phase === 'replay') scene.resetOrbit();
-    else if (k === 'w' && isFP()) nudgeTargetDistance(e.shiftKey ? 5 : 1);
-    else if (k === 's' && isFP()) nudgeTargetDistance(e.shiftKey ? -5 : -1);
+    else if (k === 'w') nudgeTargetDistance(e.shiftKey ? 5 : 1);
+    else if (k === 's') nudgeTargetDistance(e.shiftKey ? -5 : -1);
     else if (k === 'm' && rogue) takeMulligan();
     else if (k === 'p' && rogue && phase === 'aim' && perfectLeft[game().current] > 0) { perfectArmed = !perfectArmed; updateHud(); }
     else if (k === 'q') setHyzer(1);
@@ -1784,13 +1798,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const a = s[Math.max(0, k - 1)], b = s[Math.min(s.length - 1, k + 1)];
       return Math.atan2(b[1] - a[1], b[0] - a[0]);
     };
-    PLAYER_COLORS.forEach((_, i) => {
+    COLORS.forEach((_, i) => {
       const q = g.players[i];
       scene.setDisc(i, q && !q.holed && !(flight && i === flight.e.player) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     sendLiveAim(now);
-    if (phase === 'watching') showLiveAim();
+    // Not during the flyover: the thrower's live aim would pin the camera at the tee.
+    if (phase === 'watching' && !intro) showLiveAim();
     if (flight && replay) {
       const s = flight.result.samples;
       const t = replay.t;
@@ -1892,7 +1907,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       presentHole();
       const from = st.log.map((e) => e.t).lastIndexOf('hole-start');
       for (const e of st.log.slice(from + 1)) {
-        if (e.t === 'throw') { if (e.twin) scene.addTrail(e.twin, PLAYER_COLORS[e.player], 0.25); scene.addTrail(e.result.samples, PLAYER_COLORS[e.player]); }
+        if (e.t === 'throw') { if (e.twin) scene.addTrail(e.twin, COLORS[e.player], 0.25); scene.addTrail(e.result.samples, COLORS[e.player]); }
         if (e.t === 'mulligan') scene.popTrail();
       }
     }
@@ -1907,8 +1922,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       reject: () => resync(),
       members: (m) => membersChanged(m.map((x) => x.client)),
       live: (_from, s) => {
+        // Quick chat travels the same way as live aim.
+        const c = s as { chat?: unknown; player?: unknown } | null;
+        if (c && typeof c.chat === 'number' && typeof c.player === 'number') {
+          if (CHAT_LINES[c.chat] && opts.names[c.player]) showChat(opts.names[c.player], COLORS[c.player], c.chat);
+          return;
+        }
         const a = s as LiveAim | null;
-        if (a && a.player === game().current && !mine(a.player) && phase === 'watching') liveAim = a;
+        if (a && Array.isArray(a.target) && a.player === game().current && !mine(a.player) && phase === 'watching') liveAim = a;
       },
       ended: () => backToLobby(),
       // Reconnected: pick up what we missed, resend what the room didn't get.

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { LocalFrame, pointInRings, type Vec2 } from '../src/course/geo';
 import type { CourseFile, CourseHole, Rings } from '../src/course/types';
 import { CLUBS, PUTTER, suggestClub } from '../src/game/clubs';
-import { HoleGame, scoreName } from '../src/game/game';
+import { COLOR_CHOICES, HoleGame, PLAYER_COLORS, playerColors, scoreName } from '../src/game/game';
 import { mulberry32, simulateShot, type ShotResult, type World } from '../src/game/physics';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
@@ -166,5 +166,19 @@ describe('built course file', () => {
     // A 0.01° rounding error once put the photo ~800 m off the course.
     expect(course.origin.lat.toString().split('.')[1].length).toBeGreaterThan(5);
     expect(course.origin.lon.toString().split('.')[1].length).toBeGreaterThan(5);
+  });
+});
+
+describe('player colors', () => {
+  it('keeps picks, gives a repeat or unknown color the first free default, never doubles up', () => {
+    expect(playerColors(['#ff4b4b', null, '#ff4b4b', 'not-a-color'])).toEqual(['#ff4b4b', PLAYER_COLORS[0], PLAYER_COLORS[1], PLAYER_COLORS[2]]);
+    const six = playerColors(Array(6).fill(PLAYER_COLORS[0]));
+    expect(new Set(six).size).toBe(6);
+    for (const c of six) expect(COLOR_CHOICES).toContain(c);
+  });
+
+  it('a hole game uses the colors it is given', () => {
+    const g = new HoleGame({ tee: [0, 0], pin: [0, 50], par: 3 }, ['A', 'B'], undefined, undefined, undefined, undefined, ['#2ed3c0', '#ff9a3c']);
+    expect(g.players.map((p) => p.color)).toEqual(['#2ed3c0', '#ff9a3c']);
   });
 });

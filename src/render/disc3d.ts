@@ -195,6 +195,40 @@ export function setTreeSolidity(v: number): void {
   TREE_SOLIDITY.value = v;
 }
 
+/**
+ * Up close, trees thin out so you can see past them: fully solid from NEAR_FADE[1] m from the
+ * camera, down to NEAR_MIN solid at NEAR_FADE[0] m and closer (first person, chase cam). Drawn only.
+ */
+const NEAR_FADE = [2, 8];
+const NEAR_MIN = 0.35;
+
+/** The near fade as GLSL: how solid a fragment `d` m from the camera is. */
+const NEAR_GLSL = (d: string) => `mix(${NEAR_MIN.toFixed(2)}, 1.0, smoothstep(${NEAR_FADE[0].toFixed(1)}, ${NEAR_FADE[1].toFixed(1)}, ${d}))`;
+const BAYER_GLSL = `float bayer4(vec2 p) {
+  ivec2 q = ivec2(mod(p, 4.0));
+  int i = q.x + q.y * 4;
+  float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[i] + 0.5) / 16.0;
+}`;
+
+/**
+ * Just the near fade, for trees drawn as ordinary models (themed courses' palms and Kenney trees),
+ * which have no per-instance dither. Clones the material.
+ */
+export function nearFaded(m: THREE.Material): THREE.Material {
+  const n = m.clone();
+  n.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vCamDist;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvCamDist = -mvPosition.z;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying float vCamDist;\n${BAYER_GLSL}`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\nfloat solid = ${NEAR_GLSL('vCamDist')};\nif (solid < 0.999 && bayer4(gl_FragCoord.xy) > solid) discard;`);
+  };
+  n.customProgramCacheKey = () => 'tree-near';
+  return n;
+}
+
 /** Trees sway with the hole's wind (m/s, blowing toward); drawn only, the physics trees stand still. */
 const TREE_WIND = { value: new THREE.Vector2() };
 const TREE_TIME = { value: 0 };
@@ -212,7 +246,7 @@ function dithered<M extends THREE.Material>(m: M): M {
     sh.uniforms.uTreeWind = TREE_WIND;
     sh.uniforms.uTreeTime = TREE_TIME;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float dither;\nvarying float vDither;\nuniform vec2 uTreeWind;\nuniform float uTreeTime;')
+      .replace('#include <common>', '#include <common>\nattribute float dither;\nvarying float vDither;\nvarying float vCamDist;\nuniform vec2 uTreeWind;\nuniform float uTreeTime;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDither = dither;')
       // Sway: lean downwind, more the higher up (∝ height²), gusting, out of step from tree to tree.
       .replace('#include <project_vertex>', `#include <project_vertex>
@@ -226,18 +260,18 @@ function dithered<M extends THREE.Material>(m: M): M {
   mvPosition.xyz += (viewMatrix * vec4(sway, 0.0, 0.0)).xyz;
   gl_Position = projectionMatrix * mvPosition;
 }
-#endif`);
+#endif
+vCamDist = -mvPosition.z;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying float vDither;
+varying float vCamDist;
 uniform float uTreeSolidity;
-float bayer4(vec2 p) {
-  ivec2 q = ivec2(mod(p, 4.0));
-  int i = q.x + q.y * 4;
-  float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-  return (m[i] + 0.5) / 16.0;
-}`)
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfloat solid = min(vDither, uTreeSolidity);\nif (solid < 0.999 && bayer4(gl_FragCoord.xy) > solid) discard;');
+${BAYER_GLSL}`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+float near = ${NEAR_GLSL('vCamDist')};
+float solid = min(min(vDither, uTreeSolidity), near);
+if (solid < 0.999 && bayer4(gl_FragCoord.xy) > solid) discard;`);
   };
   m.customProgramCacheKey = () => 'tree-dither';
   return m;

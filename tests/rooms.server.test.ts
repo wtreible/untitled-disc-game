@@ -33,7 +33,7 @@ async function connect(room: string, client: string, name: string) {
 }
 
 const room = () => `T${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-const lobby = (seats: { name: string; client: string }[]) => ({ course: 'silly', first: 0, count: 9, crazy: false, seats });
+const lobby = (seats: { name: string; client: string; color?: string }[]) => ({ course: 'silly', first: 0, count: 9, crazy: false, seats });
 
 describe.skipIf(!BASE)('room server', () => {
   it('host sets up and starts; events are ordered, acked, relayed and replayed to late joiners', async () => {
@@ -125,6 +125,28 @@ describe.skipIf(!BASE)('room server', () => {
     b2.send({ type: 'event', seq: 0, e: { t: 'hole-start', wind: [0, 0] } });
     expect((await b2.until('ack')).seq).toBe(0);
     a.close(); b2.close();
+  });
+
+  it('members carry a color: from the link, then changed with a color message; bad ones refused', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    await a.until('welcome');
+    // connect() has no color parameter: join with one by hand.
+    const ws = new WebSocket(`${BASE}/room/${code}?client=client-cccc&name=Cy&color=%23ff9a3c`);
+    await new Promise<void>((res) => ws.addEventListener('open', () => res()));
+    const m1 = await a.until('members');
+    expect(m1.members.find((m: Msg) => m.client === 'client-cccc').color).toBe('#ff9a3c');
+    a.send({ type: 'color', color: '#2ed3c0' });
+    const m2 = await a.until('members');
+    expect(m2.members.find((m: Msg) => m.client === 'client-aaaa').color).toBe('#2ed3c0');
+    a.send({ type: 'color', color: 'red; background:url(x)' });
+    expect((await a.until('error')).reason).toMatch(/bad color/);
+    // Seats keep a valid color and drop a bad one.
+    a.send({ type: 'lobby', lobby: lobby([{ name: 'Ann', client: 'client-aaaa', color: '#2ed3c0' }, { name: 'Cy', client: 'client-cccc', color: 'javascript:' }]) });
+    const l = (await a.until('lobby')).lobby;
+    expect(l.seats[0].color).toBe('#2ed3c0');
+    expect(l.seats[1].color).toBeUndefined();
+    ws.close(); a.close();
   });
 
   it('the room survives everyone leaving: rejoining gets the same log', async () => {

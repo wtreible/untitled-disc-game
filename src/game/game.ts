@@ -4,6 +4,21 @@ import type { SurfaceClass } from '../course/types';
 import type { ShotResult } from './physics';
 
 export const PLAYER_COLORS = ['#ffffff', '#ffd23f', '#3fc1ff', '#ff6b9a', '#7ee081', '#b48cff'];
+/** Colors players can pick from: the defaults first, then four more. */
+export const COLOR_CHOICES = [...PLAYER_COLORS, '#ff9a3c', '#ff4b4b', '#2ed3c0', '#c6f04d'];
+
+/**
+ * Each player's color: their pick if it's one of the choices and nobody before them took it,
+ * else the first default nobody has.
+ */
+export function playerColors(picks: (string | null | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const c of picks) {
+    const ok = !!c && COLOR_CHOICES.includes(c) && !out.includes(c);
+    out.push(ok ? c! : [...PLAYER_COLORS, ...COLOR_CHOICES].find((d) => !out.includes(d))!);
+  }
+  return out;
+}
 
 export interface Player {
   name: string;
@@ -47,9 +62,9 @@ export class HoleGame {
   /** Per-player basket position (roguelike Short Pin); defaults to the hole's. */
   readonly pins: Vec2[];
 
-  constructor(readonly hole: HoleLike, names: string[], order?: number[], capBonus?: number[], tees?: Vec2[], pins?: Vec2[]) {
+  constructor(readonly hole: HoleLike, names: string[], order?: number[], capBonus?: number[], tees?: Vec2[], pins?: Vec2[], colors?: string[]) {
     this.players = names.map((name, i) => ({
-      name, color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+      name, color: colors?.[i] ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
       ball: [...(tees?.[i] ?? hole.tee)] as Vec2, lie: 'tee', strokes: 0, holed: false, pickedUp: false,
     }));
     this.pins = names.map((_, i) => pins?.[i] ?? hole.pin);

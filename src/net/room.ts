@@ -6,6 +6,8 @@ import type { RoundEvent } from '../modes/discRound';
 export interface Seat {
   name: string;
   client: string;
+  /** Picked color (older rooms don't have it: defaults by seat). */
+  color?: string;
 }
 
 export interface Lobby {
@@ -21,6 +23,7 @@ export interface Lobby {
 export interface Member {
   client: string;
   name: string;
+  color?: string;
 }
 
 export interface Welcome {
@@ -109,7 +112,7 @@ export class RoomClient {
   private closedByUs = false;
   private retry = 0;
 
-  constructor(readonly code: string, private name: string, private readonly url = ROOMS_URL!) {}
+  constructor(readonly code: string, private name: string, private color: string | null = null, private readonly url = ROOMS_URL!) {}
 
   on(h: RoomHandlers): void {
     this.handlers = { ...this.handlers, ...h };
@@ -118,7 +121,7 @@ export class RoomClient {
   connect(): void {
     this.closedByUs = false;
     this.handlers.status?.('connecting');
-    const ws = new WebSocket(`${this.url}/room/${this.code}?client=${this.id}&name=${encodeURIComponent(this.name)}`);
+    const ws = new WebSocket(`${this.url}/room/${this.code}?client=${this.id}&name=${encodeURIComponent(this.name)}${this.color ? `&color=${encodeURIComponent(this.color)}` : ''}`);
     this.ws = ws;
     ws.addEventListener('open', () => { this.retry = 0; this.handlers.status?.('open'); });
     ws.addEventListener('message', (ev) => {
@@ -134,8 +137,8 @@ export class RoomClient {
         case 'event': h.event?.(m.seq as number, m.from as string, m.e as RoundEvent); break;
         case 'reject': h.reject?.(m.expected as number); break;
         case 'live': h.live?.(m.from as string, m.s); break;
-        // A server from before live aim (not redeployed yet) refuses it: harmless, so say nothing.
-        case 'error': if (!/unknown message live/.test(String(m.reason))) h.error?.(m.reason as string); break;
+        // A server from before live aim or colors (not redeployed yet) refuses them: harmless, so say nothing.
+        case 'error': if (!/unknown message (live|color)/.test(String(m.reason))) h.error?.(m.reason as string); break;
       }
     });
     ws.addEventListener('close', () => {
@@ -157,6 +160,12 @@ export class RoomClient {
   rename(name: string): void {
     this.name = name;
     this.send({ type: 'name', name });
+  }
+
+  /** A new color for us (#rrggbb): the room tells everyone, and the host's lobby takes it. */
+  recolor(color: string): void {
+    this.color = color;
+    this.send({ type: 'color', color });
   }
 
   private send(m: unknown): void {

@@ -140,7 +140,12 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .crazy b { font: 700 18px var(--head); letter-spacing: 0.04em; color: var(--hot); }
 #player-names { display: flex; flex-direction: column; gap: 8px; }
 #player-names .pname { display: flex; align-items: center; gap: 10px; }
-#player-names .pname i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #0008; flex: none; }
+#player-names .pname .swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid #0008; box-shadow: 0 0 0 2px var(--line); flex: none; cursor: pointer; }
+#player-names .pname .swatch:hover { box-shadow: 0 0 0 2px var(--accent); }
+.color-pop { position: fixed; z-index: 50; display: grid; grid-template-columns: repeat(5, 26px); gap: 8px; padding: 10px; border-radius: 12px; background: var(--navy-1); border: 1px solid var(--navy-3); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.color-pop button { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2px solid #0008; }
+.color-pop button.on { box-shadow: 0 0 0 2px var(--accent); }
+.color-pop button:disabled { opacity: 0.25; cursor: not-allowed; }
 .name-sheet { width: min(400px, calc(100vw - 32px)); }
 .name-sheet .sheet-head h2 { font-size: 30px; }
 .name-sheet p { margin: 0; font-size: 14px; }
@@ -279,6 +284,22 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .keys-btn { left: calc(50% - 68px); }
 .mute-btn { left: calc(50% + 30px); }
 .mute-btn svg { display: block; margin: auto; }
+.chat-btn { left: calc(50% + 79px); }
+.chat-btn svg { display: block; margin: auto; }
+
+/* ---------- quick chat ---------- */
+#chat-wheel { position: fixed; inset: 0; z-index: 40; background: radial-gradient(circle at center, rgba(8, 19, 29, 0.55), rgba(8, 19, 29, 0) 320px); }
+#chat-wheel .chat-hub { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--panel); border: 1px solid var(--line); }
+#chat-wheel button { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; padding: 8px 14px; border-radius: 999px; background: var(--panel); backdrop-filter: blur(6px); font: 700 15px var(--body); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+#chat-wheel button small { color: var(--muted); font-size: 11px; margin-right: 6px; }
+#chat-wheel button.on, #chat-wheel button:hover { background: var(--accent); color: var(--accent-ink); }
+#chat-wheel button.on small, #chat-wheel button:hover small { color: var(--accent-ink); }
+#chat-feed { position: fixed; left: 14px; top: 96px; z-index: 6; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.chat-line { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 10px; background: var(--panel); backdrop-filter: blur(6px); font-size: 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); animation: chat-in 0.2s ease-out; transition: opacity 0.35s; }
+.chat-line i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.chat-line.out { opacity: 0; }
+@keyframes chat-in { from { opacity: 0; transform: translateX(-12px); } }
+@media (max-width: 680px) { #chat-wheel button { font-size: 13px; padding: 6px 10px; } }
 #ff-badge {
   position: fixed; top: 118px; left: 50%; transform: translateX(-50%); padding: 4px 12px; border-radius: 999px;
   font: 800 15px var(--head); letter-spacing: 0.1em; background: rgba(8, 19, 29, 0.85); color: var(--accent); pointer-events: none; z-index: 6;

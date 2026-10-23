@@ -94,6 +94,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D67 | Quality of life: N mutes (and a speaker button), ? lists the controls, the camera glides to the next lie instead of cutting, holding Shift fast-forwards flights and replays 3×. | 2026-10-22 |
 | D68 | Two more courses: **Pirate's Cove** (arcade; islands where off the land is the sea, a water hazard, via a course `sea` flag; Kenney Pirate Kit, CC0) and **Oak Grove** Gold Course, Stockton CA (real; the first mapped course outside Helsinki, so its trees come from OpenStreetMap: mapped trees where they stand, woods planted like canopy). The course builder takes courses mapped as a relation of holes. | 2026-10-22 |
 | D69 | Ten more augments (4 common, 3 epic, 3 legendary), mostly new mechanics: rollers, overhand throws, metal hits that drop in, no-wobble putts, straight-flying discs, and hexes on opponents' wobble, distance and ghost line. 76 in all. | 2026-10-22 |
+| D70 | Players pick their colors (10 choices, no two alike). Trees thin out within a few meters of the camera (a screen-door fade to 35% at 2 m) so you can see past them. A quick chat wheel (hold Z) of fixed lines. W/S target distance works top-down too. Online: watchers get the hole flyover (the thrower's live aim no longer pins their camera at the tee). | 2026-10-22 |
 
 ## Open questions
 

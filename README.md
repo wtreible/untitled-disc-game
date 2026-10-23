@@ -29,7 +29,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 
 | | |
 |---|---|
-| Aim | First person: drag or arrow keys (↑/↓ launch angle), W/S target distance, scroll to zoom, click the minimap. Top-down: click or drag on the map. |
+| Aim | First person: drag or arrow keys (↑/↓ launch angle), W/S target distance, scroll to zoom, click the minimap. Top-down: click or drag on the map, W/S target distance. |
 | Disc | Click a card in the disc picker (its chart shows how that disc flies), or `[` / `]` |
 | Release angle | Q (hyzer, curves left) / E (anhyzer, curves right) |
 | Forehand / backhand | T |
@@ -39,6 +39,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | Replay | Drag to orbit, scroll to zoom, R resets, Space skips. Hold Shift to fast-forward any flight or replay. |
 | Hole flyover | Space or click skips it (Settings → Hole flyovers) |
 | Sound | N mutes; Music and Effects volumes in Settings |
+| Quick chat | Hold Z (or the chat button at the top), point at a line and let go, or press 1–8. Everyone in the room sees it. |
 | Help | ? lists every control |
 | Menu | Esc or ⏸: settings (music and effects volume, units, replays, hole flyovers, weather, field of view, graphics quality, frame rate), scorecard, quit |
 

@@ -8,6 +8,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { PropDef, Tree } from '../course/disc-types';
 import { asset } from '../assets';
 import { hingeAngle, slideOffset } from '../disc/props';
+import { nearFaded } from './disc3d';
 
 export interface PropsView {
   group: THREE.Group;
@@ -77,7 +78,14 @@ export async function loadProps(defs: PropDef[], trees: Tree[], base = asset('mo
     } else if (mo?.kind === 'slide') {
       movers.push((t) => { const o = slideOffset(mo.slide, t); root.position.set(d.at[0] + o[0], d.at[1] + o[1], d.lift ?? 0); });
     }
-    if (d.tree !== undefined && trees[d.tree]) treeObjects.set(trees[d.tree], root);
+    if (d.tree !== undefined && trees[d.tree]) {
+      treeObjects.set(trees[d.tree], root);
+      // Model trees thin out up close too, like the course's own trees.
+      inner.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.material) mesh.material = Array.isArray(mesh.material) ? mesh.material.map(nearFaded) : nearFaded(mesh.material);
+      });
+    }
   }));
 
   return {

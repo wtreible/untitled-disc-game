@@ -1,7 +1,7 @@
 // Main menu: course, players, round (holes / Crazy mode) and settings, then hand off to the disc
 // golf mode. "Play again" / "Quit to main menu" reload, which brings the menu back with the last
 // choices filled in. (Golf still lives in src/modes/golf.ts but isn't on the menu: disc only for now.)
-import { PLAYER_COLORS } from './game/game';
+import { COLOR_CHOICES, PLAYER_COLORS, playerColors } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { IMAGERY, asset } from './assets';
 import { fmtLen } from './units';
@@ -144,6 +144,36 @@ function renderHoles(): void {
   renderCourseInfo();
 }
 
+// ---------- player colors ----------
+/** Each player row's picked color (saved). Shown resolved, so two players never share one. */
+const colorPicks = load<(string | null)[]>('sat-golf:colors', []);
+const rowColors = () => playerColors(Array.from({ length: MAX_PLAYERS }, (_, i) => colorPicks[i]));
+const colorPop = document.createElement('div');
+colorPop.className = 'color-pop';
+colorPop.hidden = true;
+document.body.appendChild(colorPop);
+/** The palette under row i's swatch. Hot seat: colors other players have are taken. */
+function openColors(i: number, anchor: HTMLElement): void {
+  const cols = rowColors();
+  const taken = room ? [] : cols.filter((_, k) => k !== i && k < players);
+  colorPop.innerHTML = COLOR_CHOICES.map((c) => `<button data-c="${c}" style="background:${c}" class="${c === cols[i] ? 'on' : ''}" ${taken.includes(c) ? 'disabled title="Taken"' : ''}></button>`).join('');
+  colorPop.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+    colorPicks[i] = b.dataset.c!;
+    save('sat-golf:colors', colorPicks);
+    colorPop.hidden = true;
+    sfx('select');
+    renderPlayers();
+    if (room && i === 0) room.recolor(rowColors()[0]);
+  }));
+  const r = anchor.getBoundingClientRect();
+  colorPop.style.left = `${r.left}px`;
+  colorPop.style.top = `${r.bottom + 6}px`;
+  colorPop.hidden = false;
+}
+document.addEventListener('pointerdown', (e) => {
+  if (!colorPop.hidden && !colorPop.contains(e.target as Node) && !(e.target as HTMLElement).classList.contains('swatch')) colorPop.hidden = true;
+});
+
 // ---------- players ----------
 function renderPlayers(): void {
   $('player-seg').innerHTML = Array.from({ length: MAX_PLAYERS }, (_, i) => i + 1)
@@ -155,11 +185,14 @@ function renderPlayers(): void {
   const box = $('player-names');
   const current = [...box.querySelectorAll('input')].map((i) => i.value);
   box.innerHTML = '';
+  const cols = rowColors();
   for (let i = 0; i < players; i++) {
     const row = document.createElement('div');
     row.className = 'pname';
-    row.innerHTML = `<i style="background:${PLAYER_COLORS[i]}"></i><input value="" maxlength="16" />`;
+    row.innerHTML = `<button class="swatch" style="background:${cols[i]}" title="Pick a color"></button><input value="" maxlength="16" />`;
     row.querySelector('input')!.value = current[i] ?? savedNames[i] ?? `Player ${i + 1}`;
+    const sw = row.querySelector<HTMLButtonElement>('.swatch')!;
+    sw.addEventListener('click', () => (colorPop.hidden ? openColors(i, sw) : (colorPop.hidden = true)));
     box.appendChild(row);
   }
   $<HTMLSelectElement>('player-count').value = String(players);
@@ -228,7 +261,7 @@ music('menu'); // starts on the first click or key
 
 // ---------- in-game buttons: menu, controls list, sound ----------
 function showGameButtons(): void {
-  for (const id of ['settings-btn', 'fp-toggle', 'keys-btn', 'mute-btn']) $(id).hidden = false;
+  for (const id of ['settings-btn', 'fp-toggle', 'keys-btn', 'mute-btn', 'chat-btn']) $(id).hidden = false;
 }
 const SPEAKER = '<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>';
 function renderMute(): void {
@@ -309,8 +342,9 @@ function pushLobby(): void {
   const order = [...members, ...kept].sort((a, b) => seatOf(a) - seatOf(b)); // stable: newcomers keep arrival order
   const seated = order.slice(0, MAX_PLAYERS);
   const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
+  const colors = playerColors(seated.map((m) => m.color));
   const training = course === 'range';
-  room.setLobby({ course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, seats: seated.map((m, i) => ({ name: names[i], client: m.client })) });
+  room.setLobby({ course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -357,7 +391,7 @@ function renderRoom(): void {
   const seats = lobby?.seats ?? members.map((m) => ({ name: m.name, client: m.client }));
   const watching = members.filter((m) => !seats.some((q) => q.client === m.client));
   $('room-members').innerHTML = [
-    ...seats.map((q, i) => `<div class="m"><i style="background:${PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${q.client === me ? 'you' : ''}${q.client === host ? `${q.client === me ? ' · ' : ''}host` : ''}${members.some((m) => m.client === q.client) ? '' : ' · away, seat kept 1 min'}</small></div>`),
+    ...seats.map((q, i) => `<div class="m"><i style="background:${('color' in q && q.color) || PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${q.client === me ? 'you' : ''}${q.client === host ? `${q.client === me ? ' · ' : ''}host` : ''}${members.some((m) => m.client === q.client) ? '' : ' · away, seat kept 1 min'}</small></div>`),
     ...watching.map((m) => `<div class="m"><i style="background:#555"></i><span>${escapeHtml(m.name)}</span><small>watching</small></div>`),
   ].join('');
   $('room-note').textContent = amHost()
@@ -409,7 +443,7 @@ async function enterRoom(code: string, hosting: boolean): Promise<void> {
 
 function joinRoom(code: string): void {
   room?.close();
-  const r = new RoomClient(code, myName());
+  const r = new RoomClient(code, myName(), rowColors()[0]);
   room = r;
   history.replaceState(null, '', `#room=${code}`);
   r.on({
@@ -490,7 +524,7 @@ async function launch(l: Lobby): Promise<void> {
   const r = room;
   const { startDisc } = await import('./modes/disc');
   await startDisc({
-    names: l.seats.map((q) => q.name), course: id, first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag,
+    names: l.seats.map((q) => q.name), colors: l.seats.map((q) => q.color ?? ''), course: id, first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag,
     net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog, seats: l.seats.map((q) => q.client), present: members.map((m) => m.client) },
     rules, // only the host's are used: they send them as the round's first event
   });
@@ -518,5 +552,5 @@ $('start').addEventListener('click', async () => {
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === course)!.name}${crazy.checked && course !== 'range' ? ' · Crazy mode' : ''}`;
   const { startDisc } = await import('./modes/disc');
   const training = course === 'range'; // no Crazy mode or bags on the range
-  await startDisc({ names, course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training });
+  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training });
 });
