@@ -1,6 +1,6 @@
 // 3D models for disc golf: basket (to standard dimensions), instanced trees, disc.
 import * as THREE from 'three';
-import type { Tree } from '../course/disc-types';
+import type { Tree, TreeMix } from '../course/disc-types';
 import type { Vec2 } from '../course/geo';
 import { DISC_RADIUS } from '../disc/discs';
 import { BASKET } from '../disc/flight';
@@ -72,7 +72,7 @@ export function basketModel(): THREE.Group {
  * and, on big forests, away from the first-person eye (see LOD). A tree switching between the two
  * dissolves over FADE_S (a screen-door dither, so no transparency sorting) instead of popping.
  */
-export function treeMeshes(trees: Tree[]): THREE.Group {
+export function treeMeshes(trees: Tree[], mix?: TreeMix): THREE.Group {
   const g = new THREE.Group();
   const n = trees.length;
   const trunkGeo = new THREE.CylinderGeometry(1, 1.2, 1, 7);
@@ -106,11 +106,11 @@ export function treeMeshes(trees: Tree[]): THREE.Group {
   };
   g.userData = state;
   refresh(state);
-  loadTreeModels().then((kinds) => {
+  const placed = trees.map((t) => treeShape(t, mix));
+  loadTreeModels(new Set(placed.map((p) => p.kind))).then((kinds) => {
     // One instanced mesh per model part (bark, leaves), sized for every tree of that kind, with
     // its own per-instance dither (the part's vertex data is shared with other groups).
     const count = kinds.map(() => 0);
-    const placed = trees.map((t) => treeShape(t));
     for (const p of placed) count[p.kind]++;
     const meshes = kinds.map((parts, k) => parts.map((part) => {
       const cap = Math.max(1, count[k]);
@@ -393,12 +393,21 @@ export function updateTreeLod(g: THREE.Group, x: number, y: number): void {
 }
 
 type ModelPart = { geo: THREE.BufferGeometry; mat: THREE.Material };
-let modelsPromise: Promise<ModelPart[][]> | null = null;
+const modelPromises = new Map<number, Promise<ModelPart[]>>();
 
-/** The tree models, once per page: each kind's meshes as (geometry, material) pairs. */
-function loadTreeModels(): Promise<ModelPart[][]> {
-  modelsPromise ??= Promise.all(TREE_KIND_NAMES.map(async (name) => {
-    const gltf = await new GLTFLoader().loadAsync(asset(`models/qtrees/${name}.gltf`));
+/**
+ * The tree models a course uses (each loaded once per page): every kind's meshes as (geometry,
+ * material) pairs, indexed by kind; kinds not asked for are empty.
+ */
+function loadTreeModels(used: Set<number>): Promise<ModelPart[][]> {
+  return Promise.all(TREE_KIND_NAMES.map((_, k) => (used.has(k) ? loadTreeModel(k) : Promise.resolve([]))));
+}
+
+function loadTreeModel(kind: number): Promise<ModelPart[]> {
+  let p = modelPromises.get(kind);
+  if (p) return p;
+  p = (async () => {
+    const gltf = await new GLTFLoader().loadAsync(asset(`models/qtrees/${TREE_KIND_NAMES[kind]}.gltf`));
     const parts: ModelPart[] = [];
     gltf.scene.updateMatrixWorld(true);
     gltf.scene.traverse((o) => {
@@ -410,8 +419,9 @@ function loadTreeModels(): Promise<ModelPart[][]> {
       parts.push({ geo: mesh.geometry.clone().applyMatrix4(mesh.matrixWorld), mat });
     });
     return parts;
-  }));
-  return modelsPromise;
+  })();
+  modelPromises.set(kind, p);
+  return p;
 }
 
 export function discMesh(color: string): THREE.Mesh {

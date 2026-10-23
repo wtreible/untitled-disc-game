@@ -1,4 +1,5 @@
-// Collision shapes for the branched tree models (Quaternius Stylized Nature MegaKit, CC0), measured
+// Collision shapes for the branched tree models (Quaternius Stylized Nature MegaKit, CC0, plus
+// birches and spruces from his Textured LowPoly Trees via `npm run import-trees`), measured
 // from their geometry: the trunk as stacked cylinder slices up to where it forks, and the leaf
 // clumps ("green regions") as a filled voxel grid. Writes src/disc/treeShapes.data.ts.
 //
@@ -6,7 +7,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const DIR = 'public/models/qtrees';
-const KINDS = ['CommonTree_1', 'CommonTree_2', 'CommonTree_3', 'CommonTree_4', 'CommonTree_5', 'Pine_1', 'Pine_2', 'Pine_3', 'Pine_4', 'Pine_5'];
+const KINDS = ['CommonTree_1', 'CommonTree_2', 'CommonTree_3', 'CommonTree_4', 'CommonTree_5', 'Pine_1', 'Pine_2', 'Pine_3', 'Pine_4', 'Pine_5',
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => `Birch_${i}`), ...[1, 2, 3, 4, 5].map((i) => `Spruce_${i}`)];
 /** Voxel size (model meters; the models are 7–9.5 m tall). */
 const CELL = 0.3;
 /** Trunk slice height. */
@@ -45,8 +47,24 @@ function load(name: string): Map<string, V3[][]> {
 
 const pct = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(s.length * p))]; };
 
-function trunk(bark: V3[][]): { x: number; z: number; y0: number; y1: number; r: number }[] {
-  const verts = bark.flat();
+/**
+ * The imported birches and spruces are low-poly: a trunk segment has vertices only at its ends, often
+ * meters apart, so their slices are traced from points along the bark's edges too.
+ */
+const SPARSE = /^(Birch|Spruce)_/;
+
+function edgePoints(tris: V3[][]): V3[] {
+  const out: V3[] = [];
+  for (const t of tris) for (let e = 0; e < 3; e++) {
+    const a = t[e], b = t[(e + 1) % 3];
+    const steps = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / (SLICE / 4));
+    for (let k = 0; k < steps; k++) out.push([0, 1, 2].map((q) => a[q] + ((b[q] - a[q]) * k) / steps) as V3);
+  }
+  return out;
+}
+
+function trunk(bark: V3[][], sparse = false): { x: number; z: number; y0: number; y1: number; r: number }[] {
+  const verts = sparse ? edgePoints(bark) : bark.flat();
   const base = verts.filter((v) => v[1] < SLICE);
   let cx = base.reduce((a, v) => a + v[0], 0) / base.length, cz = base.reduce((a, v) => a + v[2], 0) / base.length;
   let r = pct(base.map((v) => Math.hypot(v[0] - cx, v[2] - cz)), 0.8);
@@ -122,7 +140,7 @@ const kinds = KINDS.map((name) => {
   const mats = load(name);
   const bark = [...mats].filter(([m]) => m.startsWith('Bark')).flatMap(([, t]) => t);
   const leaves = [...mats].filter(([m]) => m.startsWith('Leaves') || m.startsWith('Leaf')).flatMap(([, t]) => t);
-  const tr = trunk(bark);
+  const tr = trunk(bark, SPARSE.test(name));
   const all = [...bark, ...leaves].flat();
   const H = Math.max(...all.map((v) => v[1]));
   const ax = tr[0].x, az = tr[0].z;

@@ -25,10 +25,34 @@ const world = (trees: Tree[], shaped = true): DiscWorld => ({
 });
 
 describe('tree shapes', () => {
-  it('cover all ten models, and each tree gets the same shape every time', () => {
-    expect(TREE_KIND_NAMES).toHaveLength(10);
+  it('cover all 25 models, and each tree gets the same shape every time', () => {
+    expect(TREE_KIND_NAMES).toHaveLength(25);
     const t = treeOfKind(3);
     expect(treeShape({ ...t })).toEqual(expect.objectContaining({ kind: 3, yaw: treeShape(t).yaw }));
+  });
+
+  it("a course's tree mix picks its models; without one, only the MegaKit's CommonTree and Pine", () => {
+    const names = (mix?: { broadleaf: string[]; conifer: string[] }) => {
+      const seen = new Set<string>();
+      for (let i = 0; i < 400; i++) seen.add(TREE_KIND_NAMES[treeShape({ x: 3, y: i * 0.37, h: 11, r: 3, b: i % 2 ? 1 : 4, t: 0.3 }, mix).kind].split('_')[0]);
+      return [...seen].sort();
+    };
+    expect(names()).toEqual(['CommonTree', 'Pine']);
+    expect(names({ broadleaf: ['Birch'], conifer: ['Spruce'] })).toEqual(['Birch', 'Spruce']);
+    expect(() => treeShape({ x: 0, y: 0, h: 9, r: 3, b: 2, t: 0.3 }, { broadleaf: ['Oak'], conifer: ['Pine'] })).toThrow();
+  });
+
+  it('the low-poly birches and spruces keep a trunk most of the way up', () => {
+    for (const name of ['Birch_1', 'Spruce_1']) {
+      const kind = TREE_KIND_NAMES.indexOf(name);
+      let t: Tree | undefined;
+      for (let i = 0; i < 20000 && !t; i++) {
+        const c: Tree = { x: 5, y: i * 0.37, h: 10, r: 3, b: name.startsWith('Spruce') ? 1 : 4, t: 0.3 };
+        if (treeShape(c, { broadleaf: ['Birch'], conifer: ['Spruce'] }).kind === kind) t = c;
+      }
+      const top = Math.max(...treeShape(t!).trunk.map((s) => s.z1));
+      expect(top, name).toBeGreaterThan(0.5 * t!.h);
+    }
   });
 
   it('leaf clumps are smaller than the old crown, so their branch density is stepped up a little', () => {

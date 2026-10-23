@@ -21,7 +21,7 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'fantasy' | 'rainbow' | 'pirate' | 'range';
+type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'fantasy' | 'rainbow' | 'pirate' | 'range';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
 type Group = 'real' | 'arcade' | 'training';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
@@ -49,6 +49,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     id: 'oakgrove', group: 'real', name: 'Oak Grove', meta: `Stockton, California${IMAGERY ? ' · satellite imagery' : ''} · mapped oaks`, holes: 18,
     blurb: 'The Gold Course at Oak Grove Regional Park, from OpenStreetMap: eighteen short, open holes among the park’s oaks, every mapped tree where it stands, and a pond to cross on 17.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#6f7f45"/><path d="M6 56 C 22 46, 30 30, 54 14" stroke="#b9c47a" stroke-width="7" fill="none" stroke-linecap="round"/>${[[16, 24, 8], [44, 42, 9], [30, 52, 6], [50, 26, 5], [12, 44, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#3f5a2a"/>`).join('')}<ellipse cx="40" cy="56" rx="9" ry="4" fill="#4f8fcf"/><circle cx="54" cy="14" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'bechovice', group: 'real', name: 'Běchovice', meta: `Prague, Czechia${IMAGERY ? ' · satellite imagery' : ''} · mapped woods`, holes: 18,
+    blurb: 'DiscGolfPark Běchovice’s long (gold) tees, from OpenStreetMap: Prague’s hardest course, host of the 2023 Czech championship, with long par 4s and 5s through and around its woods.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#7c8a4a"/>${[[8, 10, 9], [20, 6, 8], [52, 50, 10], [58, 34, 7], [6, 40, 8], [40, 8, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#35512a"/>`).join('')}<path d="M10 58 C 24 50, 26 30, 44 24 S 56 10, 52 6" stroke="#c3cb86" stroke-width="7" fill="none" stroke-linecap="round"/><rect x="26" y="44" width="3" height="12" fill="#eef2e6"/><rect x="34" y="40" width="3" height="14" fill="#eef2e6"/><circle cx="52" cy="6" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
     id: 'fantasy', group: 'arcade', name: 'Fantasy Fairways', meta: 'Knights, a castle keep, one dragon', holes: 9,

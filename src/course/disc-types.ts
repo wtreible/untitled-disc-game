@@ -63,6 +63,12 @@ export interface PropDef {
   lift?: number;
 }
 
+/**
+ * A course's tree models: name prefixes of the kinds (public/models/qtrees) its broadleaf trees and
+ * its conifers are drawn from, e.g. Birch and Spruce for a Nordic forest.
+ */
+export interface TreeMix { broadleaf: string[]; conifer: string[] }
+
 export interface DiscCourseFile {
   sport: 'disc';
   /** Themed props and models; their colliders join the physics. */
@@ -82,6 +88,8 @@ export interface DiscCourseFile {
   style?: 'photo' | 'vector';
   /** Branch hits per meter inside a crown. A forest needs it low; lone feature trees are fully leafy. */
   branch_density?: number;
+  /** The tree models its trees are drawn (and collide) as; default CommonTree and Pine. */
+  tree_models?: TreeMix;
   name: string;
   source: { osm_timestamp: string; course_osm_id: string; attribution: string[] };
   origin: LatLon;

@@ -211,6 +211,19 @@ describe('Oak Grove (OpenStreetMap, Stockton CA)', () => {
   });
 });
 
+describe('Běchovice (OpenStreetMap, Prague)', () => {
+  const c = load('bechovice');
+  const grid = gridOf(c);
+  it('has the 18 gold-tee holes with their OSM pars, tees and baskets in play, and trees from its woods', () => {
+    expect(c.holes).toHaveLength(18);
+    expect(c.holes.map((h) => h.ref)).toEqual(Array.from({ length: 18 }, (_, i) => String(i + 1)));
+    expect(c.holes.every((h) => h.par_source === 'osm')).toBe(true);
+    for (const h of c.holes) for (const p of [h.tee, h.pin]) expect(['oob', 'water']).not.toContain(grid.classAt(p[0], p[1]));
+    expect(decodeTrees(c.trees).length).toBeGreaterThan(5000);
+    expect(c.tree_models).toEqual({ broadleaf: ['CommonTree', 'Birch'], conifer: ['Pine'] });
+  });
+});
+
 describe('menu course summary', () => {
   it('public/courses/summary.json matches the course files (rerun npm run course-summary after rebuilding one)', async () => {
     const { COURSE_FILES, summarize } = await import('../scripts/course-summary');

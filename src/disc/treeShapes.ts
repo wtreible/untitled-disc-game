@@ -1,8 +1,9 @@
-// Course trees drawn as branched models (Quaternius Stylized Nature MegaKit, CC0) collide as the
+// Course trees drawn as branched models (Quaternius Stylized Nature MegaKit and Textured LowPoly
+// Trees, CC0) collide as the
 // model does: a solid trunk up to where it forks, and random branch hits only inside the leaf
 // clumps (the "green regions"). Shapes are measured by scripts/build-tree-shapes.ts. The model,
 // its turn and its scale come from the tree's position and size, so physics and rendering agree.
-import type { Tree } from '../course/disc-types';
+import type { Tree, TreeMix } from '../course/disc-types';
 import { GREEN_VOLUME_RATIO, TREE_KINDS } from './treeShapes.data';
 
 export interface TreeShape {
@@ -25,10 +26,24 @@ export const GREEN_DENSITY_BOOST = GREEN_VOLUME_RATIO < 0.75 ? 1.3 : 1;
 
 const KINDS = TREE_KINDS.map((k) => {
   const raw = Uint8Array.from(atob(k.vox.bits), (c) => c.charCodeAt(0));
-  return { ...k, bits: raw, pine: k.name.startsWith('Pine') };
+  return { ...k, bits: raw };
 });
-const COMMON = KINDS.map((k, i) => (k.pine ? -1 : i)).filter((i) => i >= 0);
-const PINES = KINDS.map((k, i) => (k.pine ? i : -1)).filter((i) => i >= 0);
+
+/** Courses without their own tree models: the MegaKit's. */
+const DEFAULT_MIX: TreeMix = { broadleaf: ['CommonTree'], conifer: ['Pine'] };
+
+const poolCache = new Map<string, { broadleaf: number[]; conifer: number[] }>();
+function pools(mix: TreeMix) {
+  const key = `${mix.broadleaf.join()}|${mix.conifer.join()}`;
+  let p = poolCache.get(key);
+  if (!p) {
+    const of = (prefixes: string[]) => KINDS.map((k, i) => (prefixes.some((pre) => k.name.startsWith(`${pre}_`)) ? i : -1)).filter((i) => i >= 0);
+    p = { broadleaf: of(mix.broadleaf), conifer: of(mix.conifer) };
+    if (!p.broadleaf.length || !p.conifer.length) throw new Error(`Tree mix ${key} names no models`);
+    poolCache.set(key, p);
+  }
+  return p;
+}
 
 /** Model file names (public/models/qtrees/<name>.gltf), indexed by kind. */
 export const TREE_KIND_NAMES = KINDS.map((k) => k.name);
@@ -46,12 +61,13 @@ const hash = (x: number, y: number, s: number) => {
 
 const cache = new WeakMap<Tree, TreeShape>();
 
-export function treeShape(t: Tree): TreeShape {
+export function treeShape(t: Tree, mix: TreeMix = DEFAULT_MIX): TreeShape {
   const hit = cache.get(t);
   if (hit) return hit;
-  // Low crowns read as conifers: mostly pines; the rest mostly broadleaf.
+  // Low crowns read as conifers: mostly conifer models; the rest mostly broadleaf.
   const conifer = t.b < t.h * 0.25;
-  const pool = hash(t.x, t.y, 1) < (conifer ? 0.65 : 0.25) ? PINES : COMMON;
+  const p = pools(mix);
+  const pool = hash(t.x, t.y, 1) < (conifer ? 0.65 : 0.25) ? p.conifer : p.broadleaf;
   const kind = pool[Math.floor(hash(t.x, t.y, 2) * pool.length)];
   const k = KINDS[kind];
   const yaw = hash(t.x, t.y, 3) * Math.PI * 2;

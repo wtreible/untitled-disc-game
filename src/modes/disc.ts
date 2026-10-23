@@ -48,6 +48,7 @@ export const DISC_COURSES = {
   rainbow: 'courses/rainbow.json',
   pirate: 'courses/pirate.json',
   oakgrove: 'courses/oak-grove.json',
+  bechovice: 'courses/bechovice.json',
 } as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 /** Circle 2: inside this, switch to first-person putting. */
@@ -83,7 +84,7 @@ function cutByDistance(q: Vec3[], frac: number): Vec3[] {
 }
 const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2;
 /** Music per course. */
-const TRACKS: Record<DiscOptions['course'], Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', pirate: 'minigolf', oakgrove: 'park', range: 'park' };
+const TRACKS: Record<DiscOptions['course'], Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', pirate: 'minigolf', oakgrove: 'park', bechovice: 'park', range: 'park' };
 /** Landing puff colors by what it landed on. */
 const PUFF: Record<string, string[]> = {
   fairway: ['#7a9a4a', '#9bb565', '#8a7a55'], rough: ['#6f8f45', '#8a7a55', '#a3b06a'], green: ['#7fb04f', '#a6c96e'],
@@ -278,7 +279,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const worldCache = new Map<number, { v: number; w: DiscWorld }>();
   // Course trees are branched models (trunk + leaf clumps); themed courses' model trees keep theirs.
   const propTrees = new Set((course.props ?? []).filter((p) => p.tree !== undefined).map((p) => trees[p.tree!]));
-  const shapeOf = (t: Tree) => (propTrees.has(t) ? null : treeShape(t));
+  const shapeOf = (t: Tree) => (propTrees.has(t) ? null : treeShape(t, course.tree_models));
   /** The course as player i plays it: their trees, their ponds, their basket. */
   const worldFor = (i: number): DiscWorld => {
     const c = worldCache.get(i);

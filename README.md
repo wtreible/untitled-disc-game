@@ -13,6 +13,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | **Tali Recreation** | 18 | The real [Tali disc golf park](https://www.openstreetmap.org/way/40254405) (Helsinki) from OpenStreetMap, with its real trees from Helsinki's canopy data, cut back a few meters from every fairway, green and tee. The easy version. |
 | **Tali Forest** | 18 | The real thing: the same holes and all ~10,500 trees. |
 | **Oak Grove** | 18 | The Gold Course at [Oak Grove Regional Park](https://www.openstreetmap.org/relation/18072611) (Stockton, California) from OpenStreetMap: short, open holes among the park's mapped oaks, a pond on 17. |
+| **Běchovice** | 18 | [DiscGolfPark Běchovice](https://www.openstreetmap.org/relation/14137393) (Prague) from OpenStreetMap, from the long tees: Prague's hardest course, long par 4s and 5s round its woods, with pines, birches and broadleaf. |
 | **Mini Golf Madness** | 9 | Full-size disc golf themed like mini golf: a windmill with spinning blades, a castle gate, giant animals. |
 | **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
 | **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
@@ -74,6 +75,8 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 | `npm run disc-course` | Rebuild Tali Forest (`public/courses/tali.json`) from OpenStreetMap + HSY canopy. Downloads are cached in `data/raw/`. `-- --course <way id> --out <name>` for another course. |
 | `npm run disc-course -- --style simple --out tali-simple` | Rebuild Tali Recreation |
 | `npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm` | Rebuild Oak Grove. A course mapped as a relation of holes; outside Helsinki, `--trees osm` plants OpenStreetMap's mapped trees and woods |
+| `npm run disc-course -- --course relation/14137393 --out bechovice --trees osm --broadleaf CommonTree,Birch --name "DiscGolfPark Běchovice"` | Rebuild Běchovice. `--broadleaf` / `--conifer` pick the tree models by name (`CommonTree`, `Birch`, `Pine`, `Spruce`) |
+| `npm run import-trees -- --src <pack folder>` | Import the birches and spruces from Quaternius' [Textured LowPoly Trees](https://opengameart.org/content/lowpoly-textured-trees) (CC0), then `npm run tree-shapes` |
 | `npm run silly-course` / `fantasy-course` / `rainbow-course` / `pirate-course` | Rebuild the themed courses |
 | `npm run course-summary` | Refresh the menu's par and length stats after rebuilding a course |
 | `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |

@@ -6,6 +6,7 @@
 //   npm run disc-course -- --course 40254405 --out tali [--refresh]
 //   npm run disc-course -- --style simple --out tali-simple   # Tali Recreation: vector, thinned real trees
 //   npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm   # Oak Grove Gold, Stockton CA
+//   npm run disc-course -- --course relation/14137393 --out bechovice --trees osm --broadleaf CommonTree,Birch --name "DiscGolfPark Běchovice"   # Prague
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import type { FeatureCollection } from 'geojson';
@@ -23,6 +24,11 @@ const { values: args } = parseArgs({
     style: { type: 'string', default: 'forest' },
     /** 'hsy' (Helsinki region) or 'osm': OSM's mapped trees, and its woods planted as canopy. */
     trees: { type: 'string', default: 'hsy' },
+    /** Tree models, as comma-separated name prefixes (e.g. Birch,CommonTree); default CommonTree / Pine. */
+    broadleaf: { type: 'string' },
+    conifer: { type: 'string' },
+    /** Course name, when the OSM one is a layout's ("Main 18 - long tees"). */
+    name: { type: 'string' },
   },
 });
 
@@ -157,12 +163,17 @@ const course = buildDiscCourse(osm, canopy, {
   osmTimestamp: raw.osm3s?.timestamp_osm_base ?? 'unknown',
   trees: osmTrees ? 'osm' : simple ? 'recreation' : 'canopy',
   holeIds: relation?.members?.filter((m) => m.type === 'way').map((m) => `way/${m.ref}`),
-  name: relation?.tags?.name,
+  name: args.name ?? relation?.tags?.name,
   attribution: [
     osmTrees ? 'Course data and trees © OpenStreetMap contributors (ODbL)' : 'Course data © OpenStreetMap contributors (ODbL)',
     ...(canopy.length && !osmTrees ? ['Tree canopy: HSY land cover 2024 (Helsingin seudun ympäristöpalvelut, CC BY 4.0)'] : []),
   ],
 });
+
+if (args.broadleaf || args.conifer) {
+  const list = (v: string | undefined, d: string) => (v ?? d).split(',').map((x) => x.trim()).filter(Boolean);
+  course.tree_models = { broadleaf: list(args.broadleaf, 'CommonTree'), conifer: list(args.conifer, 'Pine') };
+}
 
 const outPath = `public/courses/${args.out}.json`;
 mkdirSync('public/courses', { recursive: true });

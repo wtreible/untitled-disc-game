@@ -8,7 +8,7 @@ import type { DiscCourseFile } from '../src/course/disc-types';
 
 /** Menu course id → file (as in src/modes/disc.ts DISC_COURSES). */
 export const COURSE_FILES: Record<string, string> = {
-  simple: 'tali-simple', forest: 'tali', silly: 'silly', fantasy: 'fantasy', rainbow: 'rainbow', pirate: 'pirate', oakgrove: 'oak-grove',
+  simple: 'tali-simple', forest: 'tali', silly: 'silly', fantasy: 'fantasy', rainbow: 'rainbow', pirate: 'pirate', oakgrove: 'oak-grove', bechovice: 'bechovice',
 };
 
 export function summarize(c: DiscCourseFile) {

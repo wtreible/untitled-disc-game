@@ -19,6 +19,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [13-fantasy-and-rainbow](13-fantasy-and-rainbow.md) | Arcade courses Fantasy Fairways (knight, castle, dragon) and Rainbow Runs (rainbow road in space); FBX, decals, stars |
 | [14-online](14-online.md) | Online play: event-log rounds, the Cloudflare Durable Object room, lobby, rejoining, free tier |
 | [15-pirates-cove-and-oak-grove](15-pirates-cove-and-oak-grove.md) | Arcade course Pirate's Cove (islands; the sea as a water hazard) and real course Oak Grove (Stockton, CA; trees from OpenStreetMap) |
+| [16-bechovice-and-tree-mixes](16-bechovice-and-tree-mixes.md) | Real course Běchovice (Prague) and per-course tree models: birches and spruces (Quaternius Textured LowPoly Trees, CC0) |
 
 ## Decision log
 
@@ -95,6 +96,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D68 | Two more courses: **Pirate's Cove** (arcade; islands where off the land is the sea, a water hazard, via a course `sea` flag; Kenney Pirate Kit, CC0) and **Oak Grove** Gold Course, Stockton CA (real; the first mapped course outside Helsinki, so its trees come from OpenStreetMap: mapped trees where they stand, woods planted like canopy). The course builder takes courses mapped as a relation of holes. | 2026-10-22 |
 | D69 | Ten more augments (4 common, 3 epic, 3 legendary), mostly new mechanics: rollers, overhand throws, metal hits that drop in, no-wobble putts, straight-flying discs, and hexes on opponents' wobble, distance and ghost line. 76 in all. | 2026-10-22 |
 | D70 | Players pick their colors (10 choices, no two alike). Trees thin out within a few meters of the camera (a screen-door fade to 35% at 2 m) so you can see past them. A quick chat wheel (hold Z) of fixed lines. W/S target distance works top-down too. Online: watchers get the hole flyover (the thrower's live aim no longer pins their camera at the tee). | 2026-10-22 |
+| D71 | Real course **Běchovice** (Prague, OSM relation 14137393, gold tees, OSM pars). Courses can name their tree models (`tree_models`); new CC0 birches and spruces from Quaternius' Textured LowPoly Trees, measured like the MegaKit's, with their sparse trunks traced along edges. Existing courses keep CommonTree and Pine. | 2026-10-23 |
 
 ## Open questions
 

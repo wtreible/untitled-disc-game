@@ -4,7 +4,7 @@
 // Overlays (pixel-sized markers, aim line) only show top-down; 3D trees, baskets and discs show in
 // first person, and trees also show in the top-down class view (the photo already has real trees).
 import * as THREE from 'three';
-import type { DiscCourseFile, DiscHole, Tree } from '../course/disc-types';
+import type { DiscCourseFile, DiscHole, Tree, TreeMix } from '../course/disc-types';
 import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
 import type { Vec3 } from '../game/terrain';
@@ -70,6 +70,8 @@ export class CourseScene {
   private readonly fog: THREE.Fog;
   private view: ViewMode = 'photo';
   private readonly trees3d: THREE.Group;
+  /** The course's tree models, for placed trees too. */
+  private readonly treeMix?: TreeMix;
   private readonly overlays = new THREE.Group();
   private readonly world3d = new THREE.Group();
   private readonly pixelScaled: THREE.Object3D[] = [];
@@ -153,7 +155,8 @@ export class CourseScene {
     // Trees that a themed course draws as 3D models (props) aren't drawn again as generic trees.
     const modelTrees = new Set((course.props ?? []).filter((p) => p.tree !== undefined).map((p) => trees[p.tree!]));
     trees = trees.filter((t) => !modelTrees.has(t));
-    this.trees3d = treeMeshes(trees);
+    this.treeMix = course.tree_models;
+    this.trees3d = treeMeshes(trees, this.treeMix);
     this.world3d.add(this.trees3d);
     this.baseTrees = trees;
     trees.forEach((t, i) => this.treeIdx.set(t, i));
@@ -501,7 +504,7 @@ export class CourseScene {
     if (this.props) for (const [t, obj] of this.props.treeObjects) obj.visible = v.trees.has(t);
     // Placed trees: rebuilt each time (a handful at most).
     for (const c of [...this.extras.children]) this.extras.remove(c);
-    if (v.extras.length) { const g = treeMeshes(v.extras); setTreeQuality(g, this.quality); this.extras.add(g); }
+    if (v.extras.length) { const g = treeMeshes(v.extras, this.treeMix); setTreeQuality(g, this.quality); this.extras.add(g); }
     if (this.symbols) {
       const rebuild = (g: THREE.Group, list: Tree[]) => {
         for (const c of [...g.children]) { g.remove(c); (c as THREE.Mesh).geometry?.dispose(); }
