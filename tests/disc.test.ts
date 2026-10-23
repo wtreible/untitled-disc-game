@@ -30,10 +30,11 @@ const throwN = (input: ThrowInput) => simulateThrow(input, world(), () => 0.25, 
 describe('disc flight calibration', () => {
   it('full-power flat throws land in the tuned ranges, longest disc farthest', () => {
     const d = Object.fromEntries(DISCS.map((k) => [k.id, throwN({ start: [0, -140], aim: NORTH, power: 1, disc: k, hyzer: 0 }).rest[1] + 140]));
-    expect(d.DD).toBeGreaterThan(95); expect(d.DD).toBeLessThan(115);
-    expect(d.FD).toBeGreaterThan(75); expect(d.FD).toBeLessThan(95);
-    expect(d.MR).toBeGreaterThan(60); expect(d.MR).toBeLessThan(80);
-    expect(d.PT).toBeGreaterThan(48); expect(d.PT).toBeLessThan(65);
+    // The old ranges × FLIGHT.throwPower (1.1).
+    expect(d.DD).toBeGreaterThan(105); expect(d.DD).toBeLessThan(127);
+    expect(d.FD).toBeGreaterThan(83); expect(d.FD).toBeLessThan(105);
+    expect(d.MR).toBeGreaterThan(66); expect(d.MR).toBeLessThan(88);
+    expect(d.PT).toBeGreaterThan(53); expect(d.PT).toBeLessThan(72);
     expect(d.DD).toBeGreaterThan(d.FD);
     expect(d.FD).toBeGreaterThan(d.MR);
     expect(d.MR).toBeGreaterThan(d.PT);
@@ -43,9 +44,9 @@ describe('disc flight calibration', () => {
     const fly = (id: string) => throwN({ start: [0, -140], aim: NORTH, power: 1, disc: disc(id), hyzer: 0 }).rest;
     const [od, tf, ap, dd, fd] = ['OD', 'TF', 'AP', 'DD', 'FD'].map(fly);
     const range = (r: Vec2) => Math.hypot(r[0], r[1] + 140);
-    expect(range(od)).toBeGreaterThan(82); expect(range(od)).toBeLessThan(98);
-    expect(range(tf)).toBeGreaterThan(76); expect(range(tf)).toBeLessThan(92);
-    expect(range(ap)).toBeGreaterThan(45); expect(range(ap)).toBeLessThan(58);
+    expect(range(od)).toBeGreaterThan(90); expect(range(od)).toBeLessThan(108);
+    expect(range(tf)).toBeGreaterThan(84); expect(range(tf)).toBeLessThan(101);
+    expect(range(ap)).toBeGreaterThan(50); expect(range(ap)).toBeLessThan(64);
     expect(od[0]).toBeLessThan(dd[0] - 15); // much more fade than the distance driver
     expect(tf[0]).toBeGreaterThan(fd[0] + 6); // more turn than the fairway driver
   });

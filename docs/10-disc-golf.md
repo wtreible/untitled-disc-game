@@ -60,15 +60,15 @@ Result: ~10.5k trees. Positions match the photo at forest scale (open lanes and 
 
 | Disc | Speed \| Glide \| Turn \| Fade | Full-power flat | Shape (right-hand backhand) |
 |---|---|---|---|
-| Distance driver | 12 \| 5 \| −1 \| 3 | ~110 m | slight turn, fades back to the line |
-| Overstable driver | 11 \| 4 \| 0 \| 4 | ~90 m | no turn, hard fade (~30 m left): hyzers, headwinds |
-| Fairway driver | 7 \| 5 \| −1 \| 2 | ~90 m | drifts right ~12 m |
-| Turnover fairway | 7 \| 5 \| −1 \| 1 | ~84 m | turns right ~24 m and holds |
-| Midrange | 5 \| 5 \| 0 \| 1 | ~72 m | straight |
-| Approach | 4 \| 3 \| 0 \| 3 | ~52 m | short, dependable fade |
-| Putter | 2 \| 3 \| 0 \| 1 | ~58 m | straight |
+| Distance driver | 12 \| 5 \| −1 \| 3 | ~120 m | slight turn, fades back to the line |
+| Overstable driver | 11 \| 4 \| 0 \| 4 | ~98 m | no turn, hard fade (~30 m left): hyzers, headwinds |
+| Fairway driver | 7 \| 5 \| −1 \| 2 | ~100 m | drifts right ~12 m |
+| Turnover fairway | 7 \| 5 \| −1 \| 1 | ~92 m | turns right ~24 m and holds |
+| Midrange | 5 \| 5 \| 0 \| 1 | ~80 m | straight |
+| Approach | 4 \| 3 \| 0 \| 3 | ~59 m | short, dependable fade |
+| Putter | 2 \| 3 \| 0 \| 1 | ~64 m | straight |
 
-New discs are fitted with `scripts/calibrate-disc.ts` (release speed for the range, then the meter curve), so half a meter is ~half the distance for every disc. Disc suggestions only pick the everyday four (distance, fairway, midrange, putter).
+Throws reach 10% past the fitted curves (`FLIGHT.throwPower`, 2026-10-23; putts unchanged), so a full meter goes ~110% of the distance the curves were fitted to; the extra wobble still starts at 90% of the meter. New discs are fitted with `scripts/calibrate-disc.ts` (release speed for the range, then the meter curve), so half a meter is ~half the distance for every disc. Disc suggestions only pick the everyday four (distance, fairway, midrange, putter).
 
 ### Bag building (2026-10-21)
 
@@ -80,7 +80,7 @@ The shot chip (or G) picks the kind of throw, back to normal after each throw. N
 
 | Shot | Release | Flight | Driver, full power |
 |---|---|---|---|
-| Normal | Hyzer / flat / anhyzer, backhand or forehand | The disc's flight numbers | ~110 m |
+| Normal | Hyzer / flat / anhyzer, backhand or forehand | The disc's flight numbers | ~120 m |
 | Tomahawk | Overhand, on edge, launched steep | Rolls over onto its back and dives left; flies rim first (low drag, small side force), stops where it lands. Over trees | ~40 m, apex ~11 m, ~8 m left |
 | Thumber | Tomahawk's mirror image | Dives right | ~40 m, ~8 m right |
 | Roller | A big anhyzer, launched low | Touches down ~15–20 m out and rolls on edge, curling more as it slows (which way: the disc's stability and the hand), then falls flat. Under trees | ~80 m |

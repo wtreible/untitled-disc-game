@@ -3,7 +3,7 @@ import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from '../
 import { simplify } from '../course/disc-build';
 import { decodeTrees, type DiscCourseFile, type Tree } from '../course/disc-types';
 import { DISCS, PUTTER_DISC, suggestDisc, type Disc } from '../disc/discs';
-import { BASKET, shotLaunch, simulateThrow, type DiscWorld, type Shot, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
+import { BASKET, FLIGHT, shotLaunch, simulateThrow, type DiscWorld, type Shot, type ThrowEvent, type ThrowInput, type ThrowResult } from '../disc/flight';
 import { TreeIndex } from '../disc/trees';
 import { effectiveMods } from '../disc/mods';
 import { PLACE_TEXT, place, pondsFor, teeFor, treesFor } from '../rogue/course';
@@ -39,6 +39,7 @@ import { CHAT_LINES, mountQuickChat, showChat } from '../ui/quickChat';
 import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
 import { rangeMarkers } from '../render/rangeMarkers';
 import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
+import { mountTutorial, type Tutorial, type TutorialThrow } from './tutorial';
 
 export const DISC_COURSES = {
   simple: 'courses/tali-simple.json',
@@ -53,6 +54,8 @@ export const DISC_COURSES = {
   kincaid: 'courses/kincaid.json',
   julkujarvi: 'courses/julkujarvi.json',
   bluelake: 'courses/blue-lake.json',
+  prater: 'courses/prater.json',
+  graveyard: 'courses/graveyard.json',
 } as const;
 const VIEWS: ViewMode[] = ['photo', 'overlay', 'classes'];
 /** Circle 2: inside this, switch to first-person putting. */
@@ -88,7 +91,7 @@ function cutByDistance(q: Vec3[], frac: number): Vec3[] {
 }
 const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2;
 /** Music per course. */
-const TRACKS: Record<DiscOptions['course'], Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', pirate: 'minigolf', oakgrove: 'park', bechovice: 'park', skatas: 'park', kincaid: 'park', julkujarvi: 'park', bluelake: 'park', range: 'park' };
+const TRACKS: Record<DiscOptions['course'], Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', pirate: 'minigolf', oakgrove: 'park', bechovice: 'park', skatas: 'park', kincaid: 'park', julkujarvi: 'park', bluelake: 'park', prater: 'park', graveyard: 'fantasy', range: 'park' };
 /** Landing puff colors by what it landed on. */
 const PUFF: Record<string, string[]> = {
   fairway: ['#7a9a4a', '#9bb565', '#8a7a55'], rough: ['#6f8f45', '#8a7a55', '#a3b06a'], green: ['#7fb04f', '#a6c96e'],
@@ -184,6 +187,8 @@ export interface DiscOptions {
   bag?: boolean;
   /** Each player's picked color (missing or taken ones get a default). */
   colors?: string[];
+  /** The tutorial (src/modes/tutorial.ts): the range, alone, with a card of steps. */
+  tutorial?: boolean;
 }
 
 /** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
@@ -324,8 +329,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const hole = () => st.hole;
 
   // ---------- driving range: baskets and trees placed at will, wind and weather picked ----------
-  /** This browser's copy (the panel edits it, saved here); the round's own is st.range. */
-  const rs = loadRange();
+  /** This browser's copy (the panel edits it, saved here); the round's own is st.range. The tutorial's is fresh and calm, and not saved. */
+  const rs = opts.tutorial ? freshRange() : loadRange();
   /** The range everyone plays: the round's, or ours until the round has one. */
   const R = () => st.range ?? rs;
   let rangeTrees = new TreeIndex(rs.trees);
@@ -366,7 +371,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const first = st.log.find((e): e is Extract<RoundEvent, { t: 'hole-start' }> => e.t === 'hole-start');
     if (!first) { ambience('outdoors'); return; }
     roundWeather ??= pickWeather(first.wind[0] * 7.31 + first.wind[1] * 3.17);
-    const w = prefs().weather || range ? roundWeather : WEATHER.clear;
+    const w = course.weather ? WEATHER[course.weather] : prefs().weather || range ? roundWeather : WEATHER.clear;
     scene.setWeather(w);
     life.setWeather(w);
     rain(w.rain);
@@ -967,6 +972,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const perfect = perfectArmed;
     perfectArmed = false;
     const input = { ...throwInput(Math.max(0.01, power)), perfect };
+    if (tutorial) tutorialShot = { power: input.power, hyzer, forehand, shot: input.shot ?? 'standard', putt: input.style === 'putt' };
     let result = simulateThrow(input, world());
     let other: ThrowResult | null = null;
     if (modsFor(me).clone) {
@@ -1156,6 +1162,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       for (const m of msgs) chip(m, 'hot');
     }
     panel?.addShot({ who: who.name, color: who.color, disc: DISCS.find((d) => d.id === e.disc)?.name ?? '', dist: carried, side, holed: r.holed });
+    if (tutorial && tutorialShot && !remote) { tutorial.thrown({ ...tutorialShot, holed: r.holed }); tutorialShot = null; }
     phase = 'between';
     updateHud();
     pendingTimer = window.setTimeout(() => { phase = 'idle'; advance(); }, r.holed ? 1400 : 900);
@@ -1445,6 +1452,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     } else $('stats').innerHTML = `Basket <b>${fmtLen(toBasket())}</b> · Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
     $('meter-fill').style.width = `${power * 100}%`;
     $('meter-target').style.left = `${tick * 100}%`;
+    // The wobble zone: throws only (putts don't), and gone with Run-Up or Golden Arm.
+    $('meter-wobble').style.left = `${FLIGHT.wobbleFrom * 100}%`;
+    $('meter-wobble').hidden = puttStyle() || modsFor(game().current).noOverpowerWobble;
     $('view-toggle').textContent = VIEW_LABELS[scene.viewMode];
     $('fp-toggle').textContent = isFP() ? '1st person' : 'Top-down';
     $('swing').toggleAttribute('disabled', phase !== 'aim' && phase !== 'charging');
@@ -1620,7 +1630,17 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       sendRange();
     },
   }) : null;
-  $('range-panel').hidden = !range;
+  $('range-panel').hidden = !range || !!opts.tutorial;
+
+  // ---------- tutorial: a card of steps over the range ----------
+  /** Baskets a tutorial step asked for, placed once it's our turn to set the range. */
+  let tutorialBaskets: { at: Vec2[]; putt: boolean } | null = null;
+  /** The throw in the air, as the tutorial wants to hear of it when it lands. */
+  let tutorialShot: Omit<TutorialThrow, 'holed'> | null = null;
+  const tutorial: Tutorial | null = opts.tutorial ? mountTutorial($('tutorial'), {
+    setBaskets: (b, putt) => { tutorialBaskets = { at: b.map((q): Vec2 => [q[0], q[1]]), putt }; },
+    quit: () => location.reload(),
+  }) : null;
   $('pause-card').hidden = range;
 
   /**
@@ -1629,7 +1649,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
    */
   function sendRange(): void {
     if (!canSetRange()) { presentRange(); return; }
-    saveRange(rs);
+    if (!opts.tutorial) saveRange(rs);
     dispatchQuiet({ t: 'range', setup: rangeConditions(rs) });
     presentRange();
   }
@@ -1793,6 +1813,22 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     gallery.update(dt);
     effects.update(dt);
     life.update(dt, scene.eye());
+    if (tutorial && phase === 'aim') {
+      if (tutorialBaskets && canSetRange()) {
+        const { at, putt } = tutorialBaskets;
+        tutorialBaskets = null;
+        rs.baskets = at;
+        sendRange();
+        if (putt && at.length) {
+          // The putt step: the putter, a flat backhand, a normal shot, aimed at the basket.
+          disc = PUTTER_DISC; hyzer = 0; forehand = false; shot = 'standard';
+          setAimTarget(at[0]);
+          if (isFP()) scene.setEye(player().ball, yaw, pitch);
+        }
+      }
+      const b = player().ball;
+      tutorial.aim({ angle: Math.atan2(aimTarget[1] - b[1], aimTarget[0] - b[0]), dist: dist(b, aimTarget), disc: disc.id, firstPerson: isFP() });
+    }
     if (phase === 'charging') {
       const t = (((now - chargeStart) / 1000) * modsFor(game().current).meterSpeed) % 2;
       power = t < 1 ? t : 2 - t;

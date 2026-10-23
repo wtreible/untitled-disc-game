@@ -1,6 +1,7 @@
 import type { LatLon, Vec2 } from './geo';
 import type { CourseFeature, Rings } from './types';
 import type { Collider, Slide, Swing } from '../disc/props';
+import type { WeatherId } from '../render/weather';
 
 export interface DiscHole {
   ref: string;
@@ -88,6 +89,8 @@ export interface DiscCourseFile {
   style?: 'photo' | 'vector';
   /** Branch hits per meter inside a crown. A forest needs it low; lone feature trees are fully leafy. */
   branch_density?: number;
+  /** Always this weather and time of day (Graveyard Shift's night), whatever the round would pick. */
+  weather?: WeatherId;
   /** The tree models its trees are drawn (and collide) as; default CommonTree and Pine. */
   tree_models?: TreeMix;
   name: string;

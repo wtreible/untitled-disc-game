@@ -339,6 +339,9 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
       const pts = f.geometry.coordinates.map(P);
       if (!pts.some(inBounds)) continue;
       const half = ROAD_HALF_WIDTH[t.highway];
+      // A road on a bridge passes overhead, so it isn't OB: the ground under it plays (the Prater's
+      // 7th tees off under the A23 viaduct). Footbridges still draw as paths.
+      if (half && t.bridge && t.bridge !== 'no') continue;
       if (half) ob.push(...strip(pts, half));
       else if (['footway', 'path', 'cycleway', 'track', 'bridleway', 'steps'].includes(t.highway)) {
         for (const r of strip(pts, 1.2)) features.push({ class: 'path', osm_id: id, rings: r });

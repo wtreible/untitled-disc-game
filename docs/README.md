@@ -20,6 +20,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [14-online](14-online.md) | Online play: event-log rounds, the Cloudflare Durable Object room, lobby, rejoining, free tier |
 | [15-pirates-cove-and-oak-grove](15-pirates-cove-and-oak-grove.md) | Arcade course Pirate's Cove (islands; the sea as a water hazard) and real course Oak Grove (Stockton, CA; trees from OpenStreetMap) |
 | [16-more-real-courses](16-more-real-courses.md) | Real courses Běchovice, Skatås, Kincaid, Julkujärvi, Blue Lake; hole selection fixes; per-course tree models (birch, spruce, oak; Quaternius, CC0) |
+| [17-graveyard-tutorial-and-meter](17-graveyard-tutorial-and-meter.md) | Arcade course Graveyard Shift (night, Kenney Graveyard Kit), the Training tutorial, +10% throw power, the striped wobble zone, compact course menu |
 
 ## Decision log
 
@@ -98,6 +99,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D70 | Players pick their colors (10 choices, no two alike). Trees thin out within a few meters of the camera (a screen-door fade to 35% at 2 m) so you can see past them. A quick chat wheel (hold Z) of fixed lines. W/S target distance works top-down too. Online: watchers get the hole flyover (the thrower's live aim no longer pins their camera at the tee). | 2026-10-22 |
 | D71 | Real course **Běchovice** (Prague, OSM relation 14137393, gold tees, OSM pars). Courses can name their tree models (`tree_models`); new CC0 birches and spruces from Quaternius' Textured LowPoly Trees, measured like the MegaKit's, with their sparse trunks traced along edges. Existing courses keep CommonTree and Pine. | 2026-10-23 |
 | D72 | Four more real courses: **Skatås** (20 holes with 14b/15b), **Kincaid Park**, **Julkujärvi PRO**, **Blue Lake Park** (17: OSM has no hole 8). The builder keeps a course area's own hole lines, picks one line per number (tee and basket mapped, then longer), sorts lettered numbers after theirs, and takes `--hole-ref` for an unnumbered line. Oak models (the Textured LowPoly Trees' spreading broadleaf) for Oak Grove, Běchovice, Skatås, Blue Lake. Menu hole picker shows real hole numbers. | 2026-10-23 |
+| D73 | Real course **Wiener Prater**; roads on bridges aren't OB. Arcade course **Graveyard Shift** (always night: a new `night` weather a course can fix with `weather`). A **Tutorial** in Training: ten steps on the range, done by doing them. Throws reach 10% farther (`FLIGHT.throwPower`); the wobble zone stays the top 10% of the meter and is striped on it. The course menu is two compact tiles to a row. | 2026-10-23 |
 
 ## Open questions
 

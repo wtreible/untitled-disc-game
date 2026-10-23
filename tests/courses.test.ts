@@ -32,7 +32,7 @@ const PT = DISCS.find((d) => d.id === 'PT')!;
 const throwAt = (_c: DiscCourseFile, w: DiscWorld, o: Partial<ThrowInput> & { start: Vec2; aim: number }) =>
   simulateThrow({ power: 1, disc: MR, hyzer: 0, perfect: true, ...o }, w, mulberry32(3));
 
-describe.each(['silly', 'fantasy', 'rainbow', 'pirate'])('%s course', (id) => {
+describe.each(['silly', 'fantasy', 'rainbow', 'pirate', 'graveyard'])('%s course', (id) => {
   const c = load(id);
   const grid = gridOf(c);
   const colliders = (c.props ?? []).flatMap((p) => p.colliders);
@@ -199,6 +199,47 @@ describe('Pirate’s Cove', () => {
   });
 });
 
+describe('Graveyard Shift', () => {
+  const c = load('graveyard');
+  const H = c.holes;
+  const tags = (id: string) => (c.props ?? []).flatMap((p) => p.colliders).filter((k) => k.tag === id);
+
+  it('always night', () => {
+    expect(c.weather).toBe('night');
+  });
+
+  it('Cemetery Gates: a flat throw down the middle goes through the open gate; one wide of it hits the fence', () => {
+    const h = H[0];
+    const aim = Math.atan2(h.pin[1] - h.tee[1], h.pin[0] - h.tee[0]);
+    const w = worldOf(c, h.pin);
+    const through = throwAt(c, w, { start: h.tee, aim, disc: PT, power: 0.9, launch: 0.05 });
+    expect(through.propHits ?? []).not.toContain('fence');
+    const wide = throwAt(c, w, { start: h.tee, aim: aim + 0.25, disc: PT, power: 0.9, launch: 0.05 }); // ~8 m wide at the fence
+    expect(wide.propHits ?? []).toContain('fence');
+  });
+
+  it('the ghost and the zombies walk across their fairways (their colliders move with them)', () => {
+    for (const [tag, n] of [['ghost', 1], ['zombie', 3]] as const) {
+      const ks = tags(tag);
+      expect(ks).toHaveLength(n);
+      for (const k of ks) {
+        expect(k.kind).toBe('slide');
+        if (k.kind === 'slide') expect(Math.hypot(...k.slide.amp)).toBeGreaterThan(7);
+      }
+    }
+  });
+
+  it("the Vampire's Lair: a fence all round the basket but for a gate toward the tee", () => {
+    const h = H[8];
+    const toTee = Math.atan2(h.tee[1] - h.pin[1], h.tee[0] - h.pin[0]);
+    const panelAt = (a: number) => tags('fence').some((k) => k.kind === 'box' && Math.abs(Math.hypot(k.c[0] - h.pin[0], k.c[1] - h.pin[1]) - 9) < 1.5
+      && Math.abs(Math.atan2(Math.sin(Math.atan2(k.c[1] - h.pin[1], k.c[0] - h.pin[0]) - a), Math.cos(Math.atan2(k.c[1] - h.pin[1], k.c[0] - h.pin[0]) - a))) < 0.2);
+    expect(panelAt(toTee)).toBe(false);
+    expect(panelAt(toTee + Math.PI)).toBe(true);
+    expect(panelAt(toTee + Math.PI / 2)).toBe(true);
+  });
+});
+
 describe('Oak Grove (OpenStreetMap, Stockton CA)', () => {
   const c = load('oak-grove');
   const grid = gridOf(c);
@@ -232,6 +273,7 @@ describe('more real courses from OpenStreetMap', () => {
     // The PRO layout only, not the AM course beside it.
     { file: 'julkujarvi', refs: Array.from({ length: 18 }, (_, i) => String(i + 1)), trees: 5000, broadleaf: ['Birch'] },
     // OSM has no hole 8.
+    { file: 'prater', refs: Array.from({ length: 18 }, (_, i) => String(i + 1)), trees: 5000, broadleaf: ['Oak', 'CommonTree'] },
     { file: 'blue-lake', refs: ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18'], trees: 1000, broadleaf: ['Oak', 'CommonTree'] },
   ];
   for (const k of cases) {

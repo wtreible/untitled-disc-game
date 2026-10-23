@@ -108,22 +108,24 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .menu-grid .col { display: flex; flex-direction: column; gap: 18px; }
 .panel-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 14px; }
 .panel-card h3, .settings-pane h3 { margin: 0; font: 700 15px var(--head); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
-.course-cards { display: flex; flex-direction: column; gap: 8px; }
-.course-group { display: flex; align-items: baseline; gap: 10px; margin: 6px 2px -2px; }
+.course-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* Compact tiles, two to a row: name and a one-line description (the full blurb is in the next column). */
+.course-group { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 10px; margin: 6px 2px 0; }
 .course-group:first-child { margin-top: 0; }
-.course-group .group-label { font: 800 15px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
-.course-group .group-sub { font-size: 12px; color: var(--muted); }
+.course-group .group-label { font: 800 13px var(--head); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+.course-group .group-sub { font-size: 11.5px; color: var(--muted); }
 .course-card {
-  display: grid; grid-template-columns: 56px 1fr auto; gap: 14px; align-items: center; text-align: left;
-  padding: 9px 14px; border-radius: 12px; background: var(--navy-1); border: 2px solid transparent;
+  display: grid; grid-template-columns: 38px 1fr auto; gap: 9px; align-items: center; text-align: left; min-width: 0;
+  padding: 6px 9px; border-radius: 10px; background: var(--navy-1); border: 2px solid transparent;
 }
 .course-card:hover { border-color: var(--navy-3); background: var(--navy-2); }
 .course-card.on { border-color: var(--accent); background: linear-gradient(90deg, rgba(184, 242, 92, 0.1), var(--navy-2)); }
-.course-card .art { width: 56px; height: 56px; border-radius: 10px; overflow: hidden; }
-.course-card .name { font: 700 22px var(--head); letter-spacing: 0.02em; }
-.course-card .meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-.course-card .holes { font: 800 28px var(--head); color: var(--muted); text-align: right; line-height: 1; }
-.course-card .holes small { display: block; font: 600 10px var(--body); letter-spacing: 0.12em; }
+.course-card .art { width: 38px; height: 38px; border-radius: 8px; overflow: hidden; }
+.course-card .text { min-width: 0; }
+.course-card .name { font: 700 16px var(--head); letter-spacing: 0.02em; line-height: 1.15; overflow-wrap: anywhere; }
+.course-card .meta { font-size: 11px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.course-card .holes { font: 800 17px var(--head); color: var(--muted); text-align: right; line-height: 1; }
+.course-card .holes small { display: block; font: 600 8px var(--body); letter-spacing: 0.1em; }
 .course-card.on .holes { color: var(--accent); }
 .course-info { display: flex; flex-direction: column; gap: 10px; }
 .course-info .ci-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -244,6 +246,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #stats b { color: var(--text); }
 #meter { position: relative; flex: 1; min-width: 160px; height: 16px; background: rgba(255, 255, 255, 0.1); border-radius: 999px; overflow: hidden; }
 #meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #6fd43f, var(--accent) 60%, var(--eagle) 85%, var(--hot)); }
+/* The wobble zone (FLIGHT.wobbleFrom up): striped, and visible over the fill too. */
+#meter-wobble { position: absolute; top: 0; bottom: 0; right: 0; border-left: 2px solid rgba(255, 96, 80, 0.95);
+  background: repeating-linear-gradient(135deg, rgba(255, 96, 80, 0.5) 0 4px, rgba(255, 96, 80, 0.12) 4px 8px); pointer-events: none; }
 #meter-target { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px #000; }
 #swing { user-select: none; touch-action: none; }
 .help { color: var(--muted); font-size: 11.5px; }
@@ -498,6 +503,20 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .odds-bar .common { background: var(--t-common); } .odds-bar .epic { background: var(--t-epic); } .odds-bar .legendary { background: var(--t-legendary); }
 .toggle.small .toggle-text b { font-size: 14px; }
 #browse-augments { align-self: flex-start; }
+
+/* ---------- tutorial card (over the range) ---------- */
+.tutorial {
+  position: fixed; top: 14px; right: 14px; width: 300px; display: flex; flex-direction: column; gap: 8px; padding: 14px;
+  border-radius: 12px; background: var(--panel); backdrop-filter: blur(6px); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35); z-index: 3;
+}
+.tutorial .tu-head { display: flex; justify-content: space-between; font: 800 13px var(--head); letter-spacing: 0.16em; color: var(--accent); }
+.tutorial .tu-bar { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.tutorial .tu-bar i { display: block; height: 100%; background: var(--accent); transition: width 0.4s; }
+.tutorial h4 { margin: 2px 0 0; font: 700 20px var(--head); letter-spacing: 0.02em; }
+.tutorial .tu-ok { color: var(--accent); font-size: 15px; margin-left: 6px; }
+.tutorial p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text); }
+.tutorial kbd { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line); background: var(--navy-2); font: 700 12px var(--body); text-align: center; }
+.tutorial .tu-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px; }
 
 /* ---------- driving range panel ---------- */
 .range-panel {

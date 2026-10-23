@@ -1,6 +1,6 @@
 # More real courses, and course tree mixes
 
-Five more real courses from OpenStreetMap, chosen from a survey of every mapped course (2,831 `leisure=disc_golf_course` features, about 560 with 9+ hole lines) for fame and how well they're mapped. Most famous courses (Maple Hill, Winthrop Gold, Blue Ribbon Pines, Northwood Black, Beaver Ranch, Järva, Ale, Harmon Hills, Nokia's Beast) have no hole lines in OSM at all.
+Six more real courses from OpenStreetMap, chosen from a survey of every mapped course (2,831 `leisure=disc_golf_course` features, about 560 with 9+ hole lines) for fame and how well they're mapped. Most famous courses (Maple Hill, Winthrop Gold, Blue Ribbon Pines, Northwood Black, Beaver Ranch, Järva, Ale, Harmon Hills, Nokia's Beast) have no hole lines in OSM at all.
 
 | Course | OSM | Holes | Trees | Tree models |
 |---|---|---|---|---|
@@ -9,6 +9,7 @@ Five more real courses from OpenStreetMap, chosen from a survey of every mapped 
 | Kincaid Park, Anchorage | [way 767928285](https://www.openstreetmap.org/way/767928285) | 18 | 17 woodland outlines | Birch / Spruce |
 | Julkujärvi PRO, Ylöjärvi | [way 1562971247](https://www.openstreetmap.org/way/1562971247) | 18, OSM pars | 13 woodland outlines | Birch / Pine, Spruce |
 | Blue Lake Park, Portland | [way 142321221](https://www.openstreetmap.org/way/142321221) | 17 (no hole 8 in OSM) | 12 woodland outlines | Oak, CommonTree / Spruce |
+| Wiener Prater, Vienna | [relation 14543666](https://www.openstreetmap.org/relation/14543666) | 18, OSM pars | 9 woodland outlines + mapped trees | Oak, CommonTree / Pine |
 
 Build commands are in the README. Oak Grove now uses the oak models too (`--broadleaf Oak`); its holes and trees are unchanged.
 
@@ -19,6 +20,9 @@ Build commands are in the README. Oak Grove now uses the oak models too (`--broa
 - **Hole numbers with a letter** (Skatås' 14b and 15b): sorted after their hole (14, 14b, 15, 15b), shown as numbered in the game and on the menu's hole picker. The menu's back nine is whatever's after the front nine (Skatås' back 11, Blue Lake's back 8).
 - **A hole mapped without a number** (Kincaid's 4): `--hole-ref 996506301:4` numbers it by hand rather than guessing in code.
 - **`--name`**: a relation's name is often its layout's ("Main 18 - long tees").
+- **Roads on bridges aren't OB** (`bridge=*`): they pass overhead and the ground under them plays. The Prater's 7th tees off under the A23 viaduct; Běchovice and Blue Lake each lose three OB strips under road bridges. Footbridges still draw as paths.
+
+Wiener Prater was picked over Peak One (Frisco, CO), next on the original list, because OSM maps no trees or woods there at all and the real course is heavily wooded; and over Slottsskogen (a second Gothenburg course, 22 short par 3s).
 
 These are `selectHoles` and `compareRefs` in `src/course/disc-build.ts`. Tali, Tali Recreation and Oak Grove rebuild byte-identical through them.
 

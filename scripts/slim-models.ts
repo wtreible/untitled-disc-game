@@ -1,19 +1,19 @@
-// Drop the animations a course doesn't use from the animated GLBs (KayKit characters ship ~76 clips
-// each, ~3.6 MB; a course plays one). Run after building the courses:
+// Drop the animations a course doesn't use from the animated GLBs (KayKit and Kenney Graveyard
+// characters ship 32–76 clips each; a course plays one). Run after building the courses:
 //
 //   npm run slim-models
 //
-// Re-adding a clip later means re-copying the original GLB from the KayKit pack first.
+// Re-adding a clip later means re-copying the original GLB from its pack first.
 import { readFileSync } from 'node:fs';
 import { NodeIO } from '@gltf-transform/core';
 import { prune } from '@gltf-transform/functions';
 import type { DiscCourseFile } from '../src/course/disc-types';
 
-const COURSES = ['silly', 'fantasy', 'rainbow'];
+const COURSES = ['silly', 'fantasy', 'rainbow', 'graveyard'];
 const used = new Map<string, Set<string>>();
 for (const id of COURSES) {
   const c: DiscCourseFile = JSON.parse(readFileSync(`public/courses/${id}.json`, 'utf8'));
-  for (const p of c.props ?? []) if (p.anim && p.model.startsWith('kaykit/')) {
+  for (const p of c.props ?? []) if (p.anim && /^(kaykit|graveyard)\//.test(p.model)) {
     if (!used.has(p.model)) used.set(p.model, new Set());
     used.get(p.model)!.add(p.anim);
   }

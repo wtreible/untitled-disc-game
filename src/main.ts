@@ -21,7 +21,7 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'fantasy' | 'rainbow' | 'pirate' | 'range';
+type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'prater' | 'fantasy' | 'rainbow' | 'pirate' | 'graveyard' | 'range' | 'tutorial';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
 type Group = 'real' | 'arcade' | 'training';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
@@ -76,6 +76,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#6f8a4a"/><ellipse cx="46" cy="14" rx="16" ry="8" fill="#4f8fcf"/>${[[12, 16, 7], [24, 44, 6], [52, 46, 7]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#3e5a2a"/>`).join('')}${[[8, 40], [40, 34], [58, 58]].map(([x, y]) => `<path d="M${x} ${y - 9} l5 14 h-10 z" fill="#244028"/>`).join('')}<path d="M6 58 C 22 54, 30 40, 40 30" stroke="#d0d79a" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="40" cy="30" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
+    id: 'prater', group: 'real', name: 'Wiener Prater', meta: `Vienna, Austria${IMAGERY ? ' · satellite imagery' : ''} · park woods`, holes: 18,
+    blurb: 'The disc golf course in Vienna’s Prater, from OpenStreetMap: eighteen holes from 65 to 210 m through the old park’s chestnuts, oaks and poplars, with the course’s own pars.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#5e7c3e"/>${[[10, 12, 8], [30, 8, 6], [52, 18, 8], [8, 40, 7], [56, 46, 8], [26, 56, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#35522a"/>`).join('')}<circle cx="44" cy="38" r="9" fill="none" stroke="#e7e2d0" stroke-width="2"/><path d="M44 29 V47 M35 38 H53" stroke="#e7e2d0" stroke-width="1.4"/><path d="M8 58 C 18 46, 22 30, 30 20" stroke="#cdd39a" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="30" cy="20" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
     id: 'fantasy', group: 'arcade', name: 'Fantasy Fairways', meta: 'Knights, a castle keep, one dragon', holes: 9,
     blurb: 'A medieval course: dodge a giant knight on The Joust, fly the gate into a castle courtyard, cross the moat, and finish under a dragon on Dragon’s Lair.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#46603a"/><rect x="0" y="44" width="64" height="20" fill="#7da35a"/><path d="M14 46 V24 h6 v-4 h4 v4 h4 v-4 h4 v4 h4 v-4 h4 v4 h6 v22 h-12 v-10 a4 4 0 0 0 -8 0 v10 z" fill="#d8a77c"/><path d="M14 24 L17 14 L20 24 M44 24 L47 14 L50 24" fill="#5b6fd6"/><path d="M40 10 c6 -2 12 2 14 6 c-4 -1 -6 0 -8 2 c-2 -3 -4 -5 -6 -8z" fill="#2b2b33"/></svg>`,
@@ -89,6 +94,16 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     id: 'pirate', group: 'arcade', name: 'Pirate’s Cove', meta: 'Islands, shipwrecks, a ghost ship', holes: 9,
     blurb: 'Nine holes across sandy islands: carry the cove, get round a stranded wreck and a lookout tower, time the ghost ship sailing across 7, find the island basket, and finish behind a moored galleon. Off the land is the sea: overboard, +1.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2b7db3"/><ellipse cx="18" cy="48" rx="16" ry="11" fill="#e3cf98"/><ellipse cx="48" cy="18" rx="13" ry="9" fill="#e3cf98"/><path d="M14 50 L44 20" stroke="#83c45a" stroke-width="5" stroke-linecap="round"/><path d="M38 44 h18 l-3 5 h-12 z" fill="#5b3a26"/><path d="M47 44 V30" stroke="#3a2a1e" stroke-width="1.5"/><path d="M47 31 l8 5 l-8 4 z" fill="#f4f0e6"/><path d="M45 29 h-6 v4 h6z" fill="#1d1d1d"/><circle cx="48" cy="18" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'graveyard', group: 'arcade', name: 'Graveyard Shift', meta: 'A haunted cemetery at night', holes: 9,
+    blurb: 'Through the cemetery gates at night: a pumpkin patch, round a great crypt, past a wandering ghost, through dead woods, over the bog, down Lantern Lane, between shuffling zombies, and into the vampire’s lair.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2a2342"/><circle cx="48" cy="14" r="7" fill="#f2ecc8"/><rect x="0" y="44" width="64" height="20" fill="#1f2a22"/>${[[10, 44], [24, 46], [40, 45]].map(([x, y]) => `<path d="M${x} ${y} v-9 a4 4 0 0 1 8 0 v9 z" fill="#8a8f9a"/>`).join('')}<circle cx="54" cy="52" r="5" fill="#e8822a"/><path d="M52 51 l1.2 -1.4 l1.2 1.4 M55 51 l1.2 -1.4 l1.2 1.4" stroke="#2a1a0a" stroke-width="1"/><path d="M8 30 q4 -10 8 0 q-2 6 -4 4 q-2 2 -4 -4z" fill="#e9e6f5" opacity=".85"/></svg>`,
+  },
+  {
+    id: 'tutorial', group: 'training', name: 'Tutorial', meta: 'Ten steps on the range, from aiming to a made putt', holes: 10,
+    blurb: 'Learn the controls on the driving range, one at a time, by doing them: aim, set the distance, throw, the wobble zone, discs, hyzer and anhyzer, forehand, tomahawks and rollers, the map, and a putt. Just you, calm air, one basket.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2d6a3e"/><rect x="10" y="12" width="44" height="40" rx="6" fill="#16302a"/>${[0, 1, 2].map((k) => `<rect x="17" y="${20 + k * 10}" width="6" height="6" rx="1.5" fill="${k < 2 ? '#b8f25c' : 'none'}" stroke="#b8f25c" stroke-width="1.5"/><rect x="27" y="${22 + k * 10}" width="${20 - k * 4}" height="2.5" rx="1" fill="#e9f1e4" opacity=".8"/>`).join('')}</svg>`,
   },
   {
     id: 'range', group: 'training', name: 'Driving Range', meta: 'Distance lines every 50 ft · your wind and weather', holes: 1,
@@ -107,10 +122,10 @@ function renderCourses(): void {
   $('course-cards').innerHTML = GROUPS.map((g) => `
     <div class="course-group"><span class="group-label">${g.label}</span><span class="group-sub">${g.sub}</span></div>
     ${COURSES.filter((c) => c.group === g.id).map((c) => `
-    <button class="course-card ${c.id === course ? 'on' : ''}" data-id="${c.id}">
+    <button class="course-card ${c.id === course ? 'on' : ''}" data-id="${c.id}" title="${c.meta}">
       <span class="art">${c.art}</span>
-      <span><div class="name">${c.name}</div><div class="meta">${c.meta}</div></span>
-      <span class="holes">${c.id === 'range' ? '∞' : c.holes}<small>${c.id === 'range' ? 'THROWS' : 'HOLES'}</small></span>
+      <span class="text"><div class="name">${c.name}</div><div class="meta">${c.meta}</div></span>
+      <span class="holes">${c.id === 'range' ? '∞' : c.holes}<small>${c.id === 'range' ? 'THROWS' : c.id === 'tutorial' ? 'STEPS' : 'HOLES'}</small></span>
     </button>`).join('')}`).join('');
   $('course-cards').querySelectorAll<HTMLButtonElement>('.course-card').forEach((b) => b.addEventListener('click', () => {
     course = b.dataset.id as CourseId;
@@ -120,7 +135,7 @@ function renderCourses(): void {
   }));
   $('setup-hole').textContent = COURSES.find((c) => c.id === course)!.blurb;
   // The range has no holes to pick and nothing to draft or bag.
-  document.querySelector<HTMLElement>('.panel-card.round')!.hidden = course === 'range';
+  document.querySelector<HTMLElement>('.panel-card.round')!.hidden = course === 'range' || course === 'tutorial';
   renderCourseInfo();
 }
 
@@ -371,8 +386,9 @@ function pushLobby(): void {
   const seated = order.slice(0, MAX_PLAYERS);
   const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
   const colors = playerColors(seated.map((m) => m.color));
-  const training = course === 'range';
-  room.setLobby({ course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
+  const training = course === 'range' || course === 'tutorial';
+  // The tutorial is played alone: the room sees the driving range.
+  room.setLobby({ course: course === 'tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -545,7 +561,8 @@ window.addEventListener('hashchange', () => {
 async function launch(l: Lobby): Promise<void> {
   if (launched || !room) return;
   launched = true;
-  const id = (COURSES.some((c) => c.id === l.course) ? l.course : 'simple') as CourseId;
+  // The tutorial is never a room's course (its lobby shows the range), but don't trust the wire.
+  const id = (COURSES.some((c) => c.id === l.course) && l.course !== 'tutorial' ? l.course : 'simple') as Exclude<CourseId, 'tutorial'>;
   $('setup').hidden = true;
   showGameButtons();
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === id)!.name}${l.crazy ? ' · Crazy mode' : ''} · Room ${room.code}`;
@@ -561,6 +578,17 @@ async function launch(l: Lobby): Promise<void> {
 // ---------- start ----------
 $('start').addEventListener('click', async () => {
   sfx('confirm');
+  if (course === 'tutorial') {
+    // Alone, on this browser (in a room too): the first player's name.
+    const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
+    save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
+    $('setup').hidden = true;
+    showGameButtons();
+    $('pause-sub').textContent = 'Tutorial';
+    const { startDisc } = await import('./modes/disc');
+    await startDisc({ names: [name], colors: rowColors().slice(0, 1), course: 'range', first: 0, count: 1, tutorial: true });
+    return;
+  }
   if (room) {
     if (!amHost()) return;
     save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });

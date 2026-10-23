@@ -4,7 +4,7 @@
 //
 //   npx tsx scripts/calibrate-disc.ts <speed> <glide> <turn> <fade> <target m> [launch rad]
 import type { Disc } from '../src/disc/discs';
-import { simulateThrow } from '../src/disc/flight';
+import { FLIGHT, simulateThrow } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
@@ -13,6 +13,8 @@ const [speed, glide, turn, fade, target, launch = 0.09] = process.argv.slice(2).
 const CURVE_SPEEDS = [0.15, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
 const grid = SurfaceGrid.fromHole({ bounds: [[-300, -300], [300, 300]], boundary: [[[[-280, -280], [280, -280], [280, 280], [-280, 280]]]], trees: [], features: [] }, 2);
 const world = { grid, terrain: new FlatTerrain(), trees: new TreeIndex([]), basket: [1e6, 1e6] as [number, number] };
+// Curves are fitted at the base distance; the game's throwPower boost goes on top of them.
+FLIGHT.throwPower = 1;
 // An identity meter curve, so `power` is the release-speed fraction itself (from 0.15 up).
 const disc = (v0: number): Disc => ({ id: 'X', name: 'X', short: 'X', speed, glide, turn, fade, v0, launch, curve: CURVE_SPEEDS, color: '#fff' });
 const dist = (v0: number, p: number) => {

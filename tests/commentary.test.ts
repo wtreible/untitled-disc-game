@@ -28,9 +28,9 @@ describe('commentary', () => {
 });
 
 describe('weather', () => {
-  it('is the same for the same seed, and every kind comes up', () => {
+  it('is the same for the same seed, and every kind comes up but night (a course asks for that)', () => {
     expect(pickWeather(1.234).id).toBe(pickWeather(1.234).id);
     const seen = new Set(Array.from({ length: 400 }, (_, i) => pickWeather(i * 0.731 + 0.05).id));
-    expect([...seen].sort()).toEqual(Object.keys(WEATHER).sort());
+    expect([...seen].sort()).toEqual(Object.keys(WEATHER).filter((k) => k !== 'night').sort());
   });
 });

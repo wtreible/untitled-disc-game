@@ -21,7 +21,10 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | **Mini Golf Madness** | 9 | Full-size disc golf themed like mini golf: a windmill with spinning blades, a castle gate, giant animals. |
 | **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
 | **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
+| **Wiener Prater** | 18 | The course in Vienna's [Prater](https://www.openstreetmap.org/relation/14543666): 65–210 m holes through the old park's chestnuts, oaks and poplars, with the course's own pars. The 7th tees off under the A23 viaduct. |
 | **Pirate's Cove** | 9 | Sandy islands in the sea: carry the cove, round a stranded wreck and a lookout tower, time the ghost ship, hit the island basket. Overboard is +1. |
+| **Graveyard Shift** | 9 | A haunted cemetery at night: through the cemetery gates, a pumpkin patch, round a great crypt, past a wandering ghost, dead woods, the bog, Lantern Lane, shuffling zombies, and the vampire's fenced lair. |
+| **Tutorial** | – | Training: ten steps on the range, each done by doing it, from aiming to a made putt (aim, distance, throw, the wobble zone, discs, hyzer and anhyzer, forehand, shots, the map, a putt). Played alone, even in a room. |
 | **Driving Range** | – | Training: a long open range with a line every 50 ft and big signs every 100 ft. Set the wind and weather, place and remove baskets and trees, and see how far and how far off line each throw went. Friends take turns from the tee (hot seat or online); whoever is up sets the range. Nothing scored. |
 
 **Play online:** host a room from the Players panel and send friends the link; everyone plays from their own browser. See [docs/14-online.md](docs/14-online.md).
@@ -39,7 +42,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | Release angle | Q (hyzer, curves left) / E (anhyzer, curves right) |
 | Forehand / backhand | T |
 | Shot | G (or the shot chip): normal, tomahawk / thumber (overhand, up over trees), roller (rolls on edge under them) |
-| Throw | Hold Space, let go at the power you want. The white tick on the meter reaches your target; the dashed line is the flight if you throw it perfectly. |
+| Throw | Hold Space, let go at the power you want. The white tick on the meter reaches your target; the dashed line is the flight if you throw it perfectly. The striped red end of the meter (past 90%) is the wobble zone: a little farther, but your aim wobbles more. |
 | View | C: first person / top-down. In top-down: right-drag to pan, scroll to zoom, F to re-frame. |
 | Replay | Drag to orbit, scroll to zoom, R resets, Space skips. Hold Shift to fast-forward any flight or replay. |
 | Hole flyover | Space or click skips it (Settings → Hole flyovers) |
@@ -85,7 +88,8 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 | `npm run disc-course -- --course 1562971247 --out julkujarvi --trees osm --broadleaf Birch --conifer Pine,Spruce --name "Julkujärvi PRO"` | Rebuild Julkujärvi |
 | `npm run disc-course -- --course 142321221 --out blue-lake --trees osm --broadleaf Oak,CommonTree --conifer Spruce --name "Blue Lake Park"` | Rebuild Blue Lake |
 | `npm run import-trees -- --src <pack folder>` | Import the birches, spruces and oaks from Quaternius' [Textured LowPoly Trees](https://opengameart.org/content/lowpoly-textured-trees) (CC0), then `npm run tree-shapes` |
-| `npm run silly-course` / `fantasy-course` / `rainbow-course` / `pirate-course` | Rebuild the themed courses |
+| `npm run disc-course -- --course relation/14543666 --out prater --trees osm --broadleaf Oak,CommonTree --conifer Pine --name "Wiener Prater"` | Rebuild Wiener Prater |
+| `npm run silly-course` / `fantasy-course` / `rainbow-course` / `pirate-course` / `graveyard-course` | Rebuild the themed courses |
 | `npm run course-summary` | Refresh the menu's par and length stats after rebuilding a course |
 | `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |
 | `npm run slim-models` | Strip animations the courses don't use from the character models |

@@ -20,7 +20,8 @@
     "server:dev": "wrangler dev --config server/wrangler.toml",
     "server:deploy": "wrangler deploy --config server/wrangler.toml",
     "server:typecheck": "tsc --noEmit -p server",
-    "import-trees": "tsx scripts/import-trees.ts"
+    "import-trees": "tsx scripts/import-trees.ts",
+    "graveyard-course": "tsx scripts/build-graveyard-course.ts"
   },
   "dependencies": {
     "osmtogeojson": "^3.0.0-beta.5",
