@@ -220,8 +220,30 @@ describe('Běchovice (OpenStreetMap, Prague)', () => {
     expect(c.holes.every((h) => h.par_source === 'osm')).toBe(true);
     for (const h of c.holes) for (const p of [h.tee, h.pin]) expect(['oob', 'water']).not.toContain(grid.classAt(p[0], p[1]));
     expect(decodeTrees(c.trees).length).toBeGreaterThan(5000);
-    expect(c.tree_models).toEqual({ broadleaf: ['CommonTree', 'Birch'], conifer: ['Pine'] });
+    expect(c.tree_models).toEqual({ broadleaf: ['Oak', 'CommonTree', 'Birch'], conifer: ['Pine'] });
   });
+});
+
+describe('more real courses from OpenStreetMap', () => {
+  const cases: { file: string; refs: string[]; trees: number; broadleaf: string[] }[] = [
+    { file: 'skatas', refs: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '14b', '15', '15b', '16', '17', '18'], trees: 2000, broadleaf: ['Birch', 'Oak'] },
+    // The main 18 only: a second set of short lines shares its numbers; hole 4 is mapped without one.
+    { file: 'kincaid', refs: Array.from({ length: 18 }, (_, i) => String(i + 1)), trees: 5000, broadleaf: ['Birch'] },
+    // The PRO layout only, not the AM course beside it.
+    { file: 'julkujarvi', refs: Array.from({ length: 18 }, (_, i) => String(i + 1)), trees: 5000, broadleaf: ['Birch'] },
+    // OSM has no hole 8.
+    { file: 'blue-lake', refs: ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18'], trees: 1000, broadleaf: ['Oak', 'CommonTree'] },
+  ];
+  for (const k of cases) {
+    it(`${k.file}: its holes in order, tees and baskets in play, trees and tree models`, () => {
+      const c = load(k.file);
+      const grid = gridOf(c);
+      expect(c.holes.map((h) => h.ref)).toEqual(k.refs);
+      for (const h of c.holes) for (const p of [h.tee, h.pin]) expect(['oob', 'water'], `${k.file} #${h.ref}`).not.toContain(grid.classAt(p[0], p[1]));
+      expect(decodeTrees(c.trees).length).toBeGreaterThan(k.trees);
+      expect(c.tree_models?.broadleaf).toEqual(k.broadleaf);
+    });
+  }
 });
 
 describe('menu course summary', () => {

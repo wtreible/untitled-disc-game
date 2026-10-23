@@ -108,7 +108,7 @@ Each hole draws a wind when it starts: 30% calm (0–1 m/s), 50% breezy (1–3),
 
 ### Tree models (2026-10-20)
 
-Course trees are branched models from Quaternius' [Stylized Nature MegaKit](https://opengameart.org/content/stylized-nature-megakit) (CC0, free Standard version): five broadleaf (`CommonTree_1–5`) and five pines (`Pine_1–5`) in `public/models/qtrees/`. Bark textures are downscaled to 512 px. A course can pick other models there (birches, spruces) with `tree_models`; see [16-bechovice-and-tree-mixes](16-bechovice-and-tree-mixes.md).
+Course trees are branched models from Quaternius' [Stylized Nature MegaKit](https://opengameart.org/content/stylized-nature-megakit) (CC0, free Standard version): five broadleaf (`CommonTree_1–5`) and five pines (`Pine_1–5`) in `public/models/qtrees/`. Bark textures are downscaled to 512 px. A course can pick other models there (birches, spruces, oaks) with `tree_models`; see [16-more-real-courses](16-more-real-courses.md).
 
 - **Which model:** picked from a hash of the tree's position (low-crowned trees are 65% pines, others 25%), with a hashed turn. Scaled so the model's height is the tree's `h` and its farthest leaf is at the tree's crown radius `r`. `src/disc/treeShapes.ts` does this for both physics and rendering.
 - **Shapes** (`npm run tree-shapes`, `scripts/build-tree-shapes.ts`): leaf triangles are rasterized into a 0.3 m voxel grid, gaps between leaf cards closed, clump interiors filled, then opened back. The trunk is traced in 0.4 m slices from the base until it forks. Every rendered leaf vertex falls inside (or within one voxel of) the leaf volume.

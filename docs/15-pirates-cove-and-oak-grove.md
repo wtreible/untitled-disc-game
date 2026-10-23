@@ -5,7 +5,7 @@ Two more courses: an arcade one built like the others ([12](12-mini-golf-madness
 | Course | Group | Build | File |
 |---|---|---|---|
 | Pirate's Cove | Arcade | `npm run pirate-course` | `public/courses/pirate.json` |
-| Oak Grove | Real | `npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm` | `public/courses/oak-grove.json` |
+| Oak Grove | Real | `npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm --broadleaf Oak` | `public/courses/oak-grove.json` |
 
 After rebuilding either, `npm run course-summary` refreshes the menu's par and length stats.
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dist, distToPolyline, type Vec2 } from '../src/course/geo';
 import { decodeTrees, type DiscCourseFile, type Tree } from '../src/course/disc-types';
-import { parFromLength, RECREATION, simplify } from '../src/course/disc-build';
+import { compareRefs, parFromLength, RECREATION, selectHoles, simplify } from '../src/course/disc-build';
 import type { Rings } from '../src/course/types';
 import { DISCS, PUTTER_DISC, suggestDisc } from '../src/disc/discs';
 import { BASKET, simulateThrow, type DiscWorld, type ThrowInput } from '../src/disc/flight';
@@ -295,6 +295,36 @@ describe('Tali course file', () => {
 
   it('keeps full precision on the origin', () => {
     expect(String(c.origin.lat).split('.')[1].length).toBeGreaterThan(5);
+  });
+});
+
+describe('hole selection', () => {
+  type F = Parameters<typeof selectHoles>[0][number];
+  const line = (id: number, ref: string | undefined, pts: [number, number][]): F => ({ type: 'Feature', id: `way/${id}`, properties: { disc_golf: 'hole', ref }, geometry: { type: 'LineString', coordinates: pts } });
+  const point = (kind: string, p: [number, number]): F => ({ type: 'Feature', id: `node/${kind}${p}`, properties: { disc_golf: kind }, geometry: { type: 'Point', coordinates: p } });
+  // A course area 0.01° square near the equator (about 1.1 km).
+  const area: F = { type: 'Feature', id: 'way/1', properties: { leisure: 'disc_golf_course' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [0.01, 0], [0.01, 0.01], [0, 0.01], [0, 0]]] } };
+
+  it('orders hole numbers naturally, an alternate after its hole', () => {
+    expect(['15', '14b', '2', '14', '15b', '10', '1'].sort(compareRefs)).toEqual(['1', '2', '10', '14', '14b', '15', '15b']);
+  });
+
+  it("a course way keeps the holes inside it, not a neighboring layout's", () => {
+    const feats = [area, line(2, '1', [[0.001, 0.001], [0.002, 0.002]]), line(3, '1', [[0.02, 0.02], [0.021, 0.021]]), line(4, '2', [[0.003, 0.003], [0.004, 0.004]])];
+    expect(selectHoles(feats, area, {}).map((f) => f.id)).toEqual(['way/2', 'way/4']);
+  });
+
+  it('two lines with one number: the one with its tee and basket mapped wins, then the longer', () => {
+    const long = line(2, '3', [[0.001, 0.001], [0.001, 0.003]]), short = line(3, '3', [[0.005, 0.005], [0.005, 0.0055]]);
+    expect(selectHoles([area, long, short], area, {}).map((f) => f.id)).toEqual(['way/2']);
+    const feats = [area, long, short, point('tee', [0.005, 0.005]), point('basket', [0.005, 0.0055])];
+    expect(selectHoles(feats, area, {}).map((f) => f.id)).toEqual(['way/3']);
+  });
+
+  it("a relation's members only, and a hole number given for a line mapped without one", () => {
+    const feats = [line(2, '1', [[0.001, 0.001], [0.002, 0.002]]), line(3, undefined, [[0.003, 0.003], [0.004, 0.004]]), line(4, '1', [[0.005, 0.005], [0.006, 0.006]])];
+    const got = selectHoles(feats, undefined, { holeIds: ['way/2', 'way/3'], holeRefs: { 'way/3': '2' } });
+    expect(got.map((f) => [f.id, f.properties.ref])).toEqual([['way/2', '1'], ['way/3', '2']]);
   });
 });
 

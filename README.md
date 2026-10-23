@@ -12,8 +12,12 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 |---|---|---|
 | **Tali Recreation** | 18 | The real [Tali disc golf park](https://www.openstreetmap.org/way/40254405) (Helsinki) from OpenStreetMap, with its real trees from Helsinki's canopy data, cut back a few meters from every fairway, green and tee. The easy version. |
 | **Tali Forest** | 18 | The real thing: the same holes and all ~10,500 trees. |
-| **Oak Grove** | 18 | The Gold Course at [Oak Grove Regional Park](https://www.openstreetmap.org/relation/18072611) (Stockton, California) from OpenStreetMap: short, open holes among the park's mapped oaks, a pond on 17. |
-| **Běchovice** | 18 | [DiscGolfPark Běchovice](https://www.openstreetmap.org/relation/14137393) (Prague) from OpenStreetMap, from the long tees: Prague's hardest course, long par 4s and 5s round its woods, with pines, birches and broadleaf. |
+| **Oak Grove** | 18 | The Gold Course at [Oak Grove Regional Park](https://www.openstreetmap.org/relation/18072611) (Stockton, California) from OpenStreetMap: short, open holes among the park's mapped oaks (drawn as oaks), a pond on 17. |
+| **Běchovice** | 18 | [DiscGolfPark Běchovice](https://www.openstreetmap.org/relation/14137393) (Prague) from OpenStreetMap, from the long tees: Prague's hardest course, long par 4s and 5s round its woods of oak, birch and pine. |
+| **Skatås** | 20 | The yellow course at [Skatås](https://www.openstreetmap.org/relation/913917) (Gothenburg), one of Sweden's classics: short, technical holes through pine, spruce and birch, with its 2,300 mapped trees. 14b and 15b included. |
+| **Kincaid Park** | 18 | [Kincaid Park](https://www.openstreetmap.org/way/767928285) (Anchorage, Alaska): long and tight holes through birch and spruce. |
+| **Julkujärvi** | 18 | The PRO course at [Julkujärvi](https://www.openstreetmap.org/way/1562971247) (Ylöjärvi, near Tampere): par 4s and 5s through Finnish pine and birch. |
+| **Blue Lake** | 17 | [Blue Lake Park](https://www.openstreetmap.org/way/142321221) (Portland, Oregon), host of the 2014 PDGA Worlds and the first Portland Open, among oaks and firs. OSM has no hole 8, so it plays 17. |
 | **Mini Golf Madness** | 9 | Full-size disc golf themed like mini golf: a windmill with spinning blades, a castle gate, giant animals. |
 | **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
 | **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
@@ -74,9 +78,13 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 |---|---|
 | `npm run disc-course` | Rebuild Tali Forest (`public/courses/tali.json`) from OpenStreetMap + HSY canopy. Downloads are cached in `data/raw/`. `-- --course <way id> --out <name>` for another course. |
 | `npm run disc-course -- --style simple --out tali-simple` | Rebuild Tali Recreation |
-| `npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm` | Rebuild Oak Grove. A course mapped as a relation of holes; outside Helsinki, `--trees osm` plants OpenStreetMap's mapped trees and woods |
-| `npm run disc-course -- --course relation/14137393 --out bechovice --trees osm --broadleaf CommonTree,Birch --name "DiscGolfPark Běchovice"` | Rebuild Běchovice. `--broadleaf` / `--conifer` pick the tree models by name (`CommonTree`, `Birch`, `Pine`, `Spruce`) |
-| `npm run import-trees -- --src <pack folder>` | Import the birches and spruces from Quaternius' [Textured LowPoly Trees](https://opengameart.org/content/lowpoly-textured-trees) (CC0), then `npm run tree-shapes` |
+| `npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm --broadleaf Oak` | Rebuild Oak Grove. A course mapped as a relation of holes; outside Helsinki, `--trees osm` plants OpenStreetMap's mapped trees and woods |
+| `npm run disc-course -- --course relation/14137393 --out bechovice --trees osm --broadleaf Oak,CommonTree,Birch --name "DiscGolfPark Běchovice"` | Rebuild Běchovice. `--broadleaf` / `--conifer` pick the tree models by name (`CommonTree`, `Birch`, `Oak`, `Pine`, `Spruce`); `--name` overrides OSM's |
+| `npm run disc-course -- --course relation/913917 --out skatas --trees osm --broadleaf Birch,Oak --conifer Pine,Spruce --name "Skatås (Yellow)"` | Rebuild Skatås |
+| `npm run disc-course -- --course 767928285 --out kincaid --trees osm --broadleaf Birch --conifer Spruce --hole-ref 996506301:4 --name "Kincaid Park"` | Rebuild Kincaid Park. `--hole-ref way:ref` numbers a hole line mapped without one |
+| `npm run disc-course -- --course 1562971247 --out julkujarvi --trees osm --broadleaf Birch --conifer Pine,Spruce --name "Julkujärvi PRO"` | Rebuild Julkujärvi |
+| `npm run disc-course -- --course 142321221 --out blue-lake --trees osm --broadleaf Oak,CommonTree --conifer Spruce --name "Blue Lake Park"` | Rebuild Blue Lake |
+| `npm run import-trees -- --src <pack folder>` | Import the birches, spruces and oaks from Quaternius' [Textured LowPoly Trees](https://opengameart.org/content/lowpoly-textured-trees) (CC0), then `npm run tree-shapes` |
 | `npm run silly-course` / `fantasy-course` / `rainbow-course` / `pirate-course` | Rebuild the themed courses |
 | `npm run course-summary` | Refresh the menu's par and length stats after rebuilding a course |
 | `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |

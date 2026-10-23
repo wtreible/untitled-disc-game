@@ -25,8 +25,8 @@ const world = (trees: Tree[], shaped = true): DiscWorld => ({
 });
 
 describe('tree shapes', () => {
-  it('cover all 25 models, and each tree gets the same shape every time', () => {
-    expect(TREE_KIND_NAMES).toHaveLength(25);
+  it('cover all 35 models, and each tree gets the same shape every time', () => {
+    expect(TREE_KIND_NAMES).toHaveLength(35);
     const t = treeOfKind(3);
     expect(treeShape({ ...t })).toEqual(expect.objectContaining({ kind: 3, yaw: treeShape(t).yaw }));
   });
@@ -39,16 +39,17 @@ describe('tree shapes', () => {
     };
     expect(names()).toEqual(['CommonTree', 'Pine']);
     expect(names({ broadleaf: ['Birch'], conifer: ['Spruce'] })).toEqual(['Birch', 'Spruce']);
-    expect(() => treeShape({ x: 0, y: 0, h: 9, r: 3, b: 2, t: 0.3 }, { broadleaf: ['Oak'], conifer: ['Pine'] })).toThrow();
+    expect(names({ broadleaf: ['Oak'], conifer: ['Pine'] })).toEqual(['Oak', 'Pine']);
+    expect(() => treeShape({ x: 0, y: 0, h: 9, r: 3, b: 2, t: 0.3 }, { broadleaf: ['Maple'], conifer: ['Pine'] })).toThrow();
   });
 
-  it('the low-poly birches and spruces keep a trunk most of the way up', () => {
-    for (const name of ['Birch_1', 'Spruce_1']) {
+  it('the low-poly birches, spruces and oaks keep a trunk most of the way up', () => {
+    for (const name of ['Birch_1', 'Spruce_1', 'Oak_1']) {
       const kind = TREE_KIND_NAMES.indexOf(name);
       let t: Tree | undefined;
       for (let i = 0; i < 20000 && !t; i++) {
         const c: Tree = { x: 5, y: i * 0.37, h: 10, r: 3, b: name.startsWith('Spruce') ? 1 : 4, t: 0.3 };
-        if (treeShape(c, { broadleaf: ['Birch'], conifer: ['Spruce'] }).kind === kind) t = c;
+        if (treeShape(c, { broadleaf: [name.split('_')[0] === 'Oak' ? 'Oak' : 'Birch'], conifer: ['Spruce'] }).kind === kind) t = c;
       }
       const top = Math.max(...treeShape(t!).trunk.map((s) => s.z1));
       expect(top, name).toBeGreaterThan(0.5 * t!.h);

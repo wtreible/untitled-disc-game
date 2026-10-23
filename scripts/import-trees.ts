@@ -1,4 +1,4 @@
-// Import birches and spruces from Quaternius' Textured LowPoly Trees (CC0, May 2020:
+// Import birches, oaks and spruces from Quaternius' Textured LowPoly Trees (CC0, May 2020:
 // https://opengameart.org/content/lowpoly-textured-trees) into public/models/qtrees as .gltf + .bin,
 // named and textured like the MegaKit trees there so `npm run tree-shapes` can measure them.
 // The pack's OBJ materials carry no texture maps; they're assigned here by material name.
@@ -20,12 +20,16 @@ const MODELS: { from: string; to: string }[] = [
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => ({ from: `Birch_${i}`, to: `Birch_${i}` })),
   // The pack's "pines" are spruce-shaped: a narrow cone of drooping tiers.
   ...[1, 2, 3, 4, 5].map((i) => ({ from: `Pine_${i}`, to: `Spruce_${i}` })),
+  // Its plain "trees" spread wide from a short, crooked trunk: oaks, near enough.
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => ({ from: `Tree_${i}`, to: `Oak_${i}` })),
 ];
 const MATERIALS: Record<string, { name: string; tex: string; src: string }> = {
   Birch_Bark: { name: 'Bark_Birch', tex: 'Bark_Birch.png', src: 'Textures/Birch_Bark.png' },
   Birch_Leaves: { name: 'Leaves_Birch', tex: 'Leaves_Birch_C.png', src: 'Textures/Birch_Leaves_Green.png' },
-  Bark: { name: 'Bark_Spruce', tex: 'Bark_Spruce.jpg', src: 'Textures/Tree_Bark.jpg' },
+  // Spruces and oaks share the pack's plain bark.
+  Bark: { name: 'Bark_Tree', tex: 'Bark_Tree.jpg', src: 'Textures/Tree_Bark.jpg' },
   Pine_Leaves: { name: 'Leaves_Spruce', tex: 'Leaves_Spruce_C.png', src: 'Textures/Pine_Leaves.png' },
+  Tree_Leaves: { name: 'Leaves_Oak', tex: 'Leaves_Oak_C.png', src: 'Textures/Tree_Leaves.png' },
 };
 
 /** Triangles per material as flat position / normal / uv arrays, one vertex per OBJ v/vt/vn triple. */

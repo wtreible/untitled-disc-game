@@ -1,4 +1,5 @@
-Birch_1–10 and Spruce_1–5 (and their Bark_Birch, Leaves_Birch_C, Bark_Spruce, Leaves_Spruce_C textures)
+Birch_1–10, Spruce_1–5 and Oak_1–10 (and their Bark_Birch, Leaves_Birch_C, Bark_Tree, Leaves_Spruce_C,
+Leaves_Oak_C textures)
 come from "Textured LowPoly Trees" (Textured Stylized Trees - May 2020) by Quaternius:
 https://opengameart.org/content/lowpoly-textured-trees
 https://quaternius.itch.io/textured-lowpoly-trees
@@ -6,4 +7,4 @@ https://quaternius.itch.io/textured-lowpoly-trees
 License: CC0 1.0 Universal (public domain dedication)
 https://creativecommons.org/publicdomain/zero/1.0/
 
-Converted from the pack's OBJ files by scripts/import-trees.ts. Spruce_N is the pack's Pine_N.
+Converted from the pack's OBJ files by scripts/import-trees.ts. Spruce_N is the pack's Pine_N, Oak_N its Tree_N.

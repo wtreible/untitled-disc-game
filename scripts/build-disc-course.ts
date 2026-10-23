@@ -5,8 +5,9 @@
 //   npm run disc-course                      # defaults: Tali, Helsinki
 //   npm run disc-course -- --course 40254405 --out tali [--refresh]
 //   npm run disc-course -- --style simple --out tali-simple   # Tali Recreation: vector, thinned real trees
-//   npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm   # Oak Grove Gold, Stockton CA
-//   npm run disc-course -- --course relation/14137393 --out bechovice --trees osm --broadleaf CommonTree,Birch --name "DiscGolfPark Běchovice"   # Prague
+//   npm run disc-course -- --course relation/18072611 --out oak-grove --trees osm --broadleaf Oak   # Oak Grove Gold, Stockton CA
+//   npm run disc-course -- --course relation/14137393 --out bechovice --trees osm --broadleaf Oak,CommonTree,Birch --name "DiscGolfPark Běchovice"   # Prague
+//   (Skatås, Kincaid, Julkujärvi, Blue Lake: see the README)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import type { FeatureCollection } from 'geojson';
@@ -29,6 +30,8 @@ const { values: args } = parseArgs({
     conifer: { type: 'string' },
     /** Course name, when the OSM one is a layout's ("Main 18 - long tees"). */
     name: { type: 'string' },
+    /** Hole numbers for lines mapped without one: way:ref pairs, comma-separated (996506301:4). */
+    'hole-ref': { type: 'string' },
   },
 });
 
@@ -163,6 +166,7 @@ const course = buildDiscCourse(osm, canopy, {
   osmTimestamp: raw.osm3s?.timestamp_osm_base ?? 'unknown',
   trees: osmTrees ? 'osm' : simple ? 'recreation' : 'canopy',
   holeIds: relation?.members?.filter((m) => m.type === 'way').map((m) => `way/${m.ref}`),
+  holeRefs: args['hole-ref'] ? Object.fromEntries(args['hole-ref'].split(',').map((p) => { const [w, r] = p.split(':'); return [`way/${w.trim()}`, r.trim()]; })) : undefined,
   name: args.name ?? relation?.tags?.name,
   attribution: [
     osmTrees ? 'Course data and trees © OpenStreetMap contributors (ODbL)' : 'Course data © OpenStreetMap contributors (ODbL)',

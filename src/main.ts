@@ -21,7 +21,7 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'fantasy' | 'rainbow' | 'pirate' | 'range';
+type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'fantasy' | 'rainbow' | 'pirate' | 'range';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
 type Group = 'real' | 'arcade' | 'training';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
@@ -54,6 +54,26 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     id: 'bechovice', group: 'real', name: 'Běchovice', meta: `Prague, Czechia${IMAGERY ? ' · satellite imagery' : ''} · mapped woods`, holes: 18,
     blurb: 'DiscGolfPark Běchovice’s long (gold) tees, from OpenStreetMap: Prague’s hardest course, host of the 2023 Czech championship, with long par 4s and 5s through and around its woods.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#7c8a4a"/>${[[8, 10, 9], [20, 6, 8], [52, 50, 10], [58, 34, 7], [6, 40, 8], [40, 8, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#35512a"/>`).join('')}<path d="M10 58 C 24 50, 26 30, 44 24 S 56 10, 52 6" stroke="#c3cb86" stroke-width="7" fill="none" stroke-linecap="round"/><rect x="26" y="44" width="3" height="12" fill="#eef2e6"/><rect x="34" y="40" width="3" height="14" fill="#eef2e6"/><circle cx="52" cy="6" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'skatas', group: 'real', name: 'Skatås', meta: `Gothenburg, Sweden${IMAGERY ? ' · satellite imagery' : ''} · 2,300 mapped trees`, holes: 20,
+    blurb: 'The yellow course at Skatås, one of Sweden’s classic courses (since 1990), from OpenStreetMap: twenty short, technical holes through pine, spruce and birch woods, alternates 14b and 15b included.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2c4428"/>${Array.from({ length: 14 }, (_, i) => `<path d="M${(i * 29) % 64} ${(i * 41) % 64} l5 12 h-10 z" fill="${i % 3 ? '#1f3a24' : '#3f6a3a'}"/>`).join('')}<path d="M8 58 C 20 48, 18 30, 34 26 S 52 18, 54 8" stroke="#a8b98a" stroke-width="6" fill="none" stroke-linecap="round"/><rect x="40" y="44" width="2.5" height="12" fill="#eef2e6"/><circle cx="54" cy="8" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'kincaid', group: 'real', name: 'Kincaid Park', meta: `Anchorage, Alaska${IMAGERY ? ' · satellite imagery' : ''} · birch and spruce`, holes: 18,
+    blurb: 'Kincaid Park’s course, from OpenStreetMap: one of Alaska’s best-rated, a mix of long and tight holes cut through birch and spruce.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#3d5a38"/>${[[8, 12], [18, 30], [6, 48], [52, 14], [56, 40], [44, 54]].map(([x, y]) => `<path d="M${x} ${y - 8} l5 14 h-10 z" fill="#1f3a26"/>`).join('')}${[[30, 10], [48, 30], [14, 58]].map(([x, y]) => `<rect x="${x}" y="${y - 6}" width="2" height="10" fill="#f2f2ea"/><circle cx="${x + 1}" cy="${y - 7}" r="4" fill="#8db45a"/>`).join('')}<path d="M10 54 C 24 46, 30 34, 50 22" stroke="#c7cf98" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="50" cy="22" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'julkujarvi', group: 'real', name: 'Julkujärvi', meta: `Ylöjärvi, Finland${IMAGERY ? ' · satellite imagery' : ''} · pro course`, holes: 18,
+    blurb: 'The PRO course at Julkujärvi, near Tampere, from OpenStreetMap: a pro-level eighteen with par 4s and 5s through Finnish pine and birch, used at the 2025 European Amateur Open.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#4a6a3c"/>${Array.from({ length: 12 }, (_, i) => `<path d="M${(i * 23) % 64} ${(i * 37) % 64} l4 11 h-8 z" fill="#284a2c"/>`).join('')}<path d="M6 30 C 20 20, 40 44, 58 30" stroke="#d3d79e" stroke-width="7" fill="none" stroke-linecap="round"/><ellipse cx="18" cy="54" rx="11" ry="5" fill="#4f8fcf"/><circle cx="58" cy="30" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'bluelake', group: 'real', name: 'Blue Lake', meta: `Portland, Oregon${IMAGERY ? ' · satellite imagery' : ''} · 17 of 18 holes`, holes: 17,
+    blurb: 'Blue Lake Park, host of the 2014 PDGA Worlds and the first Portland Open, from OpenStreetMap: long, open holes among oaks and firs. OSM has no hole 8, so it plays 17.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#6f8a4a"/><ellipse cx="46" cy="14" rx="16" ry="8" fill="#4f8fcf"/>${[[12, 16, 7], [24, 44, 6], [52, 46, 7]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#3e5a2a"/>`).join('')}${[[8, 40], [40, 34], [58, 58]].map(([x, y]) => `<path d="M${x} ${y - 9} l5 14 h-10 z" fill="#244028"/>`).join('')}<path d="M6 58 C 22 54, 30 40, 40 30" stroke="#d0d79a" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="40" cy="30" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
     id: 'fantasy', group: 'arcade', name: 'Fantasy Fairways', meta: 'Knights, a castle keep, one dragon', holes: 9,
@@ -105,8 +125,10 @@ function renderCourses(): void {
 }
 
 // ---------- course info card: name, description, par and stats for the holes being played ----------
-let summary: Record<string, { pars: number[]; lengths: number[] }> | null = null;
-fetch(asset('courses/summary.json')).then((r) => r.json()).then((s) => { summary = s; renderCourseInfo(); }).catch(() => { /* stats are optional */ });
+let summary: Record<string, { pars: number[]; lengths: number[]; refs?: string[] }> | null = null;
+fetch(asset('courses/summary.json')).then((r) => r.json()).then((s) => { summary = s; renderHoles(); }).catch(() => { /* stats are optional */ });
+/** A hole's number as the course has it (Skatås' 14b, Blue Lake's 9 after 7), by position. */
+const holeName = (i: number): string => summary?.[course]?.refs?.[i] ?? String(i + 1);
 
 function renderCourseInfo(): void {
   const c = COURSES.find((x) => x.id === course)!;
@@ -119,11 +141,11 @@ function renderCourseInfo(): void {
   const par = idx.reduce((a, i) => a + s.pars[i], 0);
   const len = idx.reduce((a, i) => a + s.lengths[i], 0);
   const stat = (v: string, label: string, note = '') => `<div class="ci-stat"><b>${v}</b><small>${label}</small>${note ? `<em>${note}</em>` : ''}</div>`;
-  const which = count === s.pars.length ? `${count} holes` : count === 1 ? `Hole ${first + 1}` : `Holes ${first + 1}–${first + count}`;
+  const which = count === s.pars.length ? `${count} holes` : count === 1 ? `Hole ${holeName(first)}` : `Holes ${holeName(first)}–${holeName(first + count - 1)}`;
   const stats = [stat(String(par), 'Par', which), stat(fmtLen(len), count === 1 ? 'Length' : 'Total length')];
   if (count > 1) {
     const longest = idx.reduce((a, i) => (s.lengths[i] > s.lengths[a] ? i : a), idx[0]);
-    stats.push(stat(fmtLen(s.lengths[longest]), 'Longest hole', `Hole ${longest + 1} · par ${s.pars[longest]}`));
+    stats.push(stat(fmtLen(s.lengths[longest]), 'Longest hole', `Hole ${holeName(longest)} · par ${s.pars[longest]}`));
   }
   $('ci-stats').innerHTML = stats.join('');
 }
@@ -137,10 +159,11 @@ function renderHoles(): void {
   const n = COURSES.find((c) => c.id === course)!.holes;
   const opts = [
     { v: `0:${n}`, label: `Full round (${n})` },
-    ...(n >= 18 ? [{ v: '0:9', label: 'Front 9' }, { v: '9:9', label: 'Back 9' }] : []),
+    // A front and back nine; the back gets whatever's left (Skatås' 11, Blue Lake's 8).
+    ...(n >= 17 ? [{ v: '0:9', label: 'Front 9' }, { v: `9:${n - 9}`, label: `Back ${n - 9}` }] : []),
     // Short rounds: blocks of 3 on a 9-hole course, 6 on an 18.
-    ...holeBlocks(n, n >= 18 ? 6 : 3).map(([a, k]) => ({ v: `${a}:${k}`, label: `Holes ${a + 1}–${a + k}` })),
-    ...Array.from({ length: n }, (_, i) => ({ v: `${i}:1`, label: `Hole ${i + 1} only` })),
+    ...holeBlocks(n, n >= 17 ? 6 : 3).map(([a, k]) => ({ v: `${a}:${k}`, label: `Holes ${holeName(a)}–${holeName(a + k - 1)}` })),
+    ...Array.from({ length: n }, (_, i) => ({ v: `${i}:1`, label: `Hole ${holeName(i)} only` })),
   ];
   const sel = $<HTMLSelectElement>('holes');
   const prev = sel.value || last.holes;

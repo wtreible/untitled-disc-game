@@ -121,9 +121,9 @@
   ],
   "images": [
     {
-      "name": "Bark_Spruce",
+      "name": "Bark_Tree",
       "mimeType": "image/jpeg",
-      "uri": "Bark_Spruce.jpg"
+      "uri": "Bark_Tree.jpg"
     },
     {
       "name": "Leaves_Spruce_C",
@@ -139,7 +139,7 @@
   ],
   "materials": [
     {
-      "name": "Bark_Spruce",
+      "name": "Bark_Tree",
       "alphaMode": "MASK",
       "alphaCutoff": 0.2,
       "doubleSided": true,

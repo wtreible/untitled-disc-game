@@ -1,0 +1,206 @@
+{
+  "asset": {
+    "generator": "glTF-Transform v4.5.1",
+    "version": "2.0"
+  },
+  "accessors": [
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 629,
+      "max": [
+        2.3058440685272217,
+        6.027390003204346,
+        1.691830039024353
+      ],
+      "min": [
+        -2.9330921173095703,
+        0.011172999627888203,
+        -1.2956809997558594
+      ],
+      "bufferView": 0,
+      "byteOffset": 0
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 629,
+      "bufferView": 0,
+      "byteOffset": 12
+    },
+    {
+      "type": "VEC2",
+      "componentType": 5126,
+      "count": 629,
+      "bufferView": 0,
+      "byteOffset": 24
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5125,
+      "count": 2616,
+      "bufferView": 1,
+      "byteOffset": 0
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5125,
+      "count": 2952,
+      "bufferView": 1,
+      "byteOffset": 10464
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 697,
+      "max": [
+        3.095597982406616,
+        6.3706889152526855,
+        2.3982579708099365
+      ],
+      "min": [
+        -3.6411149501800537,
+        3.411271095275879,
+        -2.5864460468292236
+      ],
+      "bufferView": 2,
+      "byteOffset": 0
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 697,
+      "bufferView": 2,
+      "byteOffset": 12
+    },
+    {
+      "type": "VEC2",
+      "componentType": 5126,
+      "count": 697,
+      "bufferView": 2,
+      "byteOffset": 24
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 20128,
+      "byteStride": 32,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 20128,
+      "byteLength": 22272,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 42400,
+      "byteLength": 22304,
+      "byteStride": 32,
+      "target": 34962
+    }
+  ],
+  "samplers": [
+    {
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "textures": [
+    {
+      "source": 0,
+      "sampler": 0
+    },
+    {
+      "source": 1,
+      "sampler": 0
+    }
+  ],
+  "images": [
+    {
+      "name": "Bark_Tree",
+      "mimeType": "image/jpeg",
+      "uri": "Bark_Tree.jpg"
+    },
+    {
+      "name": "Leaves_Oak_C",
+      "mimeType": "image/png",
+      "uri": "Leaves_Oak_C.png"
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "Oak_5.bin",
+      "byteLength": 64704
+    }
+  ],
+  "materials": [
+    {
+      "name": "Bark_Tree",
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.2,
+      "doubleSided": true,
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0,
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
+    },
+    {
+      "name": "Leaves_Oak",
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.2,
+      "doubleSided": true,
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0,
+        "baseColorTexture": {
+          "index": 1
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Oak_5",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "mode": 4,
+          "material": 0,
+          "indices": 3
+        },
+        {
+          "attributes": {
+            "POSITION": 5,
+            "NORMAL": 6,
+            "TEXCOORD_0": 7
+          },
+          "mode": 4,
+          "material": 1,
+          "indices": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Oak_5",
+      "mesh": 0
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ]
+}

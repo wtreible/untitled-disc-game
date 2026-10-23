@@ -1,6 +1,6 @@
 // OSM + HSY canopy GeoJSON → DiscCourseFile. Pure (no I/O). See docs/08-level-editor-and-disc-golf.md.
 import type { Feature, FeatureCollection, Geometry, Position } from 'geojson';
-import { LocalFrame, dist, distToPolyline, polylineLength, type Vec2 } from './geo';
+import { LocalFrame, dist, distToPolyline, pointInRings, polylineLength, type Vec2 } from './geo';
 import type { DiscCourseFile, DiscHole, Tree } from './disc-types';
 import { encodeTrees } from './disc-types';
 import type { CourseFeature, Rings } from './types';
@@ -32,6 +32,8 @@ export interface DiscBuildOptions {
    * osmtogeojson drops such relations, so the caller reads them from the raw data.
    */
   holeIds?: string[];
+  /** Hole numbers by way ("way/…" → ref): for a hole line mapped without one, or mapped wrong. */
+  holeRefs?: Record<string, string>;
   name?: string;
   margin?: number;
 }
@@ -221,18 +223,57 @@ export function mappedTrees(feats: Feature<Geometry, Props>[], P: (p: Position) 
   });
 }
 
+/** Hole numbers in playing order: 1, 2 … 14, 14b, 15 (a letter is an alternate, played after). */
+export function compareRefs(a: string, b: string): number {
+  const [, na, sa] = a.match(/^(\d+)(.*)$/) ?? ['', 'NaN', a];
+  const [, nb, sb] = b.match(/^(\d+)(.*)$/) ?? ['', 'NaN', b];
+  return (parseInt(na, 10) - parseInt(nb, 10)) || sa.localeCompare(sb);
+}
+
+/**
+ * The course's hole lines, in order. A relation's are its members. A course way's are the lines
+ * mostly inside it, since a neighboring layout's holes share the search box (Julkujärvi's AM next
+ * to its PRO). Where two lines still share a number (a second set of short lines at Kincaid), the
+ * one with a tee and basket mapped (as points) at its ends wins, then the longer.
+ */
+export function selectHoles(feats: Feature<Geometry, Props>[], course: Feature<Geometry, Props> | undefined, opts: Pick<DiscBuildOptions, 'holeIds' | 'holeRefs'>): Feature<Geometry, Props>[] {
+  const holeSet = opts.holeIds ? new Set(opts.holeIds) : null;
+  const area = !holeSet && course ? polygonsOf(course.geometry) : [];
+  const refOf = (f: Feature<Geometry, Props>) => opts.holeRefs?.[String(f.id)] ?? f.properties.ref;
+  const lineOf = (f: Feature<Geometry, Props>) => (f.geometry as { coordinates: Position[] }).coordinates;
+  const inside = (f: Feature<Geometry, Props>) => {
+    const pts = lineOf(f);
+    return pts.filter((p) => area.some((poly) => pointInRings([p[0], p[1]], poly as Vec2[][]))).length >= pts.length / 2;
+  };
+  const lines = feats.filter((f) => f.properties.disc_golf === 'hole' && refOf(f) && f.geometry.type === 'LineString'
+    && (holeSet ? holeSet.has(String(f.id)) : !area.length || inside(f)));
+  const ends = (kind: string) => feats.filter((f) => f.properties.disc_golf === kind && f.geometry.type === 'Point').map((f) => (f.geometry as { coordinates: Position }).coordinates);
+  const tees = ends('tee'), baskets = ends('basket');
+  // Lon/lat → meters, well enough to tell "at the line's end" (8 m) from not and longer from shorter.
+  const meters = (a: Position, b: Position) => Math.hypot((b[0] - a[0]) * 111320 * Math.cos((a[1] * Math.PI) / 180), (b[1] - a[1]) * 110540);
+  const near = (p: Position, set: Position[]) => set.some((q) => meters(p, q) < 8);
+  const score = (f: Feature<Geometry, Props>) => {
+    const pts = lineOf(f);
+    const len = pts.slice(1).reduce((s, p, i) => s + meters(pts[i], p), 0);
+    return (Number(near(pts[0], tees)) + Number(near(pts[pts.length - 1], baskets))) * 1e6 + len;
+  };
+  const byRef = new Map<string, Feature<Geometry, Props>>();
+  for (const f of lines) {
+    const r = refOf(f)!, prev = byRef.get(r);
+    if (!prev || score(f) > score(prev)) byRef.set(r, f);
+  }
+  return [...byRef.entries()].sort(([a], [b]) => compareRefs(a, b)).map(([ref, f]) => ({ ...f, properties: { ...f.properties, ref } }));
+}
+
 export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLayer[], opts: DiscBuildOptions): DiscCourseFile {
   const feats = osm.features as Feature<Geometry, Props>[];
   // A course way is the playing area too; a relation has only its holes.
   const course = feats.find((f) => f.id === opts.courseOsmId);
   if (!course && !opts.holeIds) throw new Error(`Course ${opts.courseOsmId} not in input`);
-  const holeSet = opts.holeIds ? new Set(opts.holeIds) : null;
   const corridor = opts.corridorM ?? 35;
   const margin = opts.margin ?? 40;
 
-  const holeFeats = feats
-    .filter((f) => f.properties.disc_golf === 'hole' && f.properties.ref && f.geometry.type === 'LineString' && (!holeSet || holeSet.has(String(f.id))))
-    .sort((a, b) => parseInt(a.properties.ref!, 10) - parseInt(b.properties.ref!, 10));
+  const holeFeats = selectHoles(feats, course, opts);
   if (holeFeats.length === 0) throw new Error('No disc_golf=hole ways with a ref');
 
   // Course-wide frame centered on the hole lines.
