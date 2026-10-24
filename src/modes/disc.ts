@@ -38,7 +38,8 @@ import { Life } from '../render/life';
 import { WEATHER, pickWeather, type Weather } from '../render/weather';
 import { setTreeWind } from '../render/disc3d';
 import { commentary } from '../ui/commentary';
-import { CHAT_LINES, mountQuickChat, showChat } from '../ui/quickChat';
+import { chatMsg, mountQuickChat, type ChatMsg } from '../ui/quickChat';
+import { ChatBubbles } from '../ui/chatBubbles';
 import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
 import { rangeMarkers } from '../render/rangeMarkers';
 import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
@@ -1379,10 +1380,18 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // ---------- quick chat ----------
   /** Who this browser speaks as: online, our seat; hot seat, whoever is up. */
   const chatter = () => (net ? opts.names.findIndex((_, p) => net.mine(p)) : game().current);
-  mountQuickChat((line) => {
+  /** Speech bubbles over each player's disc (their basket once they've holed out). */
+  const bubbles = new ChatBubbles($('chat-bubbles'), (p) => {
+    const q = game().players[p];
+    if (!q) return null;
+    const at = q.holed ? pinOf(p) : q.ball;
+    return [at[0], at[1], 1.9];
+  }, (q) => scene.project(q));
+  const chatSay = (p: number, m: ChatMsg) => bubbles.say(p, opts.names[p], COLORS[p], m);
+  mountQuickChat((m) => {
     const p = chatter();
-    showChat(opts.names[p], COLORS[p], line);
-    net?.room.sendLive({ chat: line, player: p });
+    chatSay(p, m);
+    net?.room.sendLive({ ...m, player: p });
   }, () => chatter() >= 0 && $('setup').hidden === true);
 
   // ---------- driving range panel: wind, weather, baskets and trees ----------
@@ -1625,6 +1634,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     sendLiveAim(now);
+    bubbles.update();
     // Not during the flyover: the thrower's live aim would pin the camera at the tee.
     if (phase === 'watching' && !intro) showLiveAim(now);
     if (flight && replay) {
@@ -1723,10 +1733,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       reject: () => sync.resync(),
       members: (m) => membersChanged(m.map((x) => x.client)),
       live: (_from, s) => {
-        // Quick chat travels the same way as live aim.
-        const c = s as { chat?: unknown; player?: unknown } | null;
-        if (c && typeof c.chat === 'number' && typeof c.player === 'number') {
-          if (CHAT_LINES[c.chat] && opts.names[c.player]) showChat(opts.names[c.player], COLORS[c.player], c.chat);
+        // Quick chat (lines and emoji) travels the same way as live aim.
+        const c = s as { chat?: unknown; emoji?: unknown; player?: unknown } | null;
+        if (c && (c.chat !== undefined || c.emoji !== undefined)) {
+          const m = chatMsg(c);
+          if (m && typeof c.player === 'number' && opts.names[c.player]) chatSay(c.player, m);
           return;
         }
         const a = s as LiveAim | null;

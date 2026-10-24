@@ -308,17 +308,25 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .chat-btn svg { display: block; margin: auto; }
 
 /* ---------- quick chat ---------- */
-#chat-wheel { position: fixed; inset: 0; z-index: 40; background: radial-gradient(circle at center, rgba(8, 19, 29, 0.55), rgba(8, 19, 29, 0) 320px); }
-#chat-wheel .chat-hub { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--panel); border: 1px solid var(--line); }
+#chat-wheel { --cx: 50%; --cy: 50%; position: fixed; inset: 0; z-index: 40; background: radial-gradient(circle at var(--cx) var(--cy), rgba(8, 19, 29, 0.55), rgba(8, 19, 29, 0) 320px); }
+#chat-wheel .chat-hub { left: var(--cx); top: var(--cy); width: 54px; height: 54px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--panel); border: 1px solid var(--line); }
+#chat-wheel .chat-hub:hover { background: var(--navy-3); color: var(--text); }
+#chat-wheel.emoji-page button[data-i] { font: 26px/1.2 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; padding: 4px 12px; }
 #chat-wheel button { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; padding: 8px 14px; border-radius: 999px; background: var(--panel); backdrop-filter: blur(6px); font: 700 15px var(--body); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
 #chat-wheel button small { color: var(--muted); font-size: 11px; margin-right: 6px; }
 #chat-wheel button.on, #chat-wheel button:hover { background: var(--accent); color: var(--accent-ink); }
 #chat-wheel button.on small, #chat-wheel button:hover small { color: var(--accent-ink); }
-#chat-feed { position: fixed; left: 14px; top: 96px; z-index: 6; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-.chat-line { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 10px; background: var(--panel); backdrop-filter: blur(6px); font-size: 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); animation: chat-in 0.2s ease-out; transition: opacity 0.35s; }
-.chat-line i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.chat-line.out { opacity: 0; }
-@keyframes chat-in { from { opacity: 0; transform: translateX(-12px); } }
+#chat-bubbles { position: fixed; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
+/* A speech bubble: the speaker's name in their color, a tail pointing down at them. */
+.bubble { --c: #fff; position: absolute; left: 0; top: 0; max-width: 240px; padding: 7px 12px 8px; border-radius: 16px; background: #f4f7fa; color: #0f2233; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); border-top: 3px solid var(--c); font: 700 15px var(--body); line-height: 1.25; }
+.bubble b { display: block; font: 800 11px var(--head); letter-spacing: 0.08em; text-transform: uppercase; color: #5b6b78; }
+.bubble b::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 5px; vertical-align: 1px; }
+.bubble::after { content: ''; position: absolute; left: 50%; bottom: -9px; margin-left: -9px; border: 9px solid transparent; border-bottom: 0; border-top-color: #f4f7fa; }
+.bubble.edge::after { display: none; }
+.bubble.emoji span { display: block; text-align: center; font: 30px/1.1 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.bubble { transform-origin: 50% 100%; animation: bubble-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both; transition: opacity 0.3s; }
+.bubble.out { opacity: 0; }
+@keyframes bubble-pop { from { opacity: 0; scale: 0.6; } to { opacity: 1; scale: 1; } }
 @media (max-width: 680px) { #chat-wheel button { font-size: 13px; padding: 6px 10px; } }
 #ff-badge {
   position: fixed; top: 118px; left: 50%; transform: translateX(-50%); padding: 4px 12px; border-radius: 999px;

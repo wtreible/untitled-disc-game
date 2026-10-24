@@ -766,6 +766,16 @@ export class CourseScene {
     return [v.x, v.y];
   }
 
+  /**
+   * World point → client pixels in the current view (first person or top-down). `behind`: behind
+   * the first-person camera, where x and y mean nothing.
+   */
+  project(p: Vec3): { x: number; y: number; behind: boolean } {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3(p[0], p[1], p[2]).project(this.fp ? this.persp : this.ortho);
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height, behind: this.fp && v.z > 1 };
+  }
+
   /** Top-down: world point → client pixels. */
   worldToScreen(p: Vec2): [number, number] {
     const rect = this.renderer.domElement.getBoundingClientRect();
