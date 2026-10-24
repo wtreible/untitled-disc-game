@@ -322,8 +322,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 @media (max-width: 680px) { .top-btn.net-status { left: auto; right: 12px; top: 56px; } }
 
 /* ---------- quick chat ---------- */
-#chat-wheel { position: fixed; inset: 0; z-index: 40; background: radial-gradient(circle at center, rgba(8, 19, 29, 0.55), rgba(8, 19, 29, 0) 320px); }
-#chat-wheel .chat-hub { left: 50%; top: 50%; width: 54px; height: 54px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--panel); border: 1px solid var(--line); }
+#chat-wheel { --cx: 50%; --cy: 50%; position: fixed; inset: 0; z-index: 40; background: radial-gradient(circle at var(--cx) var(--cy), rgba(8, 19, 29, 0.55), rgba(8, 19, 29, 0) 320px); }
+#chat-wheel .chat-hub { left: var(--cx); top: var(--cy); width: 54px; height: 54px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--panel); border: 1px solid var(--line); }
 #chat-wheel .chat-hub:hover { background: var(--navy-3); color: var(--text); }
 #chat-wheel.emoji-page button[data-i] { font: 26px/1.2 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; padding: 4px 12px; }
 #chat-wheel button { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; padding: 8px 14px; border-radius: 999px; background: var(--panel); backdrop-filter: blur(6px); font: 700 15px var(--body); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
