@@ -103,7 +103,10 @@ scripts/        course builders (OpenStreetMap + canopy → course JSON, themed 
 src/course/     course model, OSM → course, tree planting
 src/disc/       discs, flight model and collisions, trees, augments
 src/render/     three.js scenes, props, trees, imagery
-src/modes/      game controllers (disc.ts; golf.ts is an older mode, off the menu)
+src/modes/      game controllers: disc.ts runs a round (turns, camera, HUD, frame loop); discRound.ts its
+                shared state, discSync.ts its events to and from the room, scorecard.ts, picks.ts (bag,
+                drafts), chaseCam.ts, discKeys.ts, discKit.ts (constants, helpers). golf.ts is an
+                older mode, off the menu
 src/ui/         menu, settings, disc picker, broadcast graphics
 public/         built courses and 3D models
 docs/           design notes and the decision log
