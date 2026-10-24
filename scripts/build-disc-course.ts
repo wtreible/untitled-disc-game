@@ -32,6 +32,11 @@ const { values: args } = parseArgs({
     name: { type: 'string' },
     /** Hole numbers for lines mapped without one: way:ref pairs, comma-separated (996506301:4). */
     'hole-ref': { type: 'string' },
+    /**
+     * A hole OSM doesn't have, made up: REF:lat,lon;lat,lon[;…][:PAR], tee first, basket last.
+     * Repeatable. Its line, tee and basket are added to the OSM data before the build.
+     */
+    'add-hole': { type: 'string', multiple: true },
   },
 });
 
@@ -116,6 +121,16 @@ const raw = await cached(`data/raw/disc-${cacheId}.json`, async () => {
 }) as Raw;
 
 const osm = osmtogeojson(raw);
+for (const spec of args['add-hole'] ?? []) {
+  const [ref, line, par] = spec.split(':');
+  const pts = (line ?? '').split(';').map((q) => q.split(',').map(Number)).map(([lat, lon]) => [lon, lat]);
+  if (!ref || pts.length < 2 || pts.some((q) => q.some((v) => !Number.isFinite(v)))) throw new Error(`--add-hole ${spec}: want REF:lat,lon;lat,lon[:PAR]`);
+  const point = (id: string, at: number[], kind: string) => ({ type: 'Feature' as const, id, properties: { disc_golf: kind }, geometry: { type: 'Point' as const, coordinates: at } });
+  osm.features.push(
+    { type: 'Feature', id: `way/added-${ref}`, properties: { disc_golf: 'hole', ref, ...(par ? { par } : {}) }, geometry: { type: 'LineString', coordinates: pts } },
+    point(`node/added-${ref}-tee`, pts[0], 'tee'), point(`node/added-${ref}-basket`, pts[pts.length - 1], 'basket'),
+  );
+}
 
 // HSY land cover 2024, tree canopy by height class. Open WFS, no key. Attribution required.
 const HSY_LAYERS: { name: string; range: [number, number] }[] = [

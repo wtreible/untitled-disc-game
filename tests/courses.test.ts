@@ -274,7 +274,7 @@ describe('more real courses from OpenStreetMap', () => {
     { file: 'julkujarvi', refs: Array.from({ length: 18 }, (_, i) => String(i + 1)), trees: 5000, broadleaf: ['Birch'] },
     // OSM has no hole 8.
     { file: 'prater', refs: Array.from({ length: 18 }, (_, i) => String(i + 1)), trees: 5000, broadleaf: ['Oak', 'CommonTree'] },
-    { file: 'blue-lake', refs: ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18'], trees: 1000, broadleaf: ['Oak', 'CommonTree'] },
+    { file: 'blue-lake', refs: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18'], trees: 1000, broadleaf: ['Oak', 'CommonTree'] },
   ];
   for (const k of cases) {
     it(`${k.file}: its holes in order, tees and baskets in play, trees and tree models`, () => {

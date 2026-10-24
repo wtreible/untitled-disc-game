@@ -71,8 +71,8 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#4a6a3c"/>${Array.from({ length: 12 }, (_, i) => `<path d="M${(i * 23) % 64} ${(i * 37) % 64} l4 11 h-8 z" fill="#284a2c"/>`).join('')}<path d="M6 30 C 20 20, 40 44, 58 30" stroke="#d3d79e" stroke-width="7" fill="none" stroke-linecap="round"/><ellipse cx="18" cy="54" rx="11" ry="5" fill="#4f8fcf"/><circle cx="58" cy="30" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
-    id: 'bluelake', group: 'real', name: 'Blue Lake', meta: `Portland, Oregon${IMAGERY ? ' · satellite imagery' : ''} · 17 of 18 holes`, holes: 17,
-    blurb: 'Blue Lake Park, host of the 2014 PDGA Worlds and the first Portland Open, from OpenStreetMap: long, open holes among oaks and firs. OSM has no hole 8, so it plays 17.',
+    id: 'bluelake', group: 'real', name: 'Blue Lake', meta: `Portland, Oregon${IMAGERY ? ' · satellite imagery' : ''} · 18 holes`, holes: 18,
+    blurb: 'Blue Lake Park, host of the 2014 PDGA Worlds and the first Portland Open, from OpenStreetMap: long, open holes among oaks and firs.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#6f8a4a"/><ellipse cx="46" cy="14" rx="16" ry="8" fill="#4f8fcf"/>${[[12, 16, 7], [24, 44, 6], [52, 46, 7]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#3e5a2a"/>`).join('')}${[[8, 40], [40, 34], [58, 58]].map(([x, y]) => `<path d="M${x} ${y - 9} l5 14 h-10 z" fill="#244028"/>`).join('')}<path d="M6 58 C 22 54, 30 40, 40 30" stroke="#d0d79a" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="40" cy="30" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
@@ -174,7 +174,7 @@ function renderHoles(): void {
   const n = COURSES.find((c) => c.id === course)!.holes;
   const opts = [
     { v: `0:${n}`, label: `Full round (${n})` },
-    // A front and back nine; the back gets whatever's left (Skatås' 11, Blue Lake's 8).
+    // A front and back nine; the back gets whatever's left (Skatås' 11).
     ...(n >= 17 ? [{ v: '0:9', label: 'Front 9' }, { v: `9:${n - 9}`, label: `Back ${n - 9}` }] : []),
     // Short rounds: blocks of 3 on a 9-hole course, 6 on an 18.
     ...holeBlocks(n, n >= 17 ? 6 : 3).map(([a, k]) => ({ v: `${a}:${k}`, label: `Holes ${holeName(a)}–${holeName(a + k - 1)}` })),
