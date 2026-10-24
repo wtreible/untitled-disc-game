@@ -88,17 +88,22 @@ export class HoleGame {
 
   /** Record a completed shot for the current player and advance the turn. */
   applyShot(r: Pick<ShotResult, 'rest' | 'restSurface' | 'holed' | 'penalty'>): void {
-    const p = this.player;
+    this.applyTo(this.current, r);
+    this.advance();
+  }
+
+  /** A shot's result for player i (best shot: every teammate takes the team's best), turn unchanged. */
+  applyTo(i: number, r: Pick<ShotResult, 'rest' | 'restSurface' | 'holed' | 'penalty'>): void {
+    const p = this.players[i];
     p.lastFrom = p.ball;
     p.strokes += 1 + r.penalty;
-    p.ball = r.rest;
+    p.ball = [r.rest[0], r.rest[1]];
     p.lie = r.restSurface;
     if (r.holed) p.holed = true;
-    else if (p.strokes >= maxStrokes(this.hole.par) + (this.capBonus[this.current] ?? 0)) {
-      p.strokes = maxStrokes(this.hole.par) + (this.capBonus[this.current] ?? 0);
+    else if (p.strokes >= maxStrokes(this.hole.par) + (this.capBonus[i] ?? 0)) {
+      p.strokes = maxStrokes(this.hole.par) + (this.capBonus[i] ?? 0);
       p.pickedUp = true;
     }
-    this.advance();
   }
 
   /**
@@ -111,7 +116,8 @@ export class HoleGame {
       .sort((a, b) => (Math.abs(d[a] - d[b]) <= 1e-6 ? this.rank[a] - this.rank[b] : d[b] - d[a]));
   }
 
-  private advance(): void {
+  /** The turn passes by the away rule. */
+  advance(): void {
     const o = this.order();
     if (o.length) this.current = o[0];
   }

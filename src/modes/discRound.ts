@@ -96,6 +96,23 @@ export interface RoundOptions {
   range?: boolean;
   /** Each player's color (src/game/game.ts playerColors). */
   colors?: string[];
+  /**
+   * Best shot: teams of this many, in seat order (players 0–1 are a team, 2–3 the next…). Every
+   * member throws from the team's spot and the team plays the best. Only for real holes (not Crazy
+   * mode or the range), with whole teams and at least two of them; otherwise everyone plays alone.
+   */
+  teamSize?: number;
+}
+
+/** The best throw of a volley: holed, then fewer penalty strokes, then nearest the basket; ties to the first thrown. */
+export function bestThrow(v: { player: number; result: WireResult }[], pin: Vec2): number {
+  const off = (r: WireResult) => Math.hypot(r.rest[0] - pin[0], r.rest[1] - pin[1]);
+  let best = 0;
+  for (let k = 1; k < v.length; k++) {
+    const a = v[k].result, b = v[best].result;
+    if (a.holed !== b.holed ? a.holed : a.penalty !== b.penalty ? a.penalty < b.penalty : off(a) < off(b) - 1e-6) best = k;
+  }
+  return best;
 }
 
 /** Discs in a bag (Bag Pocket adds more, up to every disc). */
@@ -137,6 +154,12 @@ export class DiscRound {
   private rulesSet = false;
   /** The host has closed this hole's scorecard. */
   private cardClosed = false;
+  /** Best shot: the teams (players by seat), or null when everyone plays alone. */
+  readonly teams: readonly (readonly number[])[] | null;
+  /** Best shot: each team's throws so far this volley (until all its members have thrown). */
+  readonly volley = new Map<number, { player: number; result: WireResult }[]>();
+  /** Best shot: the last volley played, and whose throw the team took. */
+  resolved: { team: number; best: number } | null = null;
   /** Every event applied so far, in order. */
   readonly log: RoundEvent[] = [];
   private started = false;
@@ -157,6 +180,9 @@ export class DiscRound {
     this.perfectLeft = opts.names.map(() => 0);
     this.bags = opts.names.map(() => null);
     this.changes = emptyChanges(n);
+    const size = opts.teamSize ?? 0;
+    this.teams = size >= 2 && n % size === 0 && n / size >= 2 && !opts.rogue && !opts.range
+      ? Array.from({ length: n / size }, (_, t) => Array.from({ length: size }, (_, k) => t * size + k)) : null;
     // Per-player tees/baskets (Forward Tee, Back Tees, Short Pin), decided when the hole is set up.
     this.round.setup = (hi) => {
       const h = holes[hi];
@@ -201,6 +227,11 @@ export class DiscRound {
     return this.round.game;
   }
 
+  /** Player p's team (alone: their own). */
+  teamOf(p: number): number {
+    return this.teams ? this.teams.findIndex((t) => t.includes(p)) : p;
+  }
+
   get hole(): DiscHole {
     return this.round.hole as DiscHole;
   }
@@ -217,6 +248,8 @@ export class DiscRound {
         this.version++;
         this.wind = [e.wind[0], e.wind[1]];
         this.undo = null;
+        this.volley.clear();
+        this.resolved = null;
         this.cardClosed = false;
         this.placing = this.opts.rogue ? placementQueue(this.mods) : [];
         return;
@@ -257,6 +290,7 @@ export class DiscRound {
           return;
         }
         g.current = idx;
+        if (this.teams) return this.teamThrow(idx, e.result);
         const pl = g.players[idx];
         this.undo = { idx, ball: pl.ball, lie: pl.lie, strokes: pl.strokes, pickedUp: pl.pickedUp, lastFrom: pl.lastFrom };
         if (e.perfect) this.perfectLeft[idx]--;
@@ -327,6 +361,29 @@ export class DiscRound {
         return;
       }
     }
+  }
+
+  /**
+   * Best shot: a throw joins its team's volley. The next teammate throws from the same spot; once
+   * all have (or one holes out), every member moves to the best throw and the team takes one stroke
+   * (and its penalty), then the away rule says which team is up.
+   */
+  private teamThrow(idx: number, result: WireResult): void {
+    const g = this.game;
+    const team = this.teamOf(idx);
+    const v = this.volley.get(team) ?? [];
+    v.push({ player: idx, result });
+    this.volley.set(team, v);
+    this.resolved = null;
+    const left = this.teams![team].filter((p) => !v.some((x) => x.player === p));
+    if (left.length && !result.holed) { g.current = left[0]; return; }
+    const k = bestThrow(v, g.pins[idx]);
+    const best = v[k].result;
+    this.volley.delete(team);
+    for (const p of this.teams![team]) g.applyTo(p, { rest: best.rest, restSurface: best.restSurface, holed: best.holed, penalty: best.penalty });
+    this.resolved = { team, best: v[k].player };
+    g.advance();
+    if (g.finished) this.round.recordCurrent();
   }
 
   private grant(player: number, id: string): void {

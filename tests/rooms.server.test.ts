@@ -226,6 +226,17 @@ describe.skipIf(!BASE)('room server', () => {
     b.close(); c.close();
   }, 20000);
 
+  it('the lobby keeps a best-shot team size of 2 or 3, and drops anything else', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    await a.until('welcome');
+    a.send({ type: 'lobby', lobby: { ...lobby([{ name: 'Ann', client: 'client-aaaa' }]), teams: 3 } });
+    expect((await a.until('lobby')).lobby.teams).toBe(3);
+    a.send({ type: 'lobby', lobby: { ...lobby([{ name: 'Ann', client: 'client-aaaa' }]), teams: 7 } });
+    expect((await a.until('lobby')).lobby.teams).toBeUndefined();
+    a.close();
+  });
+
   it('refuses bad room codes and client ids, and non-WebSocket requests', async () => {
     const http = BASE!.replace(/^ws/, 'http');
     expect((await fetch(`${http}/room/ABCDE`)).status).toBe(426);

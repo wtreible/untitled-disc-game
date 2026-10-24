@@ -120,7 +120,7 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
   },
 ];
 
-const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean }>('untitled-disc-game:menu', {});
+const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teams?: number }>('untitled-disc-game:menu', {});
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
 let players = Math.min(MAX_PLAYERS, Math.max(1, last.players ?? 2));
 const savedNames = load<string[]>('untitled-disc-game:names', []);
@@ -139,6 +139,7 @@ function renderCourses(): void {
     course = b.dataset.id as CourseId;
     renderCourses();
     renderHoles();
+    renderTeams(room ? lobby?.seats.length ?? members.length : players);
     pushLobby();
   }));
   $('setup-hole').textContent = COURSES.find((c) => c.id === course)!.blurb;
@@ -247,6 +248,31 @@ function renderPlayers(): void {
     box.appendChild(row);
   }
   $<HTMLSelectElement>('player-count').value = String(players);
+  renderTeams(players);
+}
+
+// ---------- teams: best shot ----------
+// Teams of 2 or 3 in seat order (the rows above), when the players split into two or more whole
+// teams: 2 v 2, 2 v 2 v 2, 3 v 3. Not with Crazy mode, or on the training courses.
+let teamSize = last.teams ?? 0;
+const teamSizes = (n: number) => [2, 3].filter((k) => n % k === 0 && n / k >= 2);
+const trainingCourse = () => course === 'range' || course === 'tutorial' || course === 'putting';
+/** The team size a game with n players would use (0: everyone alone). */
+const teamsFor = (n: number) => (teamSizes(n).includes(teamSize) && !trainingCourse() ? teamSize : 0);
+function renderTeams(n: number): void {
+  const sizes = teamSizes(n);
+  $('teams-row').hidden = !sizes.length;
+  const cur = teamsFor(n);
+  const label = (k: number) => Array.from({ length: n / k }, () => k).join(' v ');
+  $('teams-seg').innerHTML = [[0, 'Solo'] as [number, string], ...sizes.map((k): [number, string] => [k, label(k)])]
+    .map(([v, l]) => `<button data-v="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('');
+  $('teams-seg').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+    teamSize = parseInt(b.dataset.v!, 10);
+    if (teamSize) { crazy.checked = false; syncCrazy(); } // best shot is played on the real course
+    renderTeams(n);
+    pushLobby();
+  }));
+  [...$('player-names').children].forEach((r, i) => { (r as HTMLElement).dataset.team = cur ? `Team ${Math.floor(i / cur) + 1}` : ''; });
 }
 
 // ---------- crazy mode ----------
@@ -297,7 +323,10 @@ $('browse-augments').addEventListener('click', () => openAugmentBrowser());
 $('aug-close').addEventListener('click', closeAugmentBrowser);
 $('aug-browser').addEventListener('click', (e) => { if (e.target === $('aug-browser')) closeAugmentBrowser(); });
 renderRules();
-crazy.addEventListener('change', () => { syncCrazy(); pushLobby(); renderCourseInfo(); });
+crazy.addEventListener('change', () => {
+  if (crazy.checked && teamSize) { teamSize = 0; renderTeams(room ? lobby?.seats.length ?? members.length : players); } // not both
+  syncCrazy(); pushLobby(); renderCourseInfo();
+});
 $('holes').addEventListener('change', () => { pushLobby(); renderCourseInfo(); });
 bagMode.addEventListener('change', () => pushLobby());
 
@@ -408,7 +437,9 @@ function pushLobby(): void {
   const colors = playerColors(seated.map((m) => m.color));
   const training = course === 'range' || course === 'tutorial' || course === 'putting';
   // The tutorial is played alone: the room sees the driving range.
-  room.setLobby({ course: course === 'tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
+  const teams = teamsFor(seated.length);
+  room.setLobby({ course: course === 'tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training && !teams, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
+  renderTeams(seated.length);
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -432,6 +463,8 @@ function showLobby(l: Lobby): void {
   if (COURSES.some((c) => c.id === l.course)) course = l.course as CourseId;
   crazy.checked = l.crazy;
   bagMode.checked = !!l.bag;
+  teamSize = l.teams ?? 0;
+  renderTeams(l.seats.length);
   renderCourses();
   renderHoles();
   const sel = $<HTMLSelectElement>('holes');
@@ -457,7 +490,7 @@ function renderRoom(): void {
   const ready = (c: string) => !!members.find((m) => m.client === c)?.ready;
   $('room-members').innerHTML = [
     ...seats.map((q, i) => `<div class="m"><i style="background:${('color' in q && q.color) || PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${[
-      q.client === me ? 'you' : '', q.client === host ? 'host' : '',
+      lobby?.teams ? `Team ${Math.floor(i / lobby.teams) + 1}` : '', q.client === me ? 'you' : '', q.client === host ? 'host' : '',
       members.some((m) => m.client === q.client) ? '' : 'away, seat kept 1 min',
     ].filter(Boolean).join(' · ')}</small>${q.client !== host && ready(q.client) ? '<b class="ready">✓ Ready</b>' : ''}</div>`),
     ...watching.map((m) => `<div class="m"><i style="background:#555"></i><span>${escapeHtml(m.name)}</span><small>watching</small></div>`),
@@ -627,7 +660,7 @@ async function launch(l: Lobby): Promise<void> {
   const r = room;
   const { startDisc } = await import('./modes/disc');
   await startDisc({
-    names: l.seats.map((q) => q.name), colors: l.seats.map((q) => q.color ?? ''), course: id === 'putting' ? 'range' : id, putting: id === 'putting', first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag,
+    names: l.seats.map((q) => q.name), colors: l.seats.map((q) => q.color ?? ''), course: id === 'putting' ? 'range' : id, putting: id === 'putting', first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag, teamSize: l.teams,
     net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog, seats: l.seats.map((q) => q.client), present: members.map((m) => m.client) },
     rules, // only the host's are used: they send them as the round's first event
   });
@@ -639,7 +672,7 @@ $('start').addEventListener('click', async () => {
   if (course === 'tutorial') {
     // Alone, on this browser (in a room too): the first player's name.
     const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teams: teamSize });
     $('setup').hidden = true;
     showGameButtons();
     $('pause-sub').textContent = 'Tutorial';
@@ -649,7 +682,7 @@ $('start').addEventListener('click', async () => {
   }
   if (room) {
     if (!amHost()) return;
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teams: teamSize });
     pushLobby();
     room.start();
     return;
@@ -658,7 +691,7 @@ $('start').addEventListener('click', async () => {
   const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
   save('untitled-disc-game:names', typed);
-  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked });
+  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked, teams: teamSize });
   $('setup').hidden = true;
   showGameButtons();
   const n = COURSES.find((c) => c.id === course)!.holes;
@@ -670,5 +703,6 @@ $('start').addEventListener('click', async () => {
     return;
   }
   const training = course === 'range'; // no Crazy mode or bags on the range
-  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training });
+  const teams = teamsFor(names.length);
+  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training && !teams, rules, bag: bagMode.checked && !training, teamSize: teams });
 });

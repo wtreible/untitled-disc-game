@@ -159,6 +159,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #player-names .pname { display: flex; align-items: center; gap: 10px; }
 #player-names .pname .swatch { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid #0008; box-shadow: 0 0 0 2px var(--line); flex: none; cursor: pointer; }
 #player-names .pname .swatch:hover { box-shadow: 0 0 0 2px var(--accent); }
+#player-names .pname[data-team]:not([data-team=''])::after { content: attr(data-team); flex: none; font: 700 11px var(--head); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+#teams-row .seg button { padding: 5px 10px; font-size: 13px; }
 .color-pop { position: fixed; z-index: 50; display: grid; grid-template-columns: repeat(5, 26px); gap: 8px; padding: 10px; border-radius: 12px; background: var(--navy-1); border: 1px solid var(--navy-3); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
 .color-pop button { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2px solid #0008; }
 .color-pop button.on { box-shadow: 0 0 0 2px var(--accent); }

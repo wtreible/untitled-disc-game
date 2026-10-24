@@ -17,6 +17,8 @@ export interface CardView {
   toPar: (p: number) => number;
   /** Crazy mode: everyone's augments, shown under the card. */
   augments: string[][] | null;
+  /** Best shot: the card's rows are teams (players by seat; the first stands for the team), named and colored as given. */
+  teams?: { rows: number[][]; name: (p: number) => string; color: (row: number[]) => string };
 }
 
 /** Fill the card's table (best first) and, in Crazy mode, everyone's augments. */
@@ -30,10 +32,12 @@ export function renderCard(v: CardView): void {
     const cls = val === 1 || d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 1 ? 'bogey' : d >= 2 ? 'double' : '';
     return `<span class="mk ${cls}">${val}</span>`;
   };
-  const order = names.map((_, p) => p).sort((a, b) => v.toPar(a) - v.toPar(b));
+  const lines = v.teams?.rows ?? names.map((_, p) => [p]);
+  const order = lines.map((row) => row[0]).sort((a, b) => v.toPar(a) - v.toPar(b));
+  const rowOf = (p: number) => lines.find((row) => row[0] === p)!;
   const rows = order.map((p) => {
     const tp = v.toPar(p);
-    return `<tr><td class="player"><i style="background:${colors[p]}"></i>${esc(names[p])}</td>${idx.map((i) => {
+    return `<tr><td class="player"><i style="background:${v.teams ? v.teams.color(rowOf(p)) : colors[p]}"></i>${esc(v.teams ? v.teams.name(p) : names[p])}</td>${idx.map((i) => {
       const val = round.scores[p][i];
       return `<td>${val === undefined ? '' : mark(val, holes[i].par)}</td>`;
     }).join('')}<td class="tot">${round.total(p) || ''}</td><td class="pm topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</td></tr>`;

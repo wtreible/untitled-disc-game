@@ -74,6 +74,8 @@ export interface DiscOptions {
   tutorial?: boolean;
   /** The putting ladder (src/modes/putting.ts): the range with one basket, moved back station by station. */
   putting?: boolean;
+  /** Best shot: teams of this many, in seat order (src/modes/discRound.ts). */
+  teamSize?: number;
 }
 
 /** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
@@ -107,7 +109,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const rogue = !!opts.rogue && !range;
   /** Each player's color, as picked on the menu (or the defaults). */
   const COLORS = playerColors(opts.names.map((_, i) => opts.colors?.[i]));
-  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range, colors: COLORS }, blocked);
+  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range, colors: COLORS, teamSize: opts.teamSize }, blocked);
+  /** Best shot: a team's name ("Ann & Bo"), or the player's own. */
+  const teamName = (p: number) => (st.teams ? st.teams[st.teamOf(p)].map((q) => opts.names[q]).join(' & ') : opts.names[p]);
+  /** The rows of the leaderboard and card: one per team, or per player. Each row's first member stands for it. */
+  const rows = () => (st.teams ?? opts.names.map((_, p) => [p])).map((r) => [...r]); // a copy: callers sort it
+  /** A row's color: the player's, or the team's members' side by side. */
+  const rowColor = (row: number[]) => (row.length === 1 ? COLORS[row[0]] : `linear-gradient(${row.map((p, k) => `${COLORS[p]} ${(k / row.length) * 100}% ${((k + 1) / row.length) * 100}%`).join(', ')})`);
   const { round, mods, owned, mulligansLeft, perfectLeft } = st;
   const net = opts.net ?? null;
   /** Away players the host is playing for until they reconnect (online). */
@@ -975,6 +983,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (sentEarly) st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent); // sent at release
     else dispatch(e);
     const done = game().players[idx];
+    // Best shot: the team's volley is done; whose throw it plays from now (if there was a choice).
+    const vol = st.resolved;
+    if (st.teams && vol && vol.team === st.teamOf(idx) && st.teams[vol.team].length > 1 && !done.holed) chip(`${teamName(idx)} play ${opts.names[vol.best]}’s throw`, 'info');
     // A tee shot against its ghost: how the ghost did, and whether this one takes its place.
     if (tee) {
       const best = !r.penalty && offerGhost(ghostKey(opts.course, hole().ref), r.samples, r.rest, pinOf(idx), r.holed); // OB or water never counts
@@ -989,7 +1000,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (done.holed) {
       const par = hole().par;
       banner({
-        word: scoreWord(done.strokes, par).toUpperCase(), tone: scoreTone(done.strokes, par), who: done.name, color: done.color,
+        word: scoreWord(done.strokes, par).toUpperCase(), tone: scoreTone(done.strokes, par), who: teamName(idx), color: done.color,
         what: `Hole ${hole().ref} · ${done.strokes} ${done.strokes === 1 ? 'throw' : 'throws'}`, score: fmtPar(liveToPar(idx)),
       });
       if (r.events.includes('chains')) chip('Chains', 'birdie');
@@ -1000,7 +1011,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       shown = true;
     } else if (done.pickedUp) {
       sfx('jingle-bogey');
-      banner({ word: 'PICKED UP', tone: 'double', who: done.name, color: done.color, what: `Hole ${hole().ref} · max ${done.strokes}`, score: fmtPar(liveToPar(idx)) });
+      banner({ word: 'PICKED UP', tone: 'double', who: teamName(idx), color: done.color, what: `Hole ${hole().ref} · max ${done.strokes}`, score: fmtPar(liveToPar(idx)) });
       shown = true;
     }
     // Color commentary, and the gallery's reaction.
@@ -1083,7 +1094,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   // ---------- scorecard ----------
   /** What the card shows (src/modes/scorecard.ts). */
-  const cardView = (): CardView => ({ holes: course.holes, round, names: opts.names, colors: COLORS, toPar: liveToPar, augments: rogue ? owned : null });
+  const cardView = (): CardView => ({
+    holes: course.holes, round, names: opts.names, colors: COLORS, toPar: liveToPar, augments: rogue ? owned : null,
+    teams: st.teams ? { rows: rows(), name: teamName, color: rowColor } : undefined,
+  });
   /** Hole card, or (readOnly, from the pause menu) a mid-round look with just a Close button. */
   function showCard(readOnly = false): void {
     const last = round.isLastHole;
@@ -1287,12 +1301,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       ? `Drag or ${two('aim-left', 'aim-right')} to aim (${two('look-up', 'look-down')} = launch) · ${common} · scroll zoom · click minimap to aim · ${k('first-person')} top-down${view}`
       : `Click to aim · ${two('aim-left', 'aim-right')} fine aim · ${common} · ${k('first-person')} 1st person · right-drag pan · scroll zoom${view} · ${k('reframe')} re-frame`;
     if (range) { rangeBoard(); return; }
-    const lbOrder = game().players.map((_, i) => i).sort((a, b) => liveToPar(a) - liveToPar(b));
-    $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + lbOrder.map((i) => {
+    // One row a player, or a team in best shot (its members are always on the same spot and score).
+    const lbOrder = rows().sort((a, b) => liveToPar(a[0]) - liveToPar(b[0]));
+    $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + lbOrder.map((row) => {
+      const i = row[0];
       const q = game().players[i];
       const tp = liveToPar(i);
       const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${fmtLen(dist(q.ball, pinOf(i)))} · ${LIE_LABELS[q.lie] ?? q.lie}`;
-      return `<div class="row ${i === game().current && !game().finished ? 'active' : ''}"><span class="bar" style="background:${q.color}"></span><span><div class="name">${esc(q.name)}</div><div class="state">${state}</div></span><span class="strokes">${q.strokes}</span><span class="topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</span></div>`;
+      return `<div class="row ${row.includes(game().current) && !game().finished ? 'active' : ''}"><span class="bar" style="background:${rowColor(row)}"></span><span><div class="name">${esc(teamName(i))}</div><div class="state">${state}</div></span><span class="strokes">${q.strokes}</span><span class="topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</span></div>`;
     }).join('') + upNext();
   }
 
@@ -1308,6 +1324,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Who throws after the current player, by the away rule as things stand (it can change). */
   function upNext(): string {
     if (game().finished || st.stage !== 'playing') return '';
+    // Best shot: the current team's other throwers first, then the other teams (by name).
+    if (st.teams) {
+      const t = st.teamOf(game().current), v = st.volley.get(t) ?? [];
+      const mates = st.teams[t].filter((p) => p !== game().current && !v.some((x) => x.player === p));
+      const teams = [...new Set(game().order().map((p) => st.teamOf(p)))].filter((k) => k !== t);
+      const items = [...mates.map((p) => ({ name: opts.names[p], color: COLORS[p] })), ...teams.map((k) => ({ name: teamName(st.teams![k][0]), color: COLORS[st.teams![k][0]] }))].slice(0, 3);
+      return items.length ? `<div class="lb-next"><small>UP NEXT</small>${items.map((x) => `<span><i style="background:${x.color}"></i>${esc(x.name)}</span>`).join('›')}</div>` : '';
+    }
     const next = game().order().filter((i) => i !== game().current).slice(0, 3);
     if (!next.length) return '';
     return `<div class="lb-next"><small>UP NEXT</small>${next.map((i) => `<span><i style="background:${COLORS[i]}"></i>${esc(opts.names[i])}</span>`).join('›')}</div>`;
@@ -1726,7 +1750,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const g = game();
     COLORS.forEach((_, i) => {
       const q = g.players[i];
-      scene.setDisc(i, q && !q.holed && !(flight && i === flight.e.player) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
+      // Best shot: a throw waiting on its teammates' sits where it landed.
+      const at = st.teams ? st.volley.get(st.teamOf(i))?.find((x) => x.player === i)?.result.rest ?? q?.ball : q?.ball;
+      scene.setDisc(i, q && at && !q.holed && !(flight && i === flight.e.player) ? [at[0], at[1], 0.02] : null, 0, yaw, i === g.current);
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     // The ghost disc, at the same moment of its own flight (in the replay too).

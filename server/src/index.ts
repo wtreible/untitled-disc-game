@@ -47,6 +47,8 @@ export interface Lobby {
   count: number;
   crazy: boolean;
   bag?: boolean;
+  /** Best shot: teams of this many (2 or 3), in seat order. */
+  teams?: number;
   seats: Seat[];
 }
 
@@ -352,5 +354,6 @@ function cleanLobby(l: unknown): Lobby | null {
     if (!s || typeof s.name !== 'string' || typeof s.client !== 'string' || !ID.test(s.client)) return null;
     seats.push({ name: s.name.trim().slice(0, 16) || 'Player', client: s.client, ...(typeof s.color === 'string' && COLOR.test(s.color) ? { color: s.color } : {}) });
   }
-  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, seats };
+  const teams = o.teams === 2 || o.teams === 3 ? o.teams : undefined;
+  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, ...(teams ? { teams } : {}), seats };
 }
