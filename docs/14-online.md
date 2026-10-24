@@ -1,6 +1,6 @@
 # Online play
 
-Friends play together from their own browsers: one hosts a room, the others open its link (or type its code). Hosting or joining asks for your name first (nothing connects until you give one). Everyone in the room gets a player, up to 6. More can join and watch. Hot seat still works, and can be mixed in later (one browser controlling several players).
+Friends play together from their own browsers: one hosts a room, the others open its link (or type its code). Hosting or joining asks for your name first (nothing connects until you give one). Coming back to the room this browser last joined (a refresh, its link in a new tab, back from a finished game) doesn't ask again; **Leave room** forgets it. Everyone in the room gets a player, up to 6. More can join and watch. Hot seat still works, and can be mixed in later (one browser controlling several players).
 
 ## How it works
 

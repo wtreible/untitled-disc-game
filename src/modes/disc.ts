@@ -1138,6 +1138,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   });
   $('leave').addEventListener('click', () => {
     net?.room.close();
+    try { localStorage.removeItem('untitled-disc-game:room'); } catch { /* storage unavailable */ } // left: its link asks for a name again
     history.replaceState(null, '', location.pathname + location.search);
     location.reload();
   });
@@ -1160,10 +1161,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (st.stage === 'need-hole' || st.stage === 'need-rules') advance();
     updateAway();
   }
-  /** The room is back in its lobby: reload into it (the menu rejoins the room without asking names). */
+  /** The room is back in its lobby: reload into it (the menu rejoins the room it last joined without asking names). */
   function backToLobby(): void {
     if (!net) return;
-    try { sessionStorage.setItem('untitled-disc-game:rejoin', net.room.code); } catch { /* storage unavailable: the name prompt shows */ }
     net.room.close();
     location.reload(); // the address still has #room=CODE
   }

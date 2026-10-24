@@ -485,8 +485,12 @@ async function enterRoom(code: string, hosting: boolean): Promise<void> {
   joinRoom(code);
 }
 
+/** The room this browser last joined: opening its link again rejoins without asking a name. */
+const LAST_ROOM = 'untitled-disc-game:room';
+
 function joinRoom(code: string): void {
   room?.close();
+  save(LAST_ROOM, code);
   const r = new RoomClient(code, myName(), rowColors()[0]);
   room = r;
   history.replaceState(null, '', `#room=${code}`);
@@ -540,6 +544,7 @@ $('copy-link').addEventListener('click', async () => {
   setTimeout(() => { $('copy-link').textContent = 'Copy link'; }, 1500);
 });
 $('leave-room').addEventListener('click', () => {
+  save(LAST_ROOM, null);
   room?.close();
   room = null; lobby = null; members = [];
   leaveRoomLink();
@@ -551,14 +556,20 @@ $('leave-room').addEventListener('click', () => {
 // pasted into a tab that's already open (only the #hash changes, so the page doesn't reload).
 const roomInHash = () => location.hash.match(/^#room=([A-Za-z0-9]{4,8})$/)?.[1].toUpperCase() ?? null;
 const linked = roomInHash();
-/** Back from a finished game (src/modes/disc.ts): straight into the same room, no name prompt. */
-const rejoin = (() => { try { const c = sessionStorage.getItem('untitled-disc-game:rejoin'); sessionStorage.removeItem('untitled-disc-game:rejoin'); return c; } catch { return null; } })();
-if (ROOMS_URL && linked && rejoin === linked) joinRoom(linked);
-else if (ROOMS_URL && linked) void enterRoom(linked, false);
+/**
+ * A room we've been in (a refresh, the same link in a new tab, back from a finished game): straight
+ * back in with our name. Any other room asks for a name first.
+ */
+const rejoining = (code: string) => code === load<string | null>(LAST_ROOM, null);
+if (ROOMS_URL && linked) {
+  if (rejoining(linked)) joinRoom(linked);
+  else void enterRoom(linked, false);
+}
 window.addEventListener('hashchange', () => {
   const code = roomInHash();
   if (!ROOMS_URL || !code || launched || room?.code === code || !$('name-ask').hidden) return;
-  void enterRoom(code, false);
+  if (rejoining(code)) joinRoom(code);
+  else void enterRoom(code, false);
 });
 
 /** Start (or rejoin) the room's game. */
