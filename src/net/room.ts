@@ -138,6 +138,8 @@ export class RoomClient {
   private have = 0;
   private pingTimer = 0;
   private pingSent = 0;
+  /** The last heartbeat's round trip, ms (null before the first). */
+  lastPing: number | null = null;
 
   constructor(readonly code: string, private name: string, private color: string | null = null, private readonly url = ROOMS_URL!) {}
 
@@ -224,7 +226,7 @@ export class RoomClient {
   }
 
   private pong(): void {
-    if (this.pingSent) this.handlers.ping?.(performance.now() - this.pingSent);
+    if (this.pingSent) { this.lastPing = performance.now() - this.pingSent; this.handlers.ping?.(this.lastPing); }
     this.heartbeat();
   }
 

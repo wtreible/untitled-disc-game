@@ -5,6 +5,7 @@ import { COLOR_CHOICES, PLAYER_COLORS, playerColors } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { isKey, keyFor, type KeyAction } from './keys';
 import { reloadPage } from './ui/leaveGuard';
+import { mountNetStatus } from './ui/netStatus';
 import { IMAGERY, data } from './assets';
 import { fmtLen } from './units';
 import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
@@ -444,19 +445,31 @@ function renderRoom(): void {
   const nameInput = $('player-names').querySelector('input');
   if (nameInput) nameInput.title = inRoom ? 'Your name in the room (Enter to change it)' : '';
   const start = $<HTMLButtonElement>('start');
-  if (!room) { start.disabled = false; start.innerHTML = 'Tee off <span class="arrow">→</span>'; return; }
+  if (!room) { start.disabled = false; start.innerHTML = 'Tee off <span class="arrow">→</span>'; $('ready-btn').hidden = true; $('room-ping').hidden = true; return; }
   $('room-code').textContent = room.code;
   const seats = lobby?.seats ?? members.map((m) => ({ name: m.name, client: m.client }));
   const watching = members.filter((m) => !seats.some((q) => q.client === m.client));
+  const ready = (c: string) => !!members.find((m) => m.client === c)?.ready;
   $('room-members').innerHTML = [
-    ...seats.map((q, i) => `<div class="m"><i style="background:${('color' in q && q.color) || PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${q.client === me ? 'you' : ''}${q.client === host ? `${q.client === me ? ' · ' : ''}host` : ''}${members.some((m) => m.client === q.client) ? '' : ' · away, seat kept 1 min'}</small></div>`),
+    ...seats.map((q, i) => `<div class="m"><i style="background:${('color' in q && q.color) || PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${[
+      q.client === me ? 'you' : '', q.client === host ? 'host' : '',
+      members.some((m) => m.client === q.client) ? '' : 'away, seat kept 1 min',
+    ].filter(Boolean).join(' · ')}</small>${q.client !== host && ready(q.client) ? '<b class="ready">✓ Ready</b>' : ''}</div>`),
     ...watching.map((m) => `<div class="m"><i style="background:#555"></i><span>${escapeHtml(m.name)}</span><small>watching</small></div>`),
   ].join('');
+  // Ready (rooms from protocol 2): everyone but the host says when they're set; the host sees how
+  // many are, and can start any time.
+  const canReady = room.protocol >= 2;
+  $('ready-btn').hidden = !canReady || amHost();
+  $('ready-btn').classList.toggle('on', ready(me));
+  $('ready-btn').textContent = ready(me) ? '✓ Ready' : 'Ready?';
+  const others = seats.filter((q) => q.client !== host && members.some((m) => m.client === q.client));
+  const count = canReady && others.length ? ` (${others.filter((q) => ready(q.client)).length}/${others.length} ready)` : '';
   $('room-note').textContent = amHost()
     ? 'Send friends the link (or the code). Pick the course and round here; everyone in the room plays.'
     : 'The host picks the course and starts the game.';
   start.disabled = !amHost();
-  start.innerHTML = amHost() ? 'Start online game <span class="arrow">→</span>' : 'Waiting for the host…';
+  start.innerHTML = amHost() ? `Start online game${count} <span class="arrow">→</span>` : 'Waiting for the host…';
 }
 const escapeHtml = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -528,7 +541,12 @@ function joinRoom(code: string): void {
     host: (h) => { host = h; if (!launched) { pushLobby(); renderRoom(); } },
     // Until the game takes over (it replaces this handler), keep the room's events for it.
     event: (seq, from, e) => { if (seq === roomLog.length) roomLog.push({ seq, from, e }); },
-    status: (s) => { if (!launched) $('room-note').textContent = s === 'open' ? $('room-note').textContent : s === 'connecting' ? 'Connecting…' : 'Connection lost: reconnecting…'; },
+    status: (s) => {
+      if (launched) return;
+      roomNet.status(s);
+      $('room-note').textContent = s === 'open' ? $('room-note').textContent : s === 'connecting' ? 'Connecting…' : 'Connection lost: reconnecting…';
+    },
+    ping: (ms) => { if (!launched) roomNet.ping(ms); },
     error: (reason) => { if (!launched) $('room-note').textContent = reason; },
   });
   r.connect();
@@ -557,6 +575,12 @@ $('copy-link').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(roomLink(room.code)); $('copy-link').textContent = 'Copied!'; } catch { $('copy-link').textContent = room.code; }
   setTimeout(() => { $('copy-link').textContent = 'Copy link'; }, 1500);
 });
+$('ready-btn').addEventListener('click', () => {
+  if (!room || launched) return;
+  room.setReady(!members.find((m) => m.client === me)?.ready);
+});
+/** The lobby's connection dot and round trip, by the room code. */
+const roomNet = mountNetStatus($('room-ping'));
 $('leave-room').addEventListener('click', () => {
   save(LAST_ROOM, null);
   room?.close();

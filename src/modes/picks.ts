@@ -28,7 +28,7 @@ export function showBagPicker(b: BagPick): void {
     $('bag-sub').textContent = b.pocket
       ? `Bag Pocket: room for ${size} discs now. Add one.`
       : `Carry ${size} of the ${DISCS.length} discs for the whole round. Inside putting range you putt with the putter, if you carry one.`;
-    $('bag-cards').innerHTML = DISCS.map(discCard).join('');
+    $('bag-cards').innerHTML = DISCS.map((d) => discCard(d)).join('');
     $('bag-cards').querySelectorAll<HTMLButtonElement>('.disc-card').forEach((el) => {
       const id = el.dataset.id!;
       el.classList.toggle('on', pick.includes(id));

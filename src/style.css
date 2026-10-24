@@ -178,6 +178,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .room-members .m { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .room-members .m i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #0008; flex: none; }
 .room-members .m small { color: var(--muted); }
+.room-members .m .ready { margin-left: auto; font: 700 12px var(--body); color: #5ee07a; }
+#ready-btn.on { background: var(--accent); color: var(--accent-ink); }
 .menu.online-guest .courses, .menu.online-guest .round { pointer-events: none; opacity: 0.6; }
 .menu-foot { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
 .menu-foot .huge { width: 100%; }
@@ -295,6 +297,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   border: 2px solid rgba(255, 255, 255, 0.85); border-radius: 50%; box-shadow: 0 0 3px #000;
 }
 #reticle::after { content: ''; position: absolute; left: 8px; top: 8px; width: 2px; height: 2px; background: #fff; }
+/* First person: the wind under the reticle, turned to the view (up = straight ahead). */
+#wind-compass { position: fixed; left: 50%; top: calc(50% + 20px); transform: translateX(-50%); display: flex; align-items: center; gap: 4px; pointer-events: none; color: #fff; font: 700 11px var(--body); text-shadow: 0 1px 2px #000; filter: drop-shadow(0 1px 1px #000); }
+#wind-compass.calm svg { opacity: 0.4; }
 #minimap {
   position: fixed; left: 12px; bottom: 12px; width: 250px; height: 250px; cursor: crosshair;
   border: 2px solid rgba(255, 255, 255, 0.55); border-radius: 12px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
@@ -306,6 +311,15 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .mute-btn svg { display: block; margin: auto; }
 .chat-btn { left: calc(50% + 79px); }
 .chat-btn svg { display: block; margin: auto; }
+/* Online: connection to the room (a dot and the heartbeat's round trip). */
+.net-status { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--body); color: var(--muted); white-space: nowrap; }
+.top-btn.net-status { left: calc(50% + 128px); height: 34px; font: 600 12px var(--body); pointer-events: none; }
+.net-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.net-status.good::before { background: #5ee07a; }
+.net-status.ok::before { background: #ffd166; }
+.net-status.bad::before, .net-status.off::before { background: var(--bogey); }
+.net-status.off { color: var(--text); }
+@media (max-width: 680px) { .top-btn.net-status { left: auto; right: 12px; top: 56px; } }
 
 /* ---------- quick chat ---------- */
 #chat-wheel { --cx: 50%; --cy: 50%; position: fixed; inset: 0; z-index: 40; background: radial-gradient(circle at var(--cx) var(--cy), rgba(8, 19, 29, 0.55), rgba(8, 19, 29, 0) 320px); }

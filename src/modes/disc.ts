@@ -40,6 +40,7 @@ import { setTreeWind } from '../render/disc3d';
 import { commentary } from '../ui/commentary';
 import { chatMsg, mountQuickChat, type ChatMsg } from '../ui/quickChat';
 import { ChatBubbles } from '../ui/chatBubbles';
+import { mountNetStatus } from '../ui/netStatus';
 import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
 import { rangeMarkers } from '../render/rangeMarkers';
 import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
@@ -325,6 +326,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     el.style.transform = `rotate(${rot}deg)`;
     el.parentElement!.classList.toggle('calm', speed < 0.5);
     el.parentElement!.querySelector('b')!.textContent = label;
+    // The same under the first-person reticle.
+    const compass = $('wind-compass');
+    compass.querySelector('svg')!.style.transform = `rotate(${rot}deg)`;
+    compass.classList.toggle('calm', speed < 0.5);
+    compass.querySelector('b')!.textContent = label;
   }
 
   // ---------- events from the room ----------
@@ -418,7 +424,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     scene.setTarget3d(isFP() ? p.ball : null, shownAim.target, p.color);
     if (isFP()) scene.setEye(p.ball, shownAim.yaw, shownAim.pitch);
     const d = DISCS.find((x) => x.id === a.disc);
-    if (d) picker.update(d, a.forehand);
+    if (d) picker.update(d, a.forehand, { hyzer: a.hyzer, shot: a.shot ?? 'standard' });
     $('release').textContent = releaseText(a.hyzer, a.forehand, a.shot ?? 'standard');
     $('shot').textContent = SHOT_LABELS[a.shot ?? 'standard'];
     const fill = liveChargeAt === null ? 0 : meterAt(now - liveChargeAt, modsFor(a.player).meterSpeed);
@@ -1211,7 +1217,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function updateHud(): void {
     const p = player();
     $('turn').innerHTML = `<span style="color:${p.color}">●</span> ${esc(p.name)}`;
-    picker.update(disc, forehand);
+    picker.update(disc, forehand, { hyzer, shot: puttStyle() ? 'standard' : shot });
     $('release').textContent = releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
     $('shot').textContent = SHOT_LABELS[puttStyle() ? 'standard' : shot];
     $('shot').hidden = puttStyle();
@@ -1274,6 +1280,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   // ---------- input ----------
   const canvas = scene.renderer.domElement;
+  /** The scorecard is up while its key is held. */
+  let heldCard = false;
   let drag: { x: number; y: number; mode: 'aim' | 'pan' | 'look' | 'orbit' } | null = null;
 
   function setAimTarget(t: Vec2): void {
@@ -1517,6 +1525,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    // Hold for the scorecard (not on the range, which has none; not over a card already up).
+    if (isKey(e, 'scorecard')) {
+      e.preventDefault();
+      if (!e.repeat && !range && $('results').hidden && $('setup').hidden) { showCard(true); heldCard = true; }
+      return;
+    }
     // The hole flyover: Space or Enter skips it, other keys wait for it.
     if (intro) { if (isKey(e, 'throw') || e.key === 'Enter') { e.preventDefault(); endIntro(); } return; }
     if (isKey(e, 'throw')) { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) startCharge(); return; }
@@ -1542,7 +1556,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'reframe': applyCamera(true); break;
     }
   });
-  window.addEventListener('keyup', (e) => { if (isKey(e, 'throw')) release(); });
+  window.addEventListener('keyup', (e) => {
+    if (isKey(e, 'throw')) release();
+    if (isKey(e, 'scorecard') && heldCard) { heldCard = false; $('results').hidden = true; }
+  });
+  window.addEventListener('blur', () => { if (heldCard) { heldCard = false; $('results').hidden = true; } });
 
   const swingBtn = $('swing');
   swingBtn.addEventListener('pointerdown', (e) => { swingBtn.setPointerCapture(e.pointerId); startCharge(); });
@@ -1584,6 +1602,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     lastFrame = now;
     fpsFrames++;
     updateWindArrow();
+    $('wind-compass').hidden = $('reticle').hidden; // with the reticle: first person, lining up
     updateAugPanel();
     if (now - fpsSince >= 500) {
       if (!$('fps').hidden) $('fps').textContent = `${Math.round((fpsFrames * 1000) / (now - fpsSince))} fps`;
@@ -1716,6 +1735,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     };
   }
   // Joining (or rejoining) a room: replay its log, redraw this hole's throws, then carry on.
+  /** Online: the connection's dot and round trip in the top bar. */
+  const netStatus = mountNetStatus($('net-status'));
+  if (net) { netStatus.status('open'); if (net.room.lastPing !== null) netStatus.ping(net.room.lastPing); } else $('net-status').hidden = true;
   /** The room's game we're in (a reconnect into a different one goes back to the lobby). */
   const game0 = net?.room.game ?? '';
   if (net) {
@@ -1751,7 +1773,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         hostChanged(w.host === w.you);
         sync.caughtUp(w);
       },
-      status: (s) => { $('status').textContent = s === 'open' ? '' : s === 'connecting' ? 'Connecting to the room…' : 'Connection lost: reconnecting…'; },
+      status: (s) => { netStatus.status(s); $('status').textContent = s === 'open' ? '' : s === 'connecting' ? 'Connecting to the room…' : 'Connection lost: reconnecting…'; },
+      ping: (ms) => netStatus.ping(ms),
       error: (reason) => chip(/unknown message end/.test(reason) ? 'This room server is too old to go back to the lobby' : reason, 'hot'),
     });
   }
