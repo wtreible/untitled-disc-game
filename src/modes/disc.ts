@@ -560,21 +560,24 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   /** Show the course as player i plays it. */
   function refreshViewer(i: number): void {
+    const m = modsFor(i);
+    /** What the player's augments look like (a black hole in the chains, a bigger basket…). */
+    const fx = { magnet: m.magnet > 0, blackHole: owned[i].includes('black-hole'), gimme: m.gimme, phase: m.phaseTrees === Infinity };
     if (range) {
+      // The range's nearest basket, as this player sees it (Crazy mode's tutorial gives augments here).
       const pin = rangePin() ?? hole().tee;
-      scene.setViewer({ trees: new Set(), extras: R().trees, ponds: [], basketScale: 1, magnet: 0, tee: hole().tee, pin });
+      scene.setViewer({ trees: new Set(), extras: R().trees, ponds: [], basketScale: m.basketScale, magnet: m.magnet, tee: hole().tee, pin, fx });
       life.setHole({ tee: hole().tee, pin: rangePin() ?? NO_BASKET }, st.wind);
+      opts.names.forEach((_, k) => scene.setDiscGold(k, owned[k].includes('golden-arm')));
       return;
     }
-    const m = modsFor(i);
     const visible = new Set(treesFor(trees, st.removed, { ...st.changes, trees: [] }, i));
     scene.setViewer({
       trees: visible,
       extras: st.changes.trees.filter((t) => t.owner !== i).map((t) => t.tree),
       ponds: pondsFor(st.changes, i),
       basketScale: m.basketScale, magnet: m.magnet,
-      tee: teeFor(hole(), mods, i, blocked), pin: pinOf(i),
-      fx: { magnet: m.magnet > 0, blackHole: owned[i].includes('black-hole'), gimme: m.gimme, phase: m.phaseTrees === Infinity },
+      tee: teeFor(hole(), mods, i, blocked), pin: pinOf(i), fx,
     });
     scene.setStumps([...st.removed]);
     life.setPin(pinOf(i));
@@ -1539,6 +1542,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       if (s.baskets || s.trees) tutorialSetup = s;
     },
     draft: (cards, picked) => { tutorialDraft = { cards, picked }; },
+    endDraft: () => { tutorialDraft = null; $('draft').hidden = true; },
     quit: () => reloadPage(),
   }, crazyTut ? CRAZY_TUTORIAL : BASICS) : null;
   /**
@@ -1551,7 +1555,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     for (const id of ids) dispatchQuiet({ t: 'grant', player: 0, id });
     perfectLeft[0] = mods[0].perfectForm;
     perfectArmed = false;
-    if (st.holeStarted) { if (phase === 'aim') recomputeTick(); updateHud(); }
+    if (st.holeStarted) { refreshViewer(game().current); if (phase === 'aim') recomputeTick(); updateHud(); }
   }
   $('pause-card').hidden = range;
 

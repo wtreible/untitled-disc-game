@@ -110,7 +110,7 @@ export interface Tutorial {
  * sets up a putt at the first basket, if asked) and gives the player the step's augments; `draft`
  * deals a draft and says which card was picked (null: skipped); `quit` goes back to the menu.
  */
-export function mountTutorial(el: HTMLElement, hooks: { setup: (s: StepSetup) => void; draft?: (cards: string[], picked: (id: string | null) => void) => void; quit: () => void }, course: TutorialCourse = BASICS): Tutorial {
+export function mountTutorial(el: HTMLElement, hooks: { setup: (s: StepSetup) => void; draft?: (cards: string[], picked: (id: string | null) => void) => void; endDraft?: () => void; quit: () => void }, course: TutorialCourse = BASICS): Tutorial {
   const STEPS = course.steps;
   let i = 0;
   let start: TutorialAim | null = null;
@@ -143,13 +143,15 @@ export function mountTutorial(el: HTMLElement, hooks: { setup: (s: StepSetup) =>
 
   const go = (k: number) => {
     clearTimeout(doneTimer);
+    hooks.endDraft?.(); // a draft left open (skipped) goes with its step
     i = k;
     done = false;
     start = last; // the next frame's aim, if none yet
     const s = STEPS[i];
     if (s && (s.baskets || s.trees || s.augments)) hooks.setup({ baskets: s.baskets, putt: !!s.putt, trees: s.trees, augments: s.augments });
     render();
-    if (s?.draft) hooks.draft?.(s.draft, (id) => { if (id) hooks.setup({ putt: false, augments: [id] }); complete(); });
+    // A pick counts for the step that dealt it, not one reached since.
+    if (s?.draft) hooks.draft?.(s.draft, (id) => { if (i !== k) return; if (id) hooks.setup({ putt: false, augments: [id] }); complete(); });
   };
   const next = () => go(i + 1);
   const complete = () => {
