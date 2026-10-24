@@ -24,6 +24,11 @@ const CHASE_DIST = Math.hypot(2.5, 1.2);
 const CHASE_ELEV = Math.atan2(1.2, 2.5); // above the tallest crowns, so top-down overlays aren't hidden by trees
 const EYE = 1.65;
 
+/** A see-through disc: Clone Disc's twin, the ghost disc. */
+type FadedDisc = { d3: THREE.Mesh; mark: THREE.Group };
+/** The ghost disc's color (pale blue-white, unlike any player's). */
+const GHOST_COLOR = '#cfe8ff';
+
 export class CourseScene {
   readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -891,20 +896,35 @@ export class CourseScene {
 
   /** Clone Disc: the other throw's disc, see-through, in either view. */
   setTwin(p: Vec3 | null, color: string, heading = 0): void {
-    if (!this.twin) {
-      const d3 = discMesh('#ffffff');
-      const m = d3.material as THREE.MeshLambertMaterial;
-      m.transparent = true;
-      m.opacity = 0.45;
-      m.depthWrite = false;
-      const mark = new THREE.Group();
-      mark.add(disc2d(6.5, '#111111', 0.4), disc2d(5, '#ffffff', 0.5));
-      this.pixelScaled.push(mark);
-      this.overlays.add(mark);
-      this.scene.add(d3);
-      this.twin = { d3, mark };
-    }
-    const { d3, mark } = this.twin;
+    this.twin ??= this.fadedDisc(0.45);
+    this.placeFaded(this.twin, p, color, heading);
+  }
+
+  /** Ghost disc (Settings → Ghost disc): this browser's best tee shot on the hole, flying alongside. */
+  setGhost(p: Vec3 | null, heading = 0): void {
+    this.ghost ??= this.fadedDisc(0.3);
+    this.placeFaded(this.ghost, p, GHOST_COLOR, heading);
+  }
+
+  private twin: FadedDisc | null = null;
+  private ghost: FadedDisc | null = null;
+
+  /** A see-through disc in first person, and a dot on the map. */
+  private fadedDisc(opacity: number): FadedDisc {
+    const d3 = discMesh('#ffffff');
+    const m = d3.material as THREE.MeshLambertMaterial;
+    m.transparent = true;
+    m.opacity = opacity;
+    m.depthWrite = false;
+    const mark = new THREE.Group();
+    mark.add(disc2d(6.5, '#111111', 0.4), disc2d(5, '#ffffff', 0.5));
+    this.pixelScaled.push(mark);
+    this.overlays.add(mark);
+    this.scene.add(d3);
+    return { d3, mark };
+  }
+
+  private placeFaded({ d3, mark }: FadedDisc, p: Vec3 | null, color: string, heading: number): void {
     d3.visible = p !== null && this.fp;
     d3.layers.set(this.fp ? 0 : 1);
     mark.visible = p !== null;
@@ -916,8 +936,6 @@ export class CourseScene {
     d3.scale.setScalar(Math.min(8, Math.max(1, Math.sqrt(this.persp.position.distanceTo(d3.position) / 3))));
     d3.rotation.set(0, 0, heading);
   }
-
-  private twin: { d3: THREE.Mesh; mark: THREE.Group } | null = null;
 
   clearTrails(): void {
     for (const c of [...this.trails.children]) {

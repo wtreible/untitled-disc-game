@@ -108,6 +108,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D79 | Quick chat opens in the middle of the screen again (where the crosshair is), not at the mouse pointer; the emoji page and speech bubbles stay. | 2026-10-24 |
 | D80 | Emoji float: every emoji sent from the chat wheel also rises up the screen in a burst of copies (off with Reduce motion). A throw can't start while the camera is still gliding to the disc; one held through the glide starts when it arrives. Spectators don't end up inside each other: a dodge or a step aside picks a spot nobody else is on or heading to, and people who meet are pushed apart (`separate`). | 2026-10-24 |
 | D81 | Quick chat opens at the pointer again (D79 undone): pulled in from the screen edges to fit; the chat button opens it where it's clicked. | 2026-10-24 |
+| D82 | Ghost disc (Settings → Gameplay, on by default): this browser's best tee shot on each hole (holed, else nearest the basket; never one with a penalty) flies alongside the next tee shot there, see-through and pale blue, in the replay too. A chip says how the ghost did, or that the new shot takes its place. Kept per course and hole in localStorage, packed like throws on the wire. Not in Crazy mode (its course changes), on the range or in the tutorial. | 2026-10-24 |
 
 ## Open questions
 

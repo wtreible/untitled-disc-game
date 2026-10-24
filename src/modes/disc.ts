@@ -40,6 +40,7 @@ import { setTreeWind } from '../render/disc3d';
 import { commentary } from '../ui/commentary';
 import { EMOJI, chatMsg, mountQuickChat, type ChatMsg } from '../ui/quickChat';
 import { floatEmoji } from '../ui/emojiFloat';
+import { ghostKey, loadGhost, offerGhost, type GhostFlight } from '../game/ghosts';
 import { ChatBubbles } from '../ui/chatBubbles';
 import { mountNetStatus } from '../ui/netStatus';
 import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
@@ -279,7 +280,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** The throw in the air. `show`: a highlight replayed from the final card (already applied). */
   /** `cues`: its sounds (src/audio/cues.ts), `cue` the next one to play (back to 0 for the replay). */
   /** `t`: samples flown so far (advanced each frame, faster while fast-forwarding). */
-  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t: number; speed: number; clock0: number; remote: boolean; sentEarly: boolean; show?: boolean; cues: Cue[]; cue: number } | null = null;
+  let flight: { e: Extract<RoundEvent, { t: 'throw' }>; result: WireResult; t: number; speed: number; clock0: number; remote: boolean; sentEarly: boolean; show?: boolean; cues: Cue[]; cue: number; tee?: boolean; ghost?: GhostFlight | null } | null = null;
   /** Online: the current thrower's aim, as they last sent it (another player's turn only). */
   let liveAim: LiveAim | null = null;
   /** Post-throw replay from a disc-chasing camera (skippable). */
@@ -892,6 +893,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Someone else's throw: their clock is the one the moving props were simulated at, so take it.
     if (remote && e.clock !== undefined) gameClock = e.clock;
     flight = { e, result: e.result, t: 0, speed, clock0: gameClock, remote, sentEarly: false, cues: cuesFor(e), cue: 0 };
+    // Our tee shot: this browser's best on the hole flies alongside (Settings → Ghost disc).
+    if (!remote && ghostsOn() && game().players[e.player].strokes === 0) {
+      flight.tee = true;
+      flight.ghost = loadGhost(ghostKey(opts.course, hole().ref));
+    }
     endIntro();
     gallery.onThrow(e.result.samples);
     sfx('swish', { gain: remote ? 0.5 : 0.8 });
@@ -904,6 +910,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     updateHud();
   }
 
+  /** Settings → Gameplay → Ghost disc: real holes as they are (not Crazy mode's, the range or the tutorial). */
+  const ghostsOn = () => prefs().ghosts && !rogue && !range && !opts.tutorial;
   /** Settings → Gameplay → Quick turns: playing alone (hot seat with one player, no room). */
   const quickSolo = () => !net && opts.names.length === 1 && !opts.tutorial && prefs().quickSolo;
   /** Live chase camera for a friend's throw (online, Settings → Follow friends' throws). */
@@ -946,7 +954,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function finishThrow(): void {
     if (range) return finishPractice();
-    const { e, remote, sentEarly } = flight!;
+    const { e, remote, sentEarly, tee, ghost } = flight!;
     scene.lockTrees(null);
     const r = e.result;
     const idx = e.player;
@@ -958,6 +966,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (sentEarly) st.apply(JSON.parse(JSON.stringify(e)) as RoundEvent); // sent at release
     else dispatch(e);
     const done = game().players[idx];
+    // A tee shot against its ghost: how the ghost did, and whether this one takes its place.
+    if (tee) {
+      const best = !r.penalty && offerGhost(ghostKey(opts.course, hole().ref), r.samples, r.rest, pinOf(idx), r.holed); // OB or water never counts
+      if (ghost) chip(best ? 'New best tee shot' : `Ghost: ${ghost.holed ? 'in the basket' : `${fmtLen(ghost.off)} out`}`, best ? 'birdie' : 'info');
+    }
     // Broadcast graphics: a chip per distinct event, a result banner when someone holes out.
     const msgs = [...(r.propHits ?? []).map((t) => propToasts.get(t) ?? 'Bonk!'), ...r.events.map((e) => course.toasts?.[e] ?? EVENT_TOASTS[e])]
       .filter((m, i, a): m is string => !!m && a.indexOf(m) === i);
@@ -1669,6 +1682,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.setDisc(i, q && !q.holed && !(flight && i === flight.e.player) ? [q.ball[0], q.ball[1], 0.02] : null, 0, yaw, i === g.current);
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
+    // The ghost disc, at the same moment of its own flight (in the replay too).
+    const gh = flight?.ghost;
+    if (gh && gh.samples.length > 1) {
+      const t = Math.min(replay ? replay.t : flight!.t, gh.samples.length - 1);
+      scene.setGhost(sampleAt(gh.samples, t), headingAt(gh.samples, Math.floor(t)));
+    } else scene.setGhost(null);
     sendLiveAim(now);
     bubbles.update();
     // Not during the flyover: the thrower's live aim would pin the camera at the tee.
