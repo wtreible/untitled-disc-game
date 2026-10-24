@@ -331,6 +331,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #chat-wheel button.on, #chat-wheel button:hover { background: var(--accent); color: var(--accent-ink); }
 #chat-wheel button.on small, #chat-wheel button:hover small { color: var(--accent-ink); }
 #chat-bubbles { position: fixed; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
+#emoji-float { position: fixed; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; }
+#emoji-float span { position: absolute; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4)); will-change: transform, opacity; }
 /* A speech bubble: the speaker's name in their color, a tail pointing down at them. */
 .bubble { --c: #fff; position: absolute; left: 0; top: 0; max-width: 240px; padding: 7px 12px 8px; border-radius: 16px; background: #f4f7fa; color: #0f2233; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); border-top: 3px solid var(--c); font: 700 15px var(--body); line-height: 1.25; }
 .bubble b { display: block; font: 800 11px var(--head); letter-spacing: 0.08em; text-transform: uppercase; color: #5b6b78; }

@@ -38,7 +38,8 @@ import { Life } from '../render/life';
 import { WEATHER, pickWeather, type Weather } from '../render/weather';
 import { setTreeWind } from '../render/disc3d';
 import { commentary } from '../ui/commentary';
-import { chatMsg, mountQuickChat, type ChatMsg } from '../ui/quickChat';
+import { EMOJI, chatMsg, mountQuickChat, type ChatMsg } from '../ui/quickChat';
+import { floatEmoji } from '../ui/emojiFloat';
 import { ChatBubbles } from '../ui/chatBubbles';
 import { mountNetStatus } from '../ui/netStatus';
 import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
@@ -812,11 +813,22 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     tick = (lo + hi) / 2;
   }
 
+  /** Throw held while the camera was still on its way to the disc: it starts once it's there. */
+  let chargeQueued = false;
   function startCharge(): void {
     if (phase !== 'aim') return;
+    // Not before the camera is at the disc (it glides there from the last throw).
+    if (scene.gliding) { chargeQueued = true; return; }
+    chargeQueued = false;
     phase = 'charging';
     chargeStart = performance.now();
   }
+  /** Let go of the throw: a throw still waiting for the camera is called off. */
+  function letGo(): void {
+    chargeQueued = false;
+    release();
+  }
+  window.addEventListener('blur', () => { chargeQueued = false; });
 
   /** Lower is better: holed, then distance to the basket, with penalties counting heavily. */
   const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, myPin()) + r.penalty * 30);
@@ -1395,7 +1407,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const at = q.holed ? pinOf(p) : q.ball;
     return [at[0], at[1], 1.9];
   }, (q) => scene.project(q));
-  const chatSay = (p: number, m: ChatMsg) => bubbles.say(p, opts.names[p], COLORS[p], m);
+  const chatSay = (p: number, m: ChatMsg) => {
+    bubbles.say(p, opts.names[p], COLORS[p], m);
+    if ('emoji' in m) floatEmoji(EMOJI[m.emoji]); // and up the screen (src/ui/emojiFloat.ts)
+  };
   mountQuickChat((m) => {
     const p = chatter();
     chatSay(p, m);
@@ -1557,14 +1572,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
   });
   window.addEventListener('keyup', (e) => {
-    if (isKey(e, 'throw')) release();
+    if (isKey(e, 'throw')) letGo();
     if (isKey(e, 'scorecard') && heldCard) { heldCard = false; $('results').hidden = true; }
   });
   window.addEventListener('blur', () => { if (heldCard) { heldCard = false; $('results').hidden = true; } });
 
   const swingBtn = $('swing');
   swingBtn.addEventListener('pointerdown', (e) => { swingBtn.setPointerCapture(e.pointerId); startCharge(); });
-  swingBtn.addEventListener('pointerup', release);
+  swingBtn.addEventListener('pointerup', letGo);
   $('view-toggle').addEventListener('click', cycleView);
   $('fp-toggle').addEventListener('click', toggleFP);
   function cycleShot(): void {
@@ -1642,6 +1657,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const b = player().ball;
       tutorial.aim({ angle: Math.atan2(aimTarget[1] - b[1], aimTarget[0] - b[0]), dist: dist(b, aimTarget), disc: disc.id, firstPerson: isFP() });
     }
+    if (chargeQueued && phase === 'aim' && !scene.gliding) startCharge();
+    else if (phase !== 'aim') chargeQueued = false;
     if (phase === 'charging') {
       power = meterAt(now - chargeStart, modsFor(game().current).meterSpeed);
       $('meter-fill').style.width = `${power * 100}%`;

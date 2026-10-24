@@ -380,6 +380,11 @@ export class CourseScene {
     if (this.eyeGlide) { this.persp.position.copy(from.p); this.persp.quaternion.copy(from.q); }
   }
 
+  /** The camera is still easing to a new view (first person or top-down). */
+  get gliding(): boolean {
+    return !!this.eyeGlide || !!this.mapGlide;
+  }
+
   /** Hole intro flyover: put the camera at `pos` looking at `look`. */
   flyCam(pos: Vec3, look: Vec3): void {
     this.eyeGlide = null;

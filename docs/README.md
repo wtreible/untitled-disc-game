@@ -106,6 +106,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D77 | Quick chat's middle switches to an emoji wheel (👏 🔥 😂 😮 😬 🙏 💯 🥏); let go on one to send it. Chat shows as speech bubbles over the sender's disc (`src/ui/chatBubbles.ts`; pinned to the screen edge when they're off screen, stacked when they'd overlap) instead of toasts in a corner. | 2026-10-24 |
 | D78 | HUD and lobby: the connection's dot and round trip (lobby and top bar); a wind compass under the first-person reticle; the disc picker's charts follow the release being lined up (angle, shot, hand), in calm air on an open field so they don't do the Ghost augment's job; hold Tab (rebindable) for the scorecard; lobby **Ready?** toggles, with the count on the host's start button. Course data (`courses/*.json`) is fetched tagged with the build, so a host's cache can't pair new code with an old course file. | 2026-10-24 |
 | D79 | Quick chat opens in the middle of the screen again (where the crosshair is), not at the mouse pointer; the emoji page and speech bubbles stay. | 2026-10-24 |
+| D80 | Emoji float: every emoji sent from the chat wheel also rises up the screen in a burst of copies (off with Reduce motion). A throw can't start while the camera is still gliding to the disc; one held through the glide starts when it arrives. Spectators don't end up inside each other: a dodge or a step aside picks a spot nobody else is on or heading to, and people who meet are pushed apart (`separate`). | 2026-10-24 |
 
 ## Open questions
 

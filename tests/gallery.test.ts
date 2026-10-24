@@ -1,7 +1,7 @@
 // Spectators: where they stand and how they get out of a throw's way (src/game/gallery.ts).
 import { describe, expect, it } from 'vitest';
 import type { Vec2 } from '../src/course/geo';
-import { CLEAR, SAFE, approachAt, dodge, dodgeDue, gallerySpots, lineOfPlay } from '../src/game/gallery';
+import { BODY, CLEAR, SAFE, approachAt, dodge, dodgeDue, gallerySpots, lineOfPlay, separate } from '../src/game/gallery';
 import { DISCS } from '../src/disc/discs';
 import { simulateThrow, type DiscWorld } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
@@ -83,5 +83,19 @@ describe('gallery', () => {
     expect((at - ff) / 180).toBeCloseTo((at - first) / 60, 1);
     // A path that is all overhead: no nearest pass to dodge.
     expect(approachAt([60, 0], path.map(([x, y]) => [x, y, 10] as [number, number, number]))).toBe(-1);
+  });
+
+  it('nobody stands inside anybody: overlapping people are pushed apart, others left alone', () => {
+    const gap = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    // Two overlapping, one on the very same spot as another, one well clear.
+    const out = separate([[0, 0], [0.3, 0], [5, 5], [5, 5], [20, 0]]);
+    expect(gap(out[0], out[1])).toBeGreaterThanOrEqual(BODY - 1e-6);
+    expect(gap(out[2], out[3])).toBeGreaterThanOrEqual(BODY - 1e-6);
+    expect(out[4]).toEqual([20, 0]);
+    // A push onto ground they can't stand on isn't made: the other one takes it all (over a pass or two).
+    const wall = (p: number[]) => p[0] >= 0; // x < 0 is a pond
+    const near = separate([[0, 0], [0.2, 0]], BODY, wall);
+    expect(near[0][0]).toBeGreaterThanOrEqual(0);
+    expect(gap(near[0], near[1])).toBeGreaterThan(0.5);
   });
 });

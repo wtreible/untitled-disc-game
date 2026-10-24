@@ -7,7 +7,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { Vec2 } from '../course/geo';
 import type { Vec3 } from '../game/terrain';
 import { asset } from '../assets';
-import { approachAt, dodge, dodgeDue, gallerySpots, lineOfPlay } from '../game/gallery';
+import { APART, approachAt, dodge, dodgeDue, gallerySpots, lineOfPlay, separate } from '../game/gallery';
 
 const MODELS = ['male-a', 'female-a', 'male-c', 'female-c', 'male-e', 'female-e'];
 type Clip = 'idle' | 'walk' | 'sprint' | 'jump' | 'emote-yes' | 'emote-no';
@@ -91,25 +91,36 @@ export class Gallery {
     });
   }
 
+  /** Where p will be: a dodge they're waiting to make, where they're walking to, or where they are. */
+  private bound(p: Person): Vec2 {
+    return this.dodges.find((d) => d.p === p)?.to ?? p.to ?? p.at;
+  }
+
+  /** Ground p could step to: open, and not a spot someone else is on or heading for. */
+  private freeFor(p: Person): (q: Vec2) => boolean {
+    return (q) => this.free(q) && this.people.every((o) => o === p || Math.hypot(this.bound(o)[0] - q[0], this.bound(o)[1] - q[1]) >= APART);
+  }
+
   /**
    * A throw is on its way (its whole flight, 60 Hz): anyone in its path will sprint clear, but
-   * only as the disc comes near (see watch), not the moment it's thrown.
+   * only as the disc comes near (see watch), not the moment it's thrown. Each picks a spot nobody
+   * else has.
    */
   onThrow(path: Vec3[]): void {
     this.dodges = [];
     for (const p of this.people) {
       const from = p.to ?? p.at;
-      const to = dodge(from, path, this.free);
+      const to = dodge(from, path, this.freeFor(p));
       if (to) this.dodges.push({ p, to, at: approachAt(from, path) });
     }
   }
 
-  /** A new lie: anyone standing on the line from it to the basket strolls aside. */
+  /** A new lie: anyone standing on the line from it to the basket strolls aside (to a spot of their own). */
   clearLine(from: Vec2, pin: Vec2): void {
     const line = lineOfPlay(from, pin);
     for (const p of this.people) {
       if (p.to) continue;
-      const to = dodge(p.at, line, this.free);
+      const to = dodge(p.at, line, this.freeFor(p));
       if (to) this.go(p, to, WALK);
     }
   }
@@ -161,6 +172,12 @@ export class Gallery {
         p.react -= dt;
         if (p.react <= 0) this.play(p, 'idle');
       }
+    }
+    // Nobody inside anybody else: people who meet (crossing paths, or a spot already taken) are
+    // pushed apart, onto ground they can stand on.
+    const at = separate(this.people.map((p) => p.at), undefined, this.free);
+    this.people.forEach((p, i) => { p.at = at[i]; });
+    for (const p of this.people) {
       p.face = turnToward(p.face, p.want, 1 - Math.exp(-dt * (p.to ? 14 : 4)));
       this.pose(p);
       p.mixer.update(dt);

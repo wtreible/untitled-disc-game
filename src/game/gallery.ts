@@ -14,8 +14,10 @@ export interface Spot {
 const RING: [number, number] = [7, 12];
 /** Never in front of the basket: within this angle of the line throws come in on. */
 const FRONT_HALF_ANGLE = (50 * Math.PI) / 180;
-/** Elbow room. */
-const APART = 1.6;
+/** Elbow room: where people stand, and where they step to. */
+export const APART = 1.6;
+/** Closer than this, two people are inside each other: they're pushed apart (separate). */
+export const BODY = 0.8;
 /** Disc lower than this can reach someone standing. */
 const HEAD = 2.6;
 /** Closer to a flight path than this, move… */
@@ -79,6 +81,32 @@ export function dodge(p: Vec2, path: Vec3[], free: (q: Vec2) => boolean): Vec2 |
     }
   }
   return best;
+}
+
+/**
+ * People closer than `min` pushed apart, half each, along the line between them (a few passes, so a
+ * crowd settles). Who may move where is up to `canStand`: a push onto ground they can't stand on
+ * isn't made.
+ */
+export function separate(at: Vec2[], min = BODY, canStand: (p: Vec2) => boolean = () => true): Vec2[] {
+  const out = at.map((p): Vec2 => [p[0], p[1]]);
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+      let dx = out[j][0] - out[i][0], dy = out[j][1] - out[i][1];
+      let d = Math.hypot(dx, dy);
+      if (d >= min) continue;
+      if (d < 1e-6) { dx = Math.cos(i + j); dy = Math.sin(i + j); d = 1; } // on the same spot: any way
+      const push = (min - d) / 2 + 1e-3;
+      const a: Vec2 = [out[i][0] - (dx / d) * push, out[i][1] - (dy / d) * push];
+      const b: Vec2 = [out[j][0] + (dx / d) * push, out[j][1] + (dy / d) * push];
+      if (canStand(a)) out[i] = a;
+      if (canStand(b)) out[j] = b;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return out;
 }
 
 /** The sample of a flight path (its low part) that comes nearest p, or -1 if it's all overhead. */
