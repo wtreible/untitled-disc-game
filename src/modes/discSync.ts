@@ -3,6 +3,7 @@
 // showing something. Hot seat has no room: events just apply.
 import type { RoomClient, Welcome } from '../net/room';
 import type { DiscRound, RoundEvent } from './discRound';
+import { reloadPage } from '../ui/leaveGuard';
 import { $ } from './discKit';
 
 export interface NetPlay {
@@ -75,7 +76,7 @@ export class RoundSync {
   /** Our copy has diverged from the room's: reload, which rejoins and replays the room's log. */
   resync(): void {
     $('status').textContent = 'Out of step with the room: rejoining…';
-    setTimeout(() => location.reload(), 600);
+    setTimeout(reloadPage, 600);
   }
 
   /** Someone else's event at log position seq. */

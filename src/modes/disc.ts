@@ -16,7 +16,8 @@ import { renderCard, renderSummary, type CardView } from './scorecard';
 import { showBagPicker, showDraft } from './picks';
 import { LiveGate, RoundSync, type NetPlay } from './discSync';
 import { headingAt, newChase, stepChase, type Chase } from './chaseCam';
-import { keyAction } from './discKeys';
+import { isKey, keyAction, keyFor } from '../keys';
+import { guardLeave, reloadPage } from '../ui/leaveGuard';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
@@ -27,7 +28,7 @@ import { IMAGERY, asset } from '../assets';
 import { VIEW_LABELS } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen, fmtSpeed } from '../units';
-import { prefs, replaysOn } from '../settings';
+import { flyoversOn, followOn, prefs, replaysOn } from '../settings';
 import { banner, chip, clearBroadcast, scoreTone, type Tone } from '../ui/broadcast';
 import { throwCues, type Cue } from '../audio/cues';
 import { ambience, music, preload, rain, sfx, wind } from '../audio/sound';
@@ -648,7 +649,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // A new hole opens with its flyover (once); otherwise the camera glides to the new lie.
     const newHole = turnHole !== hole();
     turnHole = hole();
-    if (newHole && !range && prefs().flyovers && introFor !== hole() && game().players.every((q) => q.strokes === 0)) startIntro();
+    if (newHole && !range && flyoversOn() && introFor !== hole() && game().players.every((q) => q.strokes === 0)) startIntro();
     else applyCamera(!again, !newHole);
     if (phase === 'aim') recomputeTick();
     else showWait(`${p.name} is throwing…`);
@@ -657,6 +658,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   /** `glide`: ease from the current view instead of cutting (same view mode only). */
   function applyCamera(reframe: boolean, glide = false): void {
+    glide &&= !prefs().reduceMotion;
     const wasFP = scene.firstPerson;
     const fp = isFP();
     scene.setFirstPerson(fp);
@@ -743,8 +745,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   // ---------- fast-forward: hold Shift during a flight or replay ----------
   let ffHeld = false;
-  window.addEventListener('keydown', (e) => { if (e.key === 'Shift') ffHeld = true; });
-  window.addEventListener('keyup', (e) => { if (e.key === 'Shift') ffHeld = false; });
+  window.addEventListener('keydown', (e) => { if (isKey(e, 'fast-forward')) ffHeld = true; });
+  window.addEventListener('keyup', (e) => { if (isKey(e, 'fast-forward')) ffHeld = false; });
   window.addEventListener('blur', () => { ffHeld = false; });
 
   // ---------- color commentary ----------
@@ -883,9 +885,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     updateHud();
   }
 
+  /** Settings → Gameplay → Quick turns: playing alone (hot seat with one player, no room). */
+  const quickSolo = () => !net && opts.names.length === 1 && !opts.tutorial && prefs().quickSolo;
   /** Live chase camera for a friend's throw (online, Settings → Follow friends' throws). */
   let follow: Chase = newChase([[0, 0, 0]]);
-  const following = (f: NonNullable<typeof flight>) => f.remote && !f.show && !!net && prefs().follow;
+  const following = (f: NonNullable<typeof flight>) => f.remote && !f.show && !!net && followOn();
   function endFollow(): void {
     scene.endChase();
     scene.minimapEnabled = true;
@@ -898,7 +902,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function startReplay(): void {
     const s = flight!.result.samples;
-    if (!flight!.show && (!replaysOn() || s.length < REPLAY_MIN_SAMPLES)) return finishThrow();
+    if (!flight!.show && (!replaysOn() || quickSolo() || s.length < REPLAY_MIN_SAMPLES)) return finishThrow();
     phase = 'replay';
     replay = { t: 0, cam: newChase(s) };
     flight!.cue = 0;
@@ -975,7 +979,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     mulliganOpen = canMull && mine(idx);
     phase = 'between';
     updateHud();
-    const wait = canMull ? 2600 : done.holed ? 2200 : shown ? 1300 : 600;
+    // Quick turns (solo): the next throw is ready almost at once (a hole-out still gets its moment).
+    const wait = canMull ? 2600 : done.holed ? (quickSolo() ? 1200 : 2200) : quickSolo() ? 250 : shown ? 1300 : 600;
     pendingTimer = window.setTimeout(() => { mulliganOpen = false; phase = 'idle'; advance(); }, game().finished ? Math.max(1500, wait) : wait);
   }
 
@@ -1010,7 +1015,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (tutorial && tutorialShot && !remote) { tutorial.thrown({ ...tutorialShot, holed: r.holed }); tutorialShot = null; }
     phase = 'between';
     updateHud();
-    pendingTimer = window.setTimeout(() => { phase = 'idle'; advance(); }, r.holed ? 1400 : 900);
+    pendingTimer = window.setTimeout(() => { phase = 'idle'; advance(); }, r.holed ? 1400 : quickSolo() ? 250 : 900);
   }
 
   function takeMulligan(): void {
@@ -1165,13 +1170,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
   $('again').addEventListener('click', () => {
     if (net) { if (isHost) net.room.end(); return; } // the room's 'ended' brings everyone back, us too
-    location.reload();
+    reloadPage();
   });
   $('leave').addEventListener('click', () => {
     net?.room.close();
     try { localStorage.removeItem('untitled-disc-game:room'); } catch { /* storage unavailable */ } // left: its link asks for a name again
     history.replaceState(null, '', location.pathname + location.search);
-    location.reload();
+    reloadPage();
   });
   // Online host: end the game early (the range never ends on its own).
   $('pause-lobby').hidden = !net || !isHost;
@@ -1196,7 +1201,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function backToLobby(): void {
     if (!net) return;
     net.room.close();
-    location.reload(); // the address still has #room=CODE
+    reloadPage(); // the address still has #room=CODE
   }
 
   // ---------- HUD ----------
@@ -1231,11 +1236,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('view-toggle').textContent = VIEW_LABELS[scene.viewMode];
     $('fp-toggle').textContent = isFP() ? '1st person' : 'Top-down';
     $('swing').toggleAttribute('disabled', phase !== 'aim' && phase !== 'charging');
-    $('swing').innerHTML = `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>Space</kbd>`;
-    $('help').textContent = (isFP()
-      ? 'Drag or arrows to aim (up/down = launch) · W/S target distance · scroll zoom · click minimap to aim · Q/E release angle · [ / ] disc · T forehand · G shot · C top-down · V view'
-      : 'Click to aim · ←/→ fine aim · W/S target distance · Q/E release angle · [ / ] disc · T forehand · G shot · C 1st person · right-drag pan · scroll zoom · V view · F re-frame')
-      .replace(vector ? ' · V view' : '\u0000', '');
+    $('swing').innerHTML = `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>${keyFor('throw')}</kbd>`;
+    // Written from the current keys (Settings → Controls).
+    const k = keyFor, two = (a: Parameters<typeof keyFor>[0], b: Parameters<typeof keyFor>[0]) => `${k(a)}/${k(b)}`;
+    const common = `${two('target-farther', 'target-closer')} target distance · ${two('hyzer', 'anhyzer')} release angle · ${k('disc-prev')} / ${k('disc-next')} disc · ${k('forehand')} forehand · ${k('shot')} shot`;
+    const view = vector ? '' : ` · ${k('view')} view`;
+    $('help').textContent = isFP()
+      ? `Drag or ${two('aim-left', 'aim-right')} to aim (${two('look-up', 'look-down')} = launch) · ${common} · scroll zoom · click minimap to aim · ${k('first-person')} top-down${view}`
+      : `Click to aim · ${two('aim-left', 'aim-right')} fine aim · ${common} · ${k('first-person')} 1st person · right-drag pan · scroll zoom${view} · ${k('reframe')} re-frame`;
     if (range) { rangeBoard(); return; }
     const lbOrder = game().players.map((_, i) => i).sort((a, b) => liveToPar(a) - liveToPar(b));
     $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + lbOrder.map((i) => {
@@ -1301,7 +1309,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       o.elev = Math.min(1.45, Math.max(-0.1, o.elev + (e.clientY - drag.y) * 0.005));
     }
     else if (drag.mode === 'look' && (phase === 'aim' || phase === 'charging')) {
-      look((-(e.clientX - drag.x) * 0.0025), (-(e.clientY - drag.y) * 0.0025));
+      const k = 0.0025 * prefs().lookSpeed; // Settings → Camera: look speed, invert
+      look(-(e.clientX - drag.x) * k, (prefs().invertLook ? 1 : -1) * (e.clientY - drag.y) * k);
     }
     drag.x = e.clientX;
     drag.y = e.clientY;
@@ -1393,7 +1402,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.setFirstPerson(false);
       $('reticle').hidden = true;
       $('minimap').hidden = true;
-      scene.frame([hole().tee, [0, 400 * FT], ...R().baskets, ...R().trees.map((q): Vec2 => [q.x, q.y])], 60, 12, true);
+      scene.frame([hole().tee, [0, 400 * FT], ...R().baskets, ...R().trees.map((q): Vec2 => [q.x, q.y])], 60, 12, !prefs().reduceMotion);
       updateHud();
     },
     clearLines: () => scene.clearTrails(),
@@ -1412,7 +1421,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let tutorialShot: Omit<TutorialThrow, 'holed'> | null = null;
   const tutorial: Tutorial | null = opts.tutorial ? mountTutorial($('tutorial'), {
     setBaskets: (b, putt) => { tutorialBaskets = { at: b.map((q): Vec2 => [q[0], q[1]]), putt }; },
-    quit: () => location.reload(),
+    quit: () => reloadPage(),
   }) : null;
   $('pause-card').hidden = range;
 
@@ -1500,8 +1509,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
     // The hole flyover: Space or Enter skips it, other keys wait for it.
-    if (intro) { if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); endIntro(); } return; }
-    if (e.code === 'Space') { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) startCharge(); return; }
+    if (intro) { if (isKey(e, 'throw') || e.key === 'Enter') { e.preventDefault(); endIntro(); } return; }
+    if (isKey(e, 'throw')) { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) startCharge(); return; }
     const fine = e.shiftKey; // Shift: finer aim, bigger target steps
     switch (keyAction(e)) {
       case 'disc-prev': cycleDisc(-1); break;
@@ -1524,7 +1533,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'reframe': applyCamera(true); break;
     }
   });
-  window.addEventListener('keyup', (e) => { if (e.code === 'Space') release(); });
+  window.addEventListener('keyup', (e) => { if (isKey(e, 'throw')) release(); });
 
   const swingBtn = $('swing');
   swingBtn.addEventListener('pointerdown', (e) => { swingBtn.setPointerCapture(e.pointerId); startCharge(); });
@@ -1735,6 +1744,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       error: (reason) => chip(/unknown message end/.test(reason) ? 'This room server is too old to go back to the lobby' : reason, 'hot'),
     });
   }
+  // Settings → Gameplay: the browser asks before leaving a round that's on (not the range or the
+  // tutorial, nor once the final card is up).
+  guardLeave(() => !range && !opts.tutorial && st.log.length > 0 && !(round.isLastHole && game().finished));
   // Dev/play-test: ?grant=0:sapling,1:the-bucket gives augments to players at the start of a run.
   if (rogue && isHost && st.log.length === 0) for (const g of (new URLSearchParams(location.search).get('grant') ?? '').split(',').filter(Boolean)) {
     const [pi, id] = g.includes(':') ? g.split(':') : ['0', g];

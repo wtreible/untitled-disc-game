@@ -72,6 +72,21 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .settings-form .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
 .settings-form .row .val { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 44px; text-align: right; }
 .settings-form .seg { width: auto; }
+.settings-tabs { display: flex; flex-wrap: wrap; align-self: flex-start; }
+.settings-tabs button { padding: 6px 11px; font-size: 13px; }
+.settings-body { display: flex; flex-direction: column; gap: 12px; }
+.toggle.disabled { cursor: default; opacity: 0.55; }
+.key-group { display: flex; flex-direction: column; gap: 4px; }
+.key-group h4 { margin: 4px 0 2px; font: 700 12px var(--head); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.settings-form .key-row { font-size: 13px; }
+.settings-form .key-row > span:first-child { white-space: normal; }
+.key-btn { flex: none; min-width: 64px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); border-bottom-width: 2px; background: rgba(255, 255, 255, 0.06); font: 600 12px var(--body); color: var(--text); }
+.key-btn.changed { border-color: var(--accent); }
+.key-btn.listening { background: var(--accent); color: var(--accent-ink); }
+.key-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.key-foot small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+/* Settings → Graphics → Reduce motion: no UI animation or transitions. */
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 
 /* segmented control */
 .seg { display: inline-flex; background: var(--navy-1); border: 1px solid var(--navy-3); border-radius: 10px; padding: 3px; gap: 2px; }

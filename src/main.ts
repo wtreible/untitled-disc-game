@@ -3,6 +3,8 @@
 // choices filled in. (Golf still lives in src/modes/golf.ts but isn't on the menu: disc only for now.)
 import { COLOR_CHOICES, PLAYER_COLORS, playerColors } from './game/game';
 import { mountSettings } from './ui/settingsForm';
+import { isKey, keyFor, type KeyAction } from './keys';
+import { reloadPage } from './ui/leaveGuard';
 import { IMAGERY, asset } from './assets';
 import { fmtLen } from './units';
 import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
@@ -312,12 +314,24 @@ function renderMute(): void {
   $('mute-btn').innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20">${SPEAKER}${off
     ? '<path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
     : '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>'}</svg>`;
-  $('mute-btn').title = off ? 'Sound off: N turns it on' : 'Sound on: N mutes';
+  $('mute-btn').title = off ? `Sound off: ${keyFor('mute')} turns it on` : `Sound on: ${keyFor('mute')} mutes`;
 }
 const toggleMute = () => setPref('muted', !prefs().muted);
 renderMute();
 window.addEventListener('prefschange', renderMute);
 $('mute-btn').addEventListener('click', toggleMute);
+/** Key labels in the keys card and tooltips, from the current bindings (Settings → Controls). */
+function renderKeyLabels(): void {
+  document.querySelectorAll<HTMLElement>('kbd[data-key]').forEach((k) => { k.textContent = keyFor(k.dataset.key as KeyAction); });
+  $('chat-btn').title = `Quick chat (hold ${keyFor('chat')})`;
+  $('keys-btn').title = `Controls (${keyFor('help')})`;
+  renderMute();
+}
+renderKeyLabels();
+window.addEventListener('prefschange', renderKeyLabels);
+const applyMotion = () => document.documentElement.classList.toggle('reduce-motion', prefs().reduceMotion);
+applyMotion();
+window.addEventListener('prefschange', applyMotion);
 const openKeys = (open: boolean) => {
   $('keys').hidden = !open;
   $('keys').querySelectorAll<HTMLElement>('.crazy-only').forEach((r) => { r.hidden = !crazy.checked; });
@@ -330,12 +344,12 @@ $('keys').addEventListener('click', (e) => { if (e.target === $('keys')) openKey
 const openPause = (open: boolean) => { $('settings').hidden = !open; };
 $('settings-btn').addEventListener('click', () => openPause(true));
 $('settings-close').addEventListener('click', () => openPause(false));
-$('settings-menu').addEventListener('click', () => { leaveRoomLink(); location.reload(); });
+$('settings-menu').addEventListener('click', () => { leaveRoomLink(); reloadPage(); });
 $('pause-card').addEventListener('click', () => { openPause(false); window.dispatchEvent(new Event('show-scorecard')); });
 window.addEventListener('keydown', (e) => {
   const typing = (e.target as HTMLElement).tagName === 'INPUT';
-  if (!typing && e.key.toLowerCase() === 'n' && $('setup').hidden) { toggleMute(); return; }
-  if (!typing && e.key === '?' && $('setup').hidden) { openKeys($('keys').hidden === true); return; }
+  if (!typing && isKey(e, 'mute') && $('setup').hidden) { toggleMute(); return; }
+  if (!typing && isKey(e, 'help') && $('setup').hidden) { openKeys($('keys').hidden === true); return; }
   if (e.key === 'Escape' && $('keys').hidden === false) { openKeys(false); return; }
   if (e.key === 'Escape' && $('aug-browser').hidden === false) { closeAugmentBrowser(); return; }
   if (e.key === 'Escape' && $('name-ask').hidden === false) { $('name-cancel').click(); return; }

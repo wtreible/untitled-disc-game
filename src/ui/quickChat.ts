@@ -3,6 +3,7 @@
 // lines only, so there is nothing to moderate; online they travel as passing 'live' state (relayed
 // by the room, not stored).
 import { sfx } from '../audio/sound';
+import { isKey } from '../keys';
 
 export const CHAT_LINES = ['Nice shot!', 'Get in there!', 'Unlucky!', 'Oops…', 'Wow!', 'Hurry up!', 'Good game', 'Sorry!'];
 
@@ -72,12 +73,11 @@ export function mountQuickChat(send: (line: number) => void, enabled: () => bool
   });
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
-    const k = e.key.toLowerCase();
-    if (k === 'z' && !e.repeat && !open) show('hold');
+    if (isKey(e, 'chat') && !e.repeat && !open) show('hold');
     else if (open && /^[1-8]$/.test(e.key)) pick(parseInt(e.key, 10) - 1);
     else if (open && e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
   }, true);
-  window.addEventListener('keyup', (e) => { if (e.key.toLowerCase() === 'z' && open === 'hold') pick(picked); });
+  window.addEventListener('keyup', (e) => { if (isKey(e, 'chat') && open === 'hold') pick(picked); });
   window.addEventListener('blur', () => { if (open === 'hold') close(); });
   items.forEach((b) => b.addEventListener('click', () => pick(parseInt(b.dataset.i!, 10))));
   wheel.addEventListener('pointerdown', (e) => { if (e.target === wheel) close(); });
