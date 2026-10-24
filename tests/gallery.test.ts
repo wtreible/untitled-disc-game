@@ -1,7 +1,7 @@
 // Spectators: where they stand and how they get out of a throw's way (src/game/gallery.ts).
 import { describe, expect, it } from 'vitest';
 import type { Vec2 } from '../src/course/geo';
-import { CLEAR, SAFE, dodge, gallerySpots, lineOfPlay } from '../src/game/gallery';
+import { CLEAR, SAFE, approachAt, dodge, dodgeDue, gallerySpots, lineOfPlay } from '../src/game/gallery';
 import { DISCS } from '../src/disc/discs';
 import { simulateThrow, type DiscWorld } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
@@ -62,5 +62,26 @@ describe('gallery', () => {
       expect(lowDist(to ?? s.at, r.samples)).toBeGreaterThanOrEqual(to ? SAFE - 0.5 : CLEAR);
     }
     expect(moved).toBeGreaterThan(0);
+  });
+
+  it('spectators wait for the disc: they run only once it is near enough that they must', () => {
+    // A straight, low throw along +x at 20 m/s (60 Hz samples), someone standing on the line at 100 m.
+    const path = Array.from({ length: 600 }, (_, k): [number, number, number] => [k / 3, 0, 1]);
+    const at = approachAt([100, 0.5], path);
+    expect(at).toBe(300); // 5 s in
+    const run = 4, sprint = 5.5; // 4 m to their safe spot, at a sprint: ~0.73 s, plus the spare time
+    const due = (t: number, speed = 1) => dodgeDue(at - t, 60 * speed, run, sprint);
+    expect(due(0)).toBe(false); // just thrown: 100 m off, stay put
+    expect(due(180)).toBe(false); // 40 m off
+    const first = path.findIndex((_, t) => due(t));
+    const away = 100 - path[first][0];
+    expect(away).toBeGreaterThan(20); // still in time: they run while the disc is ~26 m off…
+    expect(away).toBeLessThan(35); // …not before
+    // Fast-forward (3× faster flight): they run earlier in the flight, the same time before it arrives.
+    const ff = path.findIndex((_, t) => due(t, 3));
+    expect(ff).toBeLessThan(first);
+    expect((at - ff) / 180).toBeCloseTo((at - first) / 60, 1);
+    // A path that is all overhead: no nearest pass to dodge.
+    expect(approachAt([60, 0], path.map(([x, y]) => [x, y, 10] as [number, number, number]))).toBe(-1);
   });
 });

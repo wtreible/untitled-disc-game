@@ -102,7 +102,7 @@ export function treeMeshes(trees: Tree[], mix?: TreeMix): THREE.Group {
   g.add(trunks, crowns);
   const state: TreeState = {
     trees, trunks, crowns, trunkM, crownM, blobDither, visible: () => true, lod: n > LOD_ALL, eye: null, models: null, quality: 'high',
-    fade: new Float32Array(n), target: new Uint8Array(n), active: new Set(), last: 0, locked: false,
+    fade: new Float32Array(n), target: new Uint8Array(n), active: new Set(), last: 0, lock: null,
   };
   g.userData = state;
   refresh(state);
@@ -160,6 +160,13 @@ const KEEP_BONUS_M = 12;
  * of the chase camera models, against 45–69% for the moving eye zone, with no changes mid-flight.
  */
 const CORRIDOR_MULT = 1.5;
+/**
+ * Hole flyovers: every tree within this of the camera's path is a model for the whole flight (at
+ * most FLYOVER_MULT times the usual count, nearest first), swapped in at the cut to the flyover.
+ * The eye zone's re-picking every few meters at flyover speed was what kept trees popping in.
+ */
+const FLYOVER_RADIUS: Record<TreeQuality, number> = { low: 0, medium: 45, high: 60 };
+const FLYOVER_MULT = 4;
 
 interface TreeState {
   trees: Tree[];
@@ -183,8 +190,8 @@ interface TreeState {
   active: Set<number>;
   /** Last tick time (ms). */
   last: number;
-  /** Following a throw: the model set is fixed to its flight path (see lockTreeLod). */
-  locked: boolean;
+  /** Following a throw or a flyover: the model set is fixed to its path (see lockTreeLod). */
+  lock: { path: Vec2[]; flyover: boolean } | null;
 }
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -279,6 +286,8 @@ if (solid < 0.999 && bayer4(gl_FragCoord.xy) > solid) discard;`);
 
 /** Which trees should be models now (with hysteresis), then redraw everything. */
 function refresh(s: TreeState): void {
+  // Locked to a path: it decides (again, now that models, visibility or quality changed).
+  if (s.lod && s.lock) return applyLock(s, false);
   const n = s.trees.length;
   const want = new Uint8Array(n);
   if (s.models) {
@@ -386,7 +395,7 @@ export function setTreeQuality(g: THREE.Group, q: TreeQuality): void {
 /** Big forests: move the model zone with the first-person eye (re-picked every few meters). */
 export function updateTreeLod(g: THREE.Group, x: number, y: number): void {
   const s = g.userData as TreeState;
-  if (!s.lod || !s.models || s.locked) return;
+  if (!s.lod || !s.models || s.lock) return;
   if (s.eye && Math.hypot(x - s.eye[0], y - s.eye[1]) < REPICK_M) return;
   s.eye = [x, y];
   refresh(s);
@@ -434,33 +443,49 @@ export function discMesh(color: string): THREE.Mesh {
 /**
  * Big forests, while following a throw: models for the trees nearest its flight path (x, y points),
  * fixed until unlocked, so nothing pops in or out as the chase camera flies along. null unlocks
- * (the eye zone takes over again, dissolving as usual).
+ * (the eye zone takes over again, dissolving as usual). `flyover`: the path is a hole flyover's
+ * (points a few meters apart): every tree within FLYOVER_RADIUS of it, at once.
  */
-export function lockTreeLod(g: THREE.Group, path: Vec2[] | null): void {
+export function lockTreeLod(g: THREE.Group, path: Vec2[] | null, flyover = false): void {
   const s = g.userData as TreeState;
   if (!s.lod) return;
   if (!path) {
-    if (!s.locked) return;
-    s.locked = false;
+    if (!s.lock) return;
+    s.lock = null;
     s.eye = null;
     return;
   }
-  s.locked = true;
-  const max = Math.round(LOD[s.quality].max * CORRIDOR_MULT);
+  s.lock = { path, flyover };
+  applyLock(s, flyover);
+}
+
+/**
+ * Pick the locked model set. `instant`: swap without the dissolve (the cut to a flyover hides it).
+ * Re-applied when the models arrive (a first hole's flyover can start before they have), fading in.
+ */
+function applyLock(s: TreeState, instant: boolean): void {
+  const { path, flyover } = s.lock!;
+  const max = Math.round(LOD[s.quality].max * (flyover ? FLYOVER_MULT : CORRIDOR_MULT));
+  const radius = flyover ? FLYOVER_RADIUS[s.quality] : Infinity;
   const want = new Uint8Array(s.trees.length);
   if (s.models && max > 0) {
-    const pts = path.filter((_, k) => k % 15 === 0 || k === path.length - 1);
+    const pts = flyover ? path : path.filter((_, k) => k % 15 === 0 || k === path.length - 1);
     const ranked: [number, number][] = [];
     s.trees.forEach((t, i) => {
       if (!s.visible(i)) return;
       let d = Infinity;
       for (const q of pts) d = Math.min(d, Math.hypot(t.x - q[0], t.y - q[1]));
-      ranked.push([d, i]);
+      if (d <= radius) ranked.push([d, i]);
     });
     ranked.sort((a, b) => a[0] - b[0]);
     for (const [, i] of ranked.slice(0, max)) want[i] = 1;
   }
-  for (let i = 0; i < want.length; i++) if (want[i] !== s.target[i]) { s.target[i] = want[i]; s.active.add(i); }
+  for (let i = 0; i < want.length; i++) {
+    if (want[i] === s.target[i] && !(instant && s.fade[i] !== want[i])) continue;
+    s.target[i] = want[i];
+    s.active.add(i);
+    if (instant) s.fade[i] = want[i];
+  }
   writeBlobs(s, null);
   writeModels(s);
 }

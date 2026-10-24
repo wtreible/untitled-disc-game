@@ -7,7 +7,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { Vec2 } from '../course/geo';
 import type { Vec3 } from '../game/terrain';
 import { asset } from '../assets';
-import { dodge, gallerySpots, lineOfPlay } from '../game/gallery';
+import { approachAt, dodge, dodgeDue, gallerySpots, lineOfPlay } from '../game/gallery';
 
 const MODELS = ['male-a', 'female-a', 'male-c', 'female-c', 'male-e', 'female-e'];
 type Clip = 'idle' | 'walk' | 'sprint' | 'jump' | 'emote-yes' | 'emote-no';
@@ -50,6 +50,8 @@ export class Gallery {
   readonly group = new THREE.Group();
   private people: Person[] = [];
   private hole = 0;
+  /** A throw's dodges, waiting for the disc to come near: who, where to, and at which sample. */
+  private dodges: { p: Person; to: Vec2; at: number }[] = [];
 
   /** `free`: open ground someone can stand on. */
   constructor(private readonly free: (p: Vec2) => boolean) {}
@@ -59,6 +61,7 @@ export class Gallery {
     const hole = ++this.hole;
     for (const p of this.people) this.group.remove(p.root);
     this.people = [];
+    this.dodges = [];
     if (n <= 0) return;
     let loaded: Loaded[];
     try { loaded = await loadModels(); } catch (e) { console.warn('Spectators failed to load', e); return; }
@@ -88,11 +91,16 @@ export class Gallery {
     });
   }
 
-  /** A throw is on its way (its whole flight, 60 Hz): anyone in its path sprints clear. */
+  /**
+   * A throw is on its way (its whole flight, 60 Hz): anyone in its path will sprint clear, but
+   * only as the disc comes near (see watch), not the moment it's thrown.
+   */
   onThrow(path: Vec3[]): void {
+    this.dodges = [];
     for (const p of this.people) {
-      const to = dodge(p.to ?? p.at, path, this.free);
-      if (to) this.go(p, to, SPRINT);
+      const from = p.to ?? p.at;
+      const to = dodge(from, path, this.free);
+      if (to) this.dodges.push({ p, to, at: approachAt(from, path) });
     }
   }
 
@@ -116,9 +124,20 @@ export class Gallery {
     }
   }
 
-  /** Where the disc is (null: nothing in the air). People nearby turn to watch it. */
-  watch(disc: Vec3 | null): void {
-    if (!disc) return;
+  /**
+   * Where the disc is (null: nothing in the air). People nearby turn to watch it. `t`, the sample
+   * it's at in a live flight and `samplesPerS` how fast those go by: whoever must dodge it runs
+   * once it's close enough that they have to.
+   */
+  watch(disc: Vec3 | null, t?: number, samplesPerS = 60): void {
+    if (!disc) { this.dodges = []; return; }
+    if (t !== undefined) {
+      this.dodges = this.dodges.filter((d) => {
+        if (!dodgeDue(d.at - t, samplesPerS, Math.hypot(d.to[0] - d.p.at[0], d.to[1] - d.p.at[1]), SPRINT)) return true;
+        this.go(d.p, d.to, SPRINT);
+        return false;
+      });
+    }
     for (const p of this.people) {
       if (p.to || Math.hypot(disc[0] - p.at[0], disc[1] - p.at[1]) > 60) continue;
       p.want = Math.atan2(disc[1] - p.at[1], disc[0] - p.at[0]);

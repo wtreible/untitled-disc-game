@@ -81,6 +81,23 @@ export function dodge(p: Vec2, path: Vec3[], free: (q: Vec2) => boolean): Vec2 |
   return best;
 }
 
+/** The sample of a flight path (its low part) that comes nearest p, or -1 if it's all overhead. */
+export function approachAt(p: Vec2, path: Vec3[]): number {
+  return closest(p, path).i;
+}
+
+/** Spare time a spectator leaves themselves, s: they're clear this long before the disc arrives. */
+const DODGE_SPARE_S = 0.6;
+
+/**
+ * Time to run? `samplesLeft` until the disc's nearest pass, flown at `samplesPerS` (60 times the
+ * playback speed), and `runM` to their safe spot at `speed` m/s. Not before they must: a disc
+ * still far off doesn't send anyone running.
+ */
+export function dodgeDue(samplesLeft: number, samplesPerS: number, runM: number, speed: number): boolean {
+  return samplesLeft / samplesPerS <= runM / speed + DODGE_SPARE_S;
+}
+
 /** A straight path from a lie to the basket at head height, for clearing the line before a throw. */
 export function lineOfPlay(from: Vec2, to: Vec2): Vec3[] {
   const n = Math.max(2, Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1])));

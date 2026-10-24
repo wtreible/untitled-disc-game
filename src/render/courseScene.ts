@@ -407,9 +407,12 @@ export class CourseScene {
     for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) setTreeQuality(g, q);
   }
 
-  /** Big forests: lock the model trees to a throw's flight path while it's followed (null releases). */
-  lockTrees(path: Vec2[] | null): void {
-    for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) lockTreeLod(g, path);
+  /**
+   * Big forests: lock the model trees to a throw's flight path while it's followed, or (`flyover`)
+   * to a hole flyover's path (null releases).
+   */
+  lockTrees(path: Vec2[] | null, flyover = false): void {
+    for (const g of [this.trees3d, ...(this.extras.children as THREE.Group[])]) lockTreeLod(g, path, flyover);
   }
 
   /** World angle (CCW from +x) that points up the screen: the look direction in first person. */

@@ -682,6 +682,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const line = h.routing.length > 1 ? h.routing : [h.tee, h.pin];
     const len = polylineLength(line);
     intro = { t: 0, dur: Math.min(7, Math.max(3.5, 2.5 + len / 45)), line, len };
+    // The camera's ground track (flyIntro: from 25 m behind the tee to 18 m short of the basket,
+    // looking 45 m ahead), every 5 m: its trees are models for the whole flight.
+    const track: Vec2[] = [];
+    for (let s = -25; s <= len; s += 5) track.push(introAt(line, len, s));
+    scene.lockTrees(track, true);
     $('hud').hidden = true;
     $('minimap').hidden = true;
     $('reticle').hidden = true;
@@ -709,9 +714,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const k = Math.min(1, it.t / it.dur);
     const e = k * k * (3 - 2 * k);
     const s = -25 + (it.len - 18 + 25) * e;
-    const [a, b] = [it.line[0], it.line[1]];
-    const L0 = dist(a, b) || 1;
-    const at: Vec2 = s < 0 ? [a[0] + ((a[0] - b[0]) / L0) * -s, a[1] + ((a[1] - b[1]) / L0) * -s] : pointAlong(it.line, s);
+    const at = introAt(it.line, it.len, s);
     const ahead = pointAlong(it.line, Math.min(it.len, Math.max(0, s) + 45));
     const pin = hole().pin;
     const m = Math.max(0, Math.min(1, (k - 0.55) / 0.45));
@@ -720,9 +723,17 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (k >= 1) endIntro();
   }
 
+  /** The flyover's ground point `s` m along the hole line (behind the tee when negative). */
+  function introAt(line: Vec2[], len: number, s: number): Vec2 {
+    const [a, b] = [line[0], line[1]];
+    const L0 = dist(a, b) || 1;
+    return s < 0 ? [a[0] + ((a[0] - b[0]) / L0) * -s, a[1] + ((a[1] - b[1]) / L0) * -s] : pointAlong(line, Math.min(len, s));
+  }
+
   function endIntro(): void {
     if (!intro) return;
     intro = null;
+    scene.lockTrees(null);
     $('intro').hidden = true;
     scene.minimapEnabled = true;
     if (phase !== 'aim' && phase !== 'charging' && phase !== 'watching') return;
@@ -1573,7 +1584,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.updateProps(gameClock, dt);
     }
     if (intro) flyIntro(dt);
-    gallery.watch(flight ? sampleAt(flight.result.samples, Math.min(replay ? replay.t : flight.t, flight.result.samples.length - 1)) : null);
+    // A live flight sends spectators running as it nears them; a replay just has them watch.
+    gallery.watch(flight ? sampleAt(flight.result.samples, Math.min(replay ? replay.t : flight.t, flight.result.samples.length - 1)) : null, flight && !replay ? flight.t : undefined, flight ? 60 * flight.speed * ff : 60);
     gallery.update(dt);
     effects.update(dt);
     life.update(dt, scene.eye());
