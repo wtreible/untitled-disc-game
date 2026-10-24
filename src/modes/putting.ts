@@ -1,5 +1,5 @@
 // Putting ladder (Training → Putting): the range with one basket, moved back station by station.
-// Three putts each at 15, 20, 25, 33 (the edge of circle 1) and 45 ft, worth 1–5 a make: 45 is
+// Three putts each from 30 ft, 10 ft farther at each station to 70 ft, worth 1–5 a make: 45 is
 // perfect. Players take turns putt by putt, in hot seat or a room. The ladder is worked out from
 // the round's own throws (src/modes/discRound.ts: on the range every throw is from the tee and the
 // turn passes on), so everyone in a room sees the same station without any message of its own;
@@ -10,7 +10,7 @@ import { fmtLen } from '../units';
 import type { RoundEvent } from './discRound';
 import { esc } from './discKit';
 
-export const STATIONS: { ft: number; pts: number }[] = [{ ft: 15, pts: 1 }, { ft: 20, pts: 2 }, { ft: 25, pts: 3 }, { ft: 33, pts: 4 }, { ft: 45, pts: 5 }];
+export const STATIONS: { ft: number; pts: number }[] = [30, 40, 50, 60, 70].map((ft, i) => ({ ft, pts: i + 1 }));
 /** Putts per player at each station. */
 export const PUTTS = 3;
 export const PERFECT = STATIONS.reduce((s, x) => s + x.pts * PUTTS, 0);

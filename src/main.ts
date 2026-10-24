@@ -110,8 +110,8 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2d6a3e"/><rect x="10" y="12" width="44" height="40" rx="6" fill="#16302a"/>${[0, 1, 2].map((k) => `<rect x="17" y="${20 + k * 10}" width="6" height="6" rx="1.5" fill="${k < 2 ? '#b8f25c' : 'none'}" stroke="#b8f25c" stroke-width="1.5"/><rect x="27" y="${22 + k * 10}" width="${20 - k * 4}" height="2.5" rx="1" fill="#e9f1e4" opacity=".8"/>`).join('')}</svg>`,
   },
   {
-    id: 'putting', group: 'training', name: 'Putting', meta: 'A ladder of five stations, 15 to 45 ft · alone or with friends', holes: 5,
-    blurb: 'A putting ladder on the range: three putts at each of five stations, from 15 ft back to the edge of circle 1 and on to 45 ft, worth 1 to 5 points a make. A perfect round is 45. Take turns putt by putt with friends, here or in a room.',
+    id: 'putting', group: 'training', name: 'Putting', meta: 'A ladder of five stations, 30 to 70 ft · alone or with friends', holes: 5,
+    blurb: 'A putting ladder on the range: three putts at each of five stations, from 30 ft and 10 ft farther each time to 70 ft, worth 1 to 5 points a make. A perfect round is 45. Take turns putt by putt with friends, here or in a room.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#5f8f46"/>${[0, 1, 2, 3, 4].map((k) => `<circle cx="32" cy="${54 - k * 9}" r="${2 + k * 0.4}" fill="none" stroke="#e9f1e4" stroke-width="1.2" opacity="${0.4 + k * 0.12}"/>`).join('')}<path d="M24 12 h16 M26 12 l3 10 M32 12 v10 M38 12 l-3 10" stroke="#cfd8df" stroke-width="1.6" fill="none"/><path d="M24 22 h16 l-2 4 h-12 z" fill="#f2c230"/><circle cx="32" cy="56" r="3" fill="#ff7a45"/></svg>`,
   },
   {
