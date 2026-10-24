@@ -47,6 +47,7 @@ import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../cours
 import { rangeMarkers } from '../render/rangeMarkers';
 import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
 import { mountTutorial, type Tutorial, type TutorialThrow } from './tutorial';
+import { puttingState, renderPutting, stationBasket } from './putting';
 import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, meterAt, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
 
 /** idle: between steps; watching: another player's turn (online). */
@@ -71,6 +72,8 @@ export interface DiscOptions {
   colors?: string[];
   /** The tutorial (src/modes/tutorial.ts): the range, alone, with a card of steps. */
   tutorial?: boolean;
+  /** The putting ladder (src/modes/putting.ts): the range with one basket, moved back station by station. */
+  putting?: boolean;
 }
 
 /** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
@@ -185,7 +188,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   // ---------- driving range: baskets and trees placed at will, wind and weather picked ----------
   /** This browser's copy (the panel edits it, saved here); the round's own is st.range. The tutorial's is fresh and calm, and not saved. */
-  const rs = opts.tutorial ? freshRange() : loadRange();
+  const putting = range && !!opts.putting;
+  const rs = opts.tutorial || putting ? freshRange() : loadRange();
+  // Putting: one basket at the first station, and no aim line (it would make every putt).
+  if (putting) { rs.baskets = [stationBasket(0)]; rs.ghost = false; }
   /** The range everyone plays: the round's, or ours until the round has one. */
   const R = () => st.range ?? rs;
   let rangeTrees = new TreeIndex(rs.trees);
@@ -630,6 +636,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   /** The current player's turn: aim and throw if they're ours, else watch for their throw. */
   function startTurn(): void {
+    // The putting ladder is over: its card shows the standings, and nobody throws.
+    if (putting && puttState().done) { phase = 'idle'; $('hud').hidden = true; showPutting(); return; }
     phase = mine(game().current) ? 'aim' : 'watching';
     liveAim = null; shownAim = null; liveChargeAt = null;
     liveGate.reset();
@@ -653,6 +661,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const d = dist(p.ball, aimTarget);
     const bag = bagOf(game().current);
     if (!again) disc = toBasket() <= PUTT_RANGE && bag.includes(PUTTER_DISC) ? PUTTER_DISC : suggestDisc(d, ranges, bag);
+    if (putting) { setUpPutt(R().baskets[0] ?? stationBasket(0)); showPutting(); }
     picker.setBag(st.bags[game().current]);
     gallery.clearLine(p.ball, myPin());
     // A new hole opens with its flyover (once); otherwise the camera glides to the new lie.
@@ -1045,6 +1054,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
     panel?.addShot({ who: who.name, color: who.color, disc: DISCS.find((d) => d.id === e.disc)?.name ?? '', dist: carried, side, holed: r.holed });
     if (tutorial && tutorialShot && !remote) { tutorial.thrown({ ...tutorialShot, holed: r.holed }); tutorialShot = null; }
+    showPutting();
     phase = 'between';
     updateHud();
     pendingTimer = window.setTimeout(() => { phase = 'idle'; advance(); }, r.holed ? 1400 : quickSolo() ? 250 : 900);
@@ -1457,7 +1467,34 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       sendRange();
     },
   }) : null;
-  $('range-panel').hidden = !range || !!opts.tutorial;
+  $('range-panel').hidden = !range || !!opts.tutorial || putting;
+
+  // ---------- putting ladder: stations, putts and scores (src/modes/putting.ts) ----------
+  /** Throws before this belong to an earlier ladder (Play again, in hot seat). */
+  let puttFrom = 0;
+  const puttState = () => puttingState(st.log, opts.names.length, puttFrom);
+  /** A putt: the putter, a flat backhand, a normal shot, in first person, aimed at the basket. */
+  function setUpPutt(basket: Vec2): void {
+    disc = PUTTER_DISC; hyzer = 0; forehand = false; shot = 'standard';
+    fpOverride = true;
+    const b = player().ball;
+    aimTarget = basket;
+    yaw = Math.atan2(basket[1] - b[1], basket[0] - b[0]);
+    pitch = 0;
+    recomputeTick();
+  }
+  function showPutting(): void {
+    if (!putting) return;
+    const s = puttState();
+    renderPutting($('putting'), s, opts.names, COLORS, {
+      // Hot seat: go again at once. Online: the host takes everyone back to the room's lobby.
+      again: net ? undefined : () => { puttFrom = st.log.filter((e) => e.t === 'throw').length; showPutting(); advance(); },
+      lobby: net && isHost ? () => net.room.end() : undefined,
+      wait: net && !isHost && s.done ? 'Waiting for the host…' : undefined,
+      quit: () => (net ? $('leave').click() : reloadPage()),
+    });
+  }
+  showPutting();
 
   // ---------- tutorial: a card of steps over the range ----------
   /** Baskets a tutorial step asked for, placed once it's our turn to set the range. */
@@ -1476,7 +1513,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
    */
   function sendRange(): void {
     if (!canSetRange()) { presentRange(); return; }
-    if (!opts.tutorial) saveRange(rs);
+    if (!opts.tutorial && !putting) saveRange(rs);
     dispatchQuiet({ t: 'range', setup: rangeConditions(rs) });
     presentRange();
   }
@@ -1654,6 +1691,16 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     gallery.update(dt);
     effects.update(dt);
     life.update(dt, scene.eye());
+    // Putting: whoever's up moves the basket back when a station's done (everyone sees it come).
+    if (putting && phase === 'aim' && canSetRange()) {
+      const want = stationBasket(puttState().station), b = R().baskets;
+      if (b.length !== 1 || dist(b[0], want) > 0.05) {
+        rs.baskets = [want];
+        sendRange();
+        setUpPutt(want);
+        if (isFP()) scene.setEye(player().ball, yaw, pitch);
+      }
+    }
     if (tutorial && phase === 'aim') {
       if (tutorialBaskets && canSetRange()) {
         const { at, putt } = tutorialBaskets;
