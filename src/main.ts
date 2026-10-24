@@ -5,7 +5,7 @@ import { COLOR_CHOICES, PLAYER_COLORS, playerColors } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { IMAGERY, asset } from './assets';
 import { fmtLen } from './units';
-import { MAX_PLAYERS, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
+import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
 import { closeAugmentBrowser, openAugmentBrowser } from './ui/augments';
@@ -494,16 +494,20 @@ function joinRoom(code: string): void {
     welcome: (w) => {
       if (launched) return;
       me = w.you; host = w.host; members = w.members; lobby = w.lobby;
-      roomLog.length = 0;
-      roomLog.push(...w.log);
+      // A reconnect to the same game gets only the events after `since`.
+      if (!w.since) roomLog.length = 0;
+      for (const x of w.log) if (x.seq === roomLog.length) roomLog.push(x);
       if (lobby && !amHost()) showLobby(lobby);
       renderRoom();
+      if ((w.protocol ?? 1) < PROTOCOL) $('room-note').textContent = 'This room server is out of date: reconnecting, ready and host hand-over are off.';
       if (w.started && w.lobby) launch(w.lobby);
       else pushLobby();
     },
     members: (m) => { members = m; if (!launched) { trackAway(); pushLobby(); renderRoom(); } },
     lobby: (l) => { lobby = l; if (!launched) { if (!amHost()) showLobby(l); renderRoom(); } },
     started: (l) => { lobby = l; launch(l); },
+    // The host left: someone else (maybe us) runs the lobby now.
+    host: (h) => { host = h; if (!launched) { pushLobby(); renderRoom(); } },
     // Until the game takes over (it replaces this handler), keep the room's events for it.
     event: (seq, from, e) => { if (seq === roomLog.length) roomLog.push({ seq, from, e }); },
     status: (s) => { if (!launched) $('room-note').textContent = s === 'open' ? $('room-note').textContent : s === 'connecting' ? 'Connecting…' : 'Connection lost: reconnecting…'; },

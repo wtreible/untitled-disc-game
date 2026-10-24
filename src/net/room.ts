@@ -24,16 +24,31 @@ export interface Member {
   client: string;
   name: string;
   color?: string;
+  /** Ready for the host to start (rooms from protocol 2). */
+  ready?: boolean;
 }
 
 export interface Welcome {
+  /** What the room speaks (1 if it doesn't say). */
+  protocol?: number;
   you: string;
   host: string;
   lobby: Lobby | null;
   started: boolean;
+  /** The game in progress (protocol 2). */
+  game?: string;
+  /** Events in the room's log, and the first one sent: a reconnect gets only what it's missing. */
+  count?: number;
+  since?: number;
   log: { seq: number; from: string; e: RoundEvent }[];
   members: Member[];
 }
+
+/** The room protocol this build speaks (server/src/index.ts PROTOCOL). */
+export const PROTOCOL = 2;
+/** Heartbeat: a `ping` this often; no answer within PING_TIMEOUT_MS means the connection is dead. */
+const PING_MS = 15_000;
+const PING_TIMEOUT_MS = 8_000;
 
 /** Rooms server: VITE_ROOMS_URL at build time (wss://…workers.dev), or the local `npm run server:dev`. */
 export const ROOMS_URL: string | null = roomsUrl(import.meta.env.VITE_ROOMS_URL || (import.meta.env.DEV ? 'ws://127.0.0.1:8787' : ''));
@@ -94,6 +109,8 @@ export interface RoomHandlers {
   started?(l: Lobby): void;
   /** The host ended the game: the room is back in its lobby (log cleared). */
   ended?(l: Lobby | null): void;
+  /** The host left for good: someone else hosts now. */
+  host?(client: string): void;
   members?(m: Member[]): void;
   /** Someone else's event, at log position seq. */
   event?(seq: number, from: string, e: RoundEvent): void;
@@ -102,6 +119,8 @@ export interface RoomHandlers {
   /** One of ours was refused: someone else's landed first. The game should resync. */
   reject?(expected: number): void;
   status?(s: 'connecting' | 'open' | 'closed'): void;
+  /** Round trip of the last heartbeat, ms. */
+  ping?(ms: number): void;
   error?(reason: string): void;
 }
 
@@ -111,6 +130,13 @@ export class RoomClient {
   private handlers: RoomHandlers = {};
   private closedByUs = false;
   private retry = 0;
+  /** What the room speaks (from its welcome). */
+  protocol = 1;
+  /** The game we're in, and how much of its log we have: a reconnect asks only for the rest. */
+  game = '';
+  private have = 0;
+  private pingTimer = 0;
+  private pingSent = 0;
 
   constructor(readonly code: string, private name: string, private color: string | null = null, private readonly url = ROOMS_URL!) {}
 
@@ -121,39 +147,83 @@ export class RoomClient {
   connect(): void {
     this.closedByUs = false;
     this.handlers.status?.('connecting');
-    const ws = new WebSocket(`${this.url}/room/${this.code}?client=${this.id}&name=${encodeURIComponent(this.name)}${this.color ? `&color=${encodeURIComponent(this.color)}` : ''}`);
+    const resume = this.game ? `&game=${this.game}&since=${this.have}` : '';
+    const ws = new WebSocket(`${this.url}/room/${this.code}?client=${this.id}&name=${encodeURIComponent(this.name)}${this.color ? `&color=${encodeURIComponent(this.color)}` : ''}${resume}`);
     this.ws = ws;
     ws.addEventListener('open', () => { this.retry = 0; this.handlers.status?.('open'); });
     ws.addEventListener('message', (ev) => {
+      if (this.ws !== ws) return;
+      const raw = String(ev.data);
+      if (raw === 'pong') { this.pong(); return; }
       let m: { type: string; [k: string]: unknown };
-      try { m = JSON.parse(String(ev.data)); } catch { return; }
+      try { m = JSON.parse(raw); } catch { return; }
       const h = this.handlers;
       switch (m.type) {
-        case 'welcome': h.welcome?.(m as unknown as Welcome); break;
+        case 'welcome': {
+          const w = m as unknown as Welcome;
+          this.protocol = w.protocol ?? 1;
+          this.game = w.started ? w.game ?? '' : '';
+          this.have = w.count ?? w.log.length;
+          if (this.protocol >= 2) this.heartbeat();
+          h.welcome?.(w);
+          break;
+        }
         case 'lobby': h.lobby?.(m.lobby as Lobby); break;
-        case 'started': h.started?.(m.lobby as Lobby); break;
-        case 'ended': h.ended?.(m.lobby as Lobby | null); break;
+        case 'started': this.game = String(m.game ?? ''); this.have = 0; h.started?.(m.lobby as Lobby); break;
+        case 'ended': this.game = ''; this.have = 0; h.ended?.(m.lobby as Lobby | null); break;
+        case 'host': h.host?.(m.host as string); break;
         case 'members': h.members?.(m.members as Member[]); break;
-        case 'event': h.event?.(m.seq as number, m.from as string, m.e as RoundEvent); break;
+        case 'event': this.saw(m.seq as number); h.event?.(m.seq as number, m.from as string, m.e as RoundEvent); break;
+        case 'ack': this.saw(m.seq as number); break;
         case 'reject': h.reject?.(m.expected as number); break;
         case 'live': h.live?.(m.from as string, m.s); break;
         // A server from before live aim or colors (not redeployed yet) refuses them: harmless, so say nothing.
-        case 'error': if (!/unknown message (live|color)/.test(String(m.reason))) h.error?.(m.reason as string); break;
+        case 'error': if (!/unknown message (live|color|ready)/.test(String(m.reason))) h.error?.(m.reason as string); break;
       }
     });
-    ws.addEventListener('close', () => {
-      if (this.ws !== ws) return;
-      this.handlers.status?.('closed');
-      if (this.closedByUs) return;
-      // Back off: 0.5 s, 1 s, 2 s … up to 10 s. The welcome on reconnect carries anything missed.
-      const wait = Math.min(10000, 500 * 2 ** this.retry++);
-      setTimeout(() => { if (!this.closedByUs) this.connect(); }, wait);
-    });
+    ws.addEventListener('close', () => this.dropped(ws));
+  }
+
+  /** The connection is gone (closed, or silent past a heartbeat): reconnect, unless we left. */
+  private dropped(ws: WebSocket): void {
+    if (this.ws !== ws) return;
+    this.ws = null;
+    clearTimeout(this.pingTimer);
+    this.handlers.status?.('closed');
+    if (this.closedByUs) return;
+    // Back off: 0.5 s, 1 s, 2 s … up to 10 s, give or take a quarter so a room's players don't
+    // all come back at once. The welcome on reconnect carries anything missed.
+    const wait = Math.min(10000, 500 * 2 ** this.retry++) * (0.75 + Math.random() * 0.5);
+    setTimeout(() => { if (!this.closedByUs) this.connect(); }, wait);
   }
 
   close(): void {
     this.closedByUs = true;
+    clearTimeout(this.pingTimer);
     this.ws?.close();
+  }
+
+  /** The log position after seq is ours (an event or an ack). */
+  private saw(seq: number): void {
+    if (Number.isInteger(seq) && seq + 1 > this.have) this.have = seq + 1;
+  }
+
+  /** Ping now and then; a ping with no answer means a dead connection, so start a new one. */
+  private heartbeat(): void {
+    clearTimeout(this.pingTimer);
+    this.pingTimer = window.setTimeout(() => {
+      const ws = this.ws;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      this.pingSent = performance.now();
+      ws.send('ping');
+      // A dead connection can take a long while to report its close: don't wait for it.
+      this.pingTimer = window.setTimeout(() => { this.dropped(ws); try { ws.close(); } catch { /* already closed */ } }, PING_TIMEOUT_MS);
+    }, this.pingSent ? PING_MS : 1000);
+  }
+
+  private pong(): void {
+    if (this.pingSent) this.handlers.ping?.(performance.now() - this.pingSent);
+    this.heartbeat();
   }
 
   /** A new name for us: the room tells everyone (and it's the one used when reconnecting). */
@@ -172,6 +242,8 @@ export class RoomClient {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
   }
 
+  /** Ready (or not) for the host to start. */
+  setReady(ready: boolean): void { this.send({ type: 'ready', ready }); }
   setLobby(l: Lobby): void { this.send({ type: 'lobby', lobby: l }); }
   start(): void { this.send({ type: 'start' }); }
   /** Host: the game is over, everyone back to the lobby for the next one. */

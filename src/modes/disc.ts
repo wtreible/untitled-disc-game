@@ -238,7 +238,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const covering = new Set<number>();
   /** Players this browser controls (all of them in hot seat, and anyone the host covers). */
   const mine = (p: number) => !net || net.mine(p) || covering.has(p);
-  const isHost = !net || net.isHost;
+  /** Online, the host can change mid-game (the room hands it on when the host leaves). */
+  let isHost = !net || net.isHost;
   /** Events this browser knows of, ours and the room's: the next one's log position. */
   let known = net ? net.log.length : 0;
   const sent = new Map<number, RoundEvent>();
@@ -1406,6 +1407,20 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   $('pause-lobby').addEventListener('click', () => {
     if (net && isHost && confirm('End this game and take everyone back to the lobby?')) net.room.end();
   });
+  /**
+   * The room handed hosting on (the host left), maybe to us: the host's jobs are starting holes,
+   * moving past scorecards, ending the game and playing for away players.
+   */
+  function hostChanged(now: boolean): void {
+    if (!net || now === isHost) return;
+    isHost = now;
+    if (!isHost) covering.clear();
+    else chip('You are the host now', 'info');
+    $('pause-lobby').hidden = !isHost;
+    if (st.stage === 'card' && !$('results').hidden) showCard();
+    else if (st.stage === 'need-hole' || st.stage === 'need-rules') advance();
+    updateAway();
+  }
   /** The room is back in its lobby: reload into it (the menu rejoins the room without asking names). */
   function backToLobby(): void {
     if (!net) return;
@@ -1942,6 +1957,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     };
   }
   // Joining (or rejoining) a room: replay its log, redraw this hole's throws, then carry on.
+  /** The room's game we're in (a reconnect into a different one goes back to the lobby). */
+  const game0 = net?.room.game ?? '';
   if (net) {
     for (const x of net.log) st.apply(x.e);
     if (st.holeStarted) {
@@ -1973,11 +1990,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         if (a && Array.isArray(a.target) && a.player === game().current && !mine(a.player) && phase === 'watching') liveAim = a;
       },
       ended: () => backToLobby(),
+      host: (h) => hostChanged(h === net.room.id),
       // Reconnected: pick up what we missed, resend what the room didn't get.
       welcome: (w) => {
-        if (!w.started) return backToLobby(); // the game ended while we were away
-        for (const x of w.log) if (x.seq >= known) { known++; inbox.push(x.e); }
-        for (let q = w.log.length; q < known; q++) {
+        if (!w.started || (w.game && game0 && w.game !== game0)) return backToLobby(); // the game ended while we were away
+        hostChanged(w.host === w.you);
+        for (const x of w.log) if (x.seq === known) { known++; inbox.push(x.e); } else if (x.seq > known) return resync();
+        for (let q = w.count ?? w.log.length; q < known; q++) {
           const e = sent.get(q);
           if (!e) return resync();
           net.room.sendEvent(q, e);

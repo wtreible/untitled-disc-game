@@ -8,7 +8,11 @@ Friends play together from their own browsers: one hosts a room, the others open
 - **The thrower's browser simulates the throw** and sends the whole flight. Others replay it rather than re-simulating, so small floating-point differences between browsers can't make a throw land elsewhere.
 - **The round says what's next** (`DiscRound.stage`): drafting, need-hole, placing, playing or card. Each browser acts if it's one of its players (or the host, for starting a hole and continuing past a scorecard) and otherwise waits, showing who it's waiting for. Joining mid-game is the same: replay the log, then ask what's next.
 - **A room** (`server/src/index.ts`) is a Cloudflare Durable Object. It holds the lobby (host, course, holes, Crazy mode, which browser controls which player) and the event log in SQLite, and it relays events. It doesn't run the game. Each event names the log position it expects (its `seq`); a stale one is rejected, so two at once can't both land. Turns make that rare. When it happens, the losing browser reloads, rejoins and replays the room's log.
-- **Reconnects** get the full log; missed events are applied, and our own events the room didn't get are re-sent. A refresh rejoins as the same person (a client id kept in localStorage).
+- **Reconnects** name the game they were in and how much of its log they have (`&game=…&since=…`), and the welcome carries only the rest; missed events are applied, and our own events the room didn't get are re-sent. A refresh (or a different game) gets the full log. A refresh rejoins as the same person (a client id kept in localStorage).
+- **Heartbeat:** every 15 s the browser sends the text frame `ping`, and Cloudflare answers `pong` itself without waking the room (`setWebSocketAutoResponse`). No answer within 8 s means the connection is dead, and the browser reconnects at once instead of waiting for a close that can take minutes. Reconnect backoff has ±25% jitter so a room's players don't all come back together.
+- **Protocol version:** the welcome says what the room speaks (`protocol`, 2 now; missing means 1). The lobby says when the server is older than the game.
+- **Host hand-over:** when the host's last connection closes, the room waits 10 s (a refresh is quicker), then the first seated player still connected hosts (`{ type: 'host' }`). Their browser takes on the host's jobs: starting holes, moving past scorecards, ending the game and playing for away players. The old host coming back doesn't take it back.
+- **Ready:** anyone can mark themselves ready in the lobby (`{ type: 'ready' }`, carried in the member list); flags clear at the start and the end.
 - **A throw is sent the moment it's released,** so everyone watches it fly at the same time (measured: the watcher's flight starts ~50 ms after release, where it used to wait the thrower's whole flight and replay, ~8 s). Every browser, the thrower's included, applies it when it lands, so the leaderboard doesn't give the result away early. Everyone waits out the same pause after a throw (including the mulligan window) before the next turn.
 - **Live aim:** while a player lines up, their browser streams their aim about 10 times a second, only when something changes: direction, target, disc, release angle, forehand, and the meter while charging. The room relays it without storing it. Watchers see their aim line and target, the disc picker on their disc, their release angle and their meter. In first person you look where they look. A 20-second aim costs about 10 billed requests (incoming messages bill at 20:1), so a 4-player 18-hole round is a few thousand of the free plan's 100,000 a day.
 - **Names:** your name can be changed in the lobby until the start (a `name` message; the server updates everyone's member list and the host's lobby picks it up). Repeated names get a 2-digit number ("Sam", "Sam 47"), taken from the browser's client id so it doesn't change as people come and go (`uniqueNames`, also used in hot seat).
@@ -23,6 +27,8 @@ Friends play together from their own browsers: one hosts a room, the others open
 - **Rooms delete themselves** after a week idle.
 
 ## Free tier
+
+The room keeps its small state (host, lobby, started) in memory once woken, and counts its log rather than querying it, so a message costs no reads. Activity (for idle deletion) is written at most once a minute and never for live aim, which is relayed without touching storage.
 
 The room service runs on Cloudflare's Workers Free plan (Durable Objects with the SQLite backend). A 4-player, 18-hole round is roughly 30 billed requests, ~500 rows written and ~3 MB stored, against daily limits of 100,000 requests and 100,000 rows written, and 5 GB storage in total. WebSocket hibernation means idle rooms aren't billed for duration. Over a limit, requests fail until 00:00 UTC; nothing is charged.
 
@@ -41,7 +47,7 @@ Without `ROOMS_URL`, public builds hide "Play online".
 
 - One player per browser online (no hot seat inside a room yet).
 - Renaming in the lobby, 6 seats and bag building in the lobby need the room server from 2026-10-21 (evening) or later (`npm run server:deploy`).
-- If the host drops mid-game, nobody else can play for an away player.
+- Reconnect-with-`since`, the heartbeat, host hand-over and ready need the room server from 2026-10-24 or later (protocol 2). Against an older one the game behaves as before.
 - Colors online need the room server from 2026-10-22 (evening) or later; an older one ignores them and seats get the defaults. Quick chat works with any server that relays live aim.
 - Back to lobby needs the room server from 2026-10-22 or later (`npm run server:deploy`). An older server refuses `end`, and the host sees that it's too old.
 - Live aim needs the room server from 2026-10-21 or later (`npm run server:deploy`). An older server refuses those messages, and the game ignores the refusal, so it still plays without live aim.

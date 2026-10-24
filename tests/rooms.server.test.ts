@@ -10,11 +10,12 @@ const BASE = process.env.ROOMS_URL;
 type Msg = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 /** A test client: a socket plus a queue of received messages. */
-async function connect(room: string, client: string, name: string) {
-  const ws = new WebSocket(`${BASE}/room/${room}?client=${client}&name=${encodeURIComponent(name)}`);
+async function connect(room: string, client: string, name: string, query = '') {
+  const ws = new WebSocket(`${BASE}/room/${room}?client=${client}&name=${encodeURIComponent(name)}${query}`);
   const inbox: Msg[] = [];
   const waiters: ((m: Msg) => void)[] = [];
   ws.addEventListener('message', (ev) => {
+    if (ev.data === 'pong') return; // heartbeat answers aren't JSON
     const m = JSON.parse(String(ev.data));
     const w = waiters.shift();
     if (w) w(m); else inbox.push(m);
@@ -27,7 +28,7 @@ async function connect(room: string, client: string, name: string) {
     waiters.push((x) => { clearTimeout(t); res(x); });
   });
   /** The next message of a type (skipping others, e.g. member updates). */
-  const until = async (type: string) => { for (;;) { const m = await next(); if (m.type === type) return m; } };
+  const until = async (type: string, timeout?: number) => { for (;;) { const m = await next(timeout); if (m.type === type) return m; } };
   const send = (m: Msg) => ws.send(JSON.stringify(m));
   return { ws, next, until, send, close: () => ws.close() };
 }
@@ -166,6 +167,64 @@ describe.skipIf(!BASE)('room server', () => {
     expect(w.log.map((x: Msg) => x.e.k)).toEqual([0, 1, 2, 3, 4]);
     again.close();
   });
+
+  it('a reconnect to the same game gets only the events it is missing; another game gets all of them', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    const w0 = await a.until('welcome');
+    expect(w0.protocol).toBe(2);
+    a.send({ type: 'lobby', lobby: lobby([{ name: 'Ann', client: 'client-aaaa' }]) });
+    a.send({ type: 'start' });
+    const { game } = await a.until('started');
+    expect(game).toMatch(/\w+/);
+    for (let k = 0; k < 4; k++) { a.send({ type: 'event', seq: k, e: { t: 'throw', k } }); await a.until('ack'); }
+    a.close();
+    const b = await connect(code, 'client-aaaa', 'Ann', `&game=${game}&since=3`);
+    const w = await b.until('welcome');
+    expect([w.game, w.count, w.since]).toEqual([game, 4, 3]);
+    expect(w.log.map((x: Msg) => x.seq)).toEqual([3]);
+    b.close();
+    const c = await connect(code, 'client-aaaa', 'Ann', '&game=nope&since=3');
+    const wc = await c.until('welcome');
+    expect([wc.since, wc.log.length]).toEqual([0, 4]);
+    c.close();
+  });
+
+  it('ping gets pong; ready flags travel with members and clear at the start', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    await a.until('welcome');
+    const pong = new Promise<string>((res) => a.ws.addEventListener('message', (ev) => { if (ev.data === 'pong') res(String(ev.data)); }));
+    a.ws.send('ping');
+    expect(await pong).toBe('pong');
+    a.send({ type: 'ready', ready: true });
+    expect((await a.until('members')).members[0].ready).toBe(true);
+    a.send({ type: 'lobby', lobby: lobby([{ name: 'Ann', client: 'client-aaaa' }]) });
+    a.send({ type: 'start' });
+    await a.until('started');
+    a.close();
+    const again = await connect(code, 'client-aaaa', 'Ann');
+    expect((await again.until('welcome')).members[0].ready).toBeFalsy();
+    again.close();
+  });
+
+  it('a host who leaves for good hands the room to the first seated player still here', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    await a.until('welcome');
+    const b = await connect(code, 'client-bbbb', 'Bo');
+    await b.until('welcome');
+    const c = await connect(code, 'client-cccc', 'Cy');
+    await c.until('welcome');
+    a.send({ type: 'lobby', lobby: lobby([{ name: 'Ann', client: 'client-aaaa' }, { name: 'Cy', client: 'client-cccc' }, { name: 'Bo', client: 'client-bbbb' }]) });
+    await c.until('lobby');
+    a.close();
+    expect((await c.until('host', 15000)).host).toBe('client-cccc');
+    // The new host can do the host's jobs.
+    c.send({ type: 'start' });
+    expect((await b.until('started')).lobby.seats).toHaveLength(3);
+    b.close(); c.close();
+  }, 20000);
 
   it('refuses bad room codes and client ids, and non-WebSocket requests', async () => {
     const http = BASE!.replace(/^ws/, 'http');
