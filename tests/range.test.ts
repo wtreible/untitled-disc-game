@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeTrees } from '../src/course/disc-types';
-import { DEFAULT_BASKETS, FT, LANE_HALF, RANGE_MARKS, isMajor, rangeCourse, rangeTree, rangeWind, type RangeConditions } from '../src/course/range';
+import { DEFAULT_BASKETS, FT, LANE_HALF, RANGE_MARKS, RANGE_TICKS, isMajor, rangeCourse, rangeTree, rangeWind, type RangeConditions } from '../src/course/range';
 import { PUTTER_DISC } from '../src/disc/discs';
 import { simulateThrow } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
@@ -17,11 +17,16 @@ describe('driving range', () => {
     expect(RANGE_MARKS[0]).toBe(50);
     expect(RANGE_MARKS.at(-1)).toBe(800);
     expect(RANGE_MARKS.filter(isMajor)).toEqual([100, 200, 300, 400, 500, 600, 700, 800]);
-    const [minor, major] = c.decals!;
+    const [ticks, minor, major] = c.decals!;
     expect(minor.rings).toHaveLength(8);
     expect(major.rings).toHaveLength(8);
     const width = (r: number[][][]) => Math.max(...r[0].map((p) => p[0])) - Math.min(...r[0].map((p) => p[0]));
     expect(width(major.rings[0] as number[][][])).toBeGreaterThan(width(minor.rings[0] as number[][][]));
+    // Ruler ticks every 10 ft between the lines (not on them): both edges and the middle, short.
+    expect(RANGE_TICKS).toHaveLength(80 - 16);
+    expect(RANGE_TICKS.every((ft) => ft % 10 === 0 && ft % 50 !== 0)).toBe(true);
+    expect(ticks.rings).toHaveLength(RANGE_TICKS.length * 3);
+    expect(width(ticks.rings[0] as number[][][])).toBeLessThan(width(minor.rings[0] as number[][][]) / 4);
     const y100 = (major.rings[0][0] as number[][]).reduce((a, p) => a + p[1], 0) / 4;
     expect(y100).toBeCloseTo(100 * FT, 5);
   });

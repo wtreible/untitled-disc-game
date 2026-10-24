@@ -1,6 +1,7 @@
 // Driving range distance markers: every 100 ft a big sign on each side of the lane and a big number
 // painted on the grass; every 50 ft between, a smaller number and an orange cone at each end of the
-// line. The lines themselves are ground decals (src/course/range.ts). Seen from the tee and top-down.
+// line. The lines themselves, and small ruler ticks every 10 ft between them, are ground decals
+// (src/course/range.ts). Seen from the tee and top-down.
 import * as THREE from 'three';
 import { FT, LANE_HALF, RANGE_MARKS, isMajor } from '../course/range';
 

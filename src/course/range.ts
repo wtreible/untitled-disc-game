@@ -36,6 +36,9 @@ export const FT = 0.3048;
 export const RANGE_MARKS = Array.from({ length: 16 }, (_, i) => (i + 1) * 50);
 /** Every 100 ft gets a big sign and a wide line. */
 export const isMajor = (ft: number) => ft % 100 === 0;
+/** Between the lines, a small tick every 10 ft (at the lane's edges and its middle), like a ruler. */
+export const TICK_FT = 10;
+export const RANGE_TICKS = Array.from({ length: RANGE_MARKS[RANGE_MARKS.length - 1] / TICK_FT }, (_, i) => (i + 1) * TICK_FT).filter((ft) => ft % 50 !== 0);
 /** Mowed lane half-width (m). The range throws up +y from the tee at the origin. */
 export const LANE_HALF = 18;
 const FAR = RANGE_MARKS[RANGE_MARKS.length - 1] * FT;
@@ -52,6 +55,11 @@ export function rangeCourse(): DiscCourseFile {
     const y = ft * FT, half = major ? 0.3 : 0.15, w = major ? LANE_HALF + 6 : LANE_HALF;
     return rect(-w, y - half, w, y + half);
   });
+  // Ruler ticks: 4 m in from each edge of the lane and 1.5 m across the middle.
+  const ticks: Rings[] = RANGE_TICKS.flatMap((ft) => {
+    const y = ft * FT, half = 0.12;
+    return [rect(-LANE_HALF, y - half, -LANE_HALF + 4, y + half), rect(LANE_HALF - 4, y - half, LANE_HALF, y + half), rect(-0.75, y - half, 0.75, y + half)];
+  });
   return {
     sport: 'disc',
     name: 'Driving Range',
@@ -66,7 +74,7 @@ export function rangeCourse(): DiscCourseFile {
       { class: 'fairway', osm_id: 'range/lane', rings: rect(-LANE_HALF, -8, LANE_HALF, FAR + 25) },
       { class: 'tee', osm_id: 'range/tee', rings: rect(-1.5, -1, 1.5, 1) },
     ],
-    decals: [{ color: '#f4f2e8', rings: lines(false) }, { color: '#ffffff', rings: lines(true) }],
+    decals: [{ color: '#e6e3d6', rings: ticks }, { color: '#f4f2e8', rings: lines(false) }, { color: '#ffffff', rings: lines(true) }],
     canopy: [],
     ob: [],
     trees: [],
