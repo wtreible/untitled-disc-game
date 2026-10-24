@@ -31,7 +31,7 @@ export interface Prefs {
 
 export type Graphics = 'low' | 'medium' | 'high';
 
-const KEY = 'sat-golf:prefs';
+const KEY = 'untitled-disc-game:prefs';
 const DEFAULTS: Prefs = { replays: true, follow: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false, music: 0.6, sfx: 0.8, muted: false, flyovers: true, weather: true };
 
 let cache: Prefs | null = null;
@@ -41,8 +41,6 @@ export function prefs(): Prefs {
   let p: Partial<Prefs> = {};
   try {
     p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    // Older builds stored only the replays flag under its own key.
-    if (p.replays === undefined && localStorage.getItem('sat-golf:replays') === 'off') p.replays = false;
   } catch { /* storage unavailable */ }
   cache = { ...DEFAULTS, ...p };
   return cache;

@@ -64,7 +64,7 @@ export function roomsUrl(raw: string): string | null {
 
 /** This browser's id in rooms (kept, so a refresh rejoins as the same person). */
 export function clientId(): string {
-  const k = 'sat-golf:client';
+  const k = 'untitled-disc-game:client';
   try {
     let id = localStorage.getItem(k);
     if (!id) { id = `c${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`; localStorage.setItem(k, id); }

@@ -1163,7 +1163,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** The room is back in its lobby: reload into it (the menu rejoins the room without asking names). */
   function backToLobby(): void {
     if (!net) return;
-    try { sessionStorage.setItem('sat-golf:rejoin', net.room.code); } catch { /* storage unavailable: the name prompt shows */ }
+    try { sessionStorage.setItem('untitled-disc-game:rejoin', net.room.code); } catch { /* storage unavailable: the name prompt shows */ }
     net.room.close();
     location.reload(); // the address still has #room=CODE
   }
@@ -1660,7 +1660,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   requestAnimationFrame(frameLoop);
   // Dev builds only: a handle for automated browser checks.
   if (import.meta.env.DEV) {
-    (window as unknown as Record<string, unknown>).__satgolf = {
+    (window as unknown as Record<string, unknown>).__udg = {
       scene, hole, game, pinOf, changes: () => st.changes, phase: () => phase, worldFor, trees, st, log: () => st.log, live: () => liveAim, aim: () => ({ pitch, yaw, tick }),
       gallery, effects, life, intro: () => intro, setWeather: (id: keyof typeof WEATHER) => { roundWeather = WEATHER[id]; applyWeather(); },
     };

@@ -35,7 +35,7 @@ const { values: args } = parseArgs({
   },
 });
 
-const USER_AGENT = 'sat-golf/0.1 (hobby project; offline course builder)';
+const USER_AGENT = 'untitled-disc-game/0.1 (hobby project; offline course builder)';
 
 /** A course is a closed way (its id) or a relation of hole ways ("relation/<id>"). */
 const rel = args.course!.match(/^relation\/(\d+)$/)?.[1];

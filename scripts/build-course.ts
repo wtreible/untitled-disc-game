@@ -20,7 +20,7 @@ const { values: args } = parseArgs({
 // Second entry is a fallback mirror that hasn't been exercised yet (main endpoint answered first try).
 const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 // Overpass rejects requests with no identifying User-Agent (406). See docs/03-data-sources.md.
-const USER_AGENT = 'sat-golf/0.1 (hobby project; offline course builder)';
+const USER_AGENT = 'untitled-disc-game/0.1 (hobby project; offline course builder)';
 
 function query(courseWayId: string): string {
   return `[out:json][timeout:120];

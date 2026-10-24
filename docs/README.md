@@ -1,4 +1,4 @@
-# sat-golf docs
+# Untitled Disc Game docs
 
 A browser golf game played on real courses: course geometry from OpenStreetMap, drawn top-down over live satellite imagery.
 

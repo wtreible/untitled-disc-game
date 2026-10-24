@@ -3,7 +3,7 @@
 export type Units = 'metric' | 'imperial';
 export type Sport = 'disc' | 'golf';
 
-const KEY = 'sat-golf:units';
+const KEY = 'untitled-disc-game:units';
 const FT = 3.28084;
 const YD = 1 / 0.9144;
 

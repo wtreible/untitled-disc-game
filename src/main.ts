@@ -112,10 +112,10 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
   },
 ];
 
-const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean }>('sat-golf:menu', {});
+const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean }>('untitled-disc-game:menu', {});
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
 let players = Math.min(MAX_PLAYERS, Math.max(1, last.players ?? 2));
-const savedNames = load<string[]>('sat-golf:names', []);
+const savedNames = load<string[]>('untitled-disc-game:names', []);
 
 // ---------- course cards ----------
 function renderCourses(): void {
@@ -189,7 +189,7 @@ function renderHoles(): void {
 
 // ---------- player colors ----------
 /** Each player row's picked color (saved). Shown resolved, so two players never share one. */
-const colorPicks = load<(string | null)[]>('sat-golf:colors', []);
+const colorPicks = load<(string | null)[]>('untitled-disc-game:colors', []);
 const rowColors = () => playerColors(Array.from({ length: MAX_PLAYERS }, (_, i) => colorPicks[i]));
 const colorPop = document.createElement('div');
 colorPop.className = 'color-pop';
@@ -202,7 +202,7 @@ function openColors(i: number, anchor: HTMLElement): void {
   colorPop.innerHTML = COLOR_CHOICES.map((c) => `<button data-c="${c}" style="background:${c}" class="${c === cols[i] ? 'on' : ''}" ${taken.includes(c) ? 'disabled title="Taken"' : ''}></button>`).join('');
   colorPop.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
     colorPicks[i] = b.dataset.c!;
-    save('sat-golf:colors', colorPicks);
+    save('untitled-disc-game:colors', colorPicks);
     colorPop.hidden = true;
     sfx('select');
     renderPlayers();
@@ -249,7 +249,7 @@ bagMode.checked = !!last.bag;
 const syncCrazy = () => { $('crazy-rules').hidden = !crazy.checked; };
 
 // ---------- Crazy mode rules ----------
-let rules: CrazyRules = cleanRules(load<Partial<CrazyRules> | null>('sat-golf:crazy-rules', null));
+let rules: CrazyRules = cleanRules(load<Partial<CrazyRules> | null>('untitled-disc-game:crazy-rules', null));
 const ODDS_PRESETS: [string, CrazyRules['odds']][] = [
   ['Classic', { common: 70, epic: 25, legendary: 5 }],
   ['Spicy', { common: 40, epic: 40, legendary: 20 }],
@@ -258,7 +258,7 @@ const ODDS_PRESETS: [string, CrazyRules['odds']][] = [
 ];
 function setRules(r: Partial<CrazyRules>): void {
   rules = cleanRules({ ...rules, ...r, odds: { ...rules.odds, ...r.odds } });
-  save('sat-golf:crazy-rules', rules);
+  save('untitled-disc-game:crazy-rules', rules);
   renderRules();
 }
 function renderRules(): void {
@@ -474,7 +474,7 @@ function setMyName(name: string): void {
   const input = $('player-names').querySelector('input');
   if (input) input.value = name;
   savedNames[0] = name;
-  save('sat-golf:names', savedNames);
+  save('untitled-disc-game:names', savedNames);
 }
 
 /** Ask for a name, then join (or host: a new code). Cancelling joins nothing. */
@@ -552,7 +552,7 @@ $('leave-room').addEventListener('click', () => {
 const roomInHash = () => location.hash.match(/^#room=([A-Za-z0-9]{4,8})$/)?.[1].toUpperCase() ?? null;
 const linked = roomInHash();
 /** Back from a finished game (src/modes/disc.ts): straight into the same room, no name prompt. */
-const rejoin = (() => { try { const c = sessionStorage.getItem('sat-golf:rejoin'); sessionStorage.removeItem('sat-golf:rejoin'); return c; } catch { return null; } })();
+const rejoin = (() => { try { const c = sessionStorage.getItem('untitled-disc-game:rejoin'); sessionStorage.removeItem('untitled-disc-game:rejoin'); return c; } catch { return null; } })();
 if (ROOMS_URL && linked && rejoin === linked) joinRoom(linked);
 else if (ROOMS_URL && linked) void enterRoom(linked, false);
 window.addEventListener('hashchange', () => {
@@ -585,7 +585,7 @@ $('start').addEventListener('click', async () => {
   if (course === 'tutorial') {
     // Alone, on this browser (in a room too): the first player's name.
     const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
-    save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
     $('setup').hidden = true;
     showGameButtons();
     $('pause-sub').textContent = 'Tutorial';
@@ -595,7 +595,7 @@ $('start').addEventListener('click', async () => {
   }
   if (room) {
     if (!amHost()) return;
-    save('sat-golf:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked });
     pushLobby();
     room.start();
     return;
@@ -603,8 +603,8 @@ $('start').addEventListener('click', async () => {
   const typed = [...$('player-names').querySelectorAll('input')].map((i, k) => i.value.trim() || `Player ${k + 1}`);
   const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
-  save('sat-golf:names', typed);
-  save('sat-golf:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked });
+  save('untitled-disc-game:names', typed);
+  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked });
   $('setup').hidden = true;
   showGameButtons();
   const n = COURSES.find((c) => c.id === course)!.holes;

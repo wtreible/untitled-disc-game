@@ -19,7 +19,7 @@ export interface RangePlayer { name: string; color: string; throws: number; long
 
 export interface RangeShot { who: string; color: string; disc: string; dist: number; side: number; holed: boolean }
 
-const KEY = 'sat-golf:range';
+const KEY = 'untitled-disc-game:range';
 const MAX_WIND = 10;
 /** A fresh range: the default baskets, no trees, calm and sunny. */
 export const freshRange = (): RangeSetup => ({ baskets: DEFAULT_BASKETS.map((b): Vec2 => [b[0], b[1]]), trees: [], windSpeed: 0, windFrom: 0, weather: 'clear', ghost: true });
