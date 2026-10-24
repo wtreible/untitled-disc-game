@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p server",
     "test": "vitest run",
+    "test:rooms": "bash scripts/test-rooms.sh",
     "course": "tsx scripts/build-course.ts",
     "disc-course": "tsx scripts/build-disc-course.ts",
     "silly-course": "tsx scripts/build-silly-course.ts",

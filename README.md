@@ -68,11 +68,11 @@ Dev builds stream Esri satellite imagery under Tali Forest; public builds don't 
 
 ## Deploying (GitHub Pages)
 
-Every push to `main` builds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). One-time setup: in the repo on GitHub, **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+Every push to `main` typechecks, runs the tests (the room server's too, against `wrangler dev`), deploys the rooms Worker if `server/` changed, then builds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). Pull requests get the checks only. One-time setup: in the repo on GitHub, **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
 The build is a static site with relative asset URLs, so `dist/` also works on Netlify, Cloudflare Pages, or any file server, from any folder.
 
-- **Online rooms** run on a Cloudflare Worker (free plan): `npx wrangler login`, then `npm run server:deploy`. Put the `wss://…workers.dev` address it prints in a repo variable named `ROOMS_URL` (Settings → Secrets and variables → Actions → Variables) and re-run the deploy. Until then "Play online" is hidden.
+- **Online rooms** run on a Cloudflare Worker (free plan): `npx wrangler login`, then `npm run server:deploy` the first time. Put the `wss://…workers.dev` address it prints in a repo variable named `ROOMS_URL` (Settings → Secrets and variables → Actions → Variables) and re-run the deploy. Until then "Play online" is hidden. For CI to deploy the Worker afterwards, add the repo secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" token template) and `CLOUDFLARE_ACCOUNT_ID`; without them it skips the Worker with a warning. **Run workflow** with "Deploy the rooms Worker too" deploys it without a `server/` change.
 - **Satellite imagery is off in public builds.** Esri World Imagery is licensed under Esri's Master License Agreement, which generally needs an ArcGIS account for public apps, so Tali Forest shows its drawn ground instead. If you have that sorted, build with `VITE_ESRI_IMAGERY=on`.
 
 ## Development
@@ -94,8 +94,9 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 | `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |
 | `npm run slim-models` | Strip animations the courses don't use from the character models |
 | `npm run server:dev` | Run the online room server locally (dev builds connect to it) |
-| `npm run server:deploy` | Deploy the room server to Cloudflare |
-| `npm run typecheck` | TypeScript |
+| `npm run server:deploy` | Deploy the room server to Cloudflare (CI does this when `server/` changes) |
+| `npm run test:rooms` | The room server's protocol tests, against a `wrangler dev` started and stopped for them |
+| `npm run typecheck` | TypeScript (the game and the room server) |
 
 ```
 scripts/        course builders (OpenStreetMap + canopy → course JSON, themed courses), model tools

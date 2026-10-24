@@ -1,23 +1,64 @@
-# Build the game and publish it to GitHub Pages on every push to main.
-# One-time setup: Settings → Pages → Build and deployment → Source: GitHub Actions.
-name: Deploy to GitHub Pages
+# Check everything, then publish: the rooms Worker (when server/ changed) and the game on GitHub
+# Pages, on every push to main.
+#
+# One-time setup:
+# - Settings → Pages → Build and deployment → Source: GitHub Actions.
+# - Settings → Secrets and variables → Actions:
+#   - Variable ROOMS_URL: the rooms Worker (wss://…workers.dev). Without it, "Play online" stays hidden.
+#   - Secrets CLOUDFLARE_API_TOKEN (the "Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID,
+#     for deploying the Worker. Without them the Worker isn't deployed (a warning says so).
+name: Check and deploy
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
+    inputs:
+      deploy_server:
+        description: Deploy the rooms Worker too
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'pull_request' && format('check-{0}', github.ref) || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.changes.outputs.server }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (game and room server)
+        run: npm run typecheck
+      - run: npm test
+      - name: Room server protocol tests (against wrangler dev)
+        run: npm run test:rooms
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+      - uses: dorny/paths-filter@v3
+        if: github.event_name == 'push'
+        id: changes
+        with:
+          filters: |
+            server:
+              - 'server/**'
+
+  # The Worker goes first: the game speaks to older room servers, but a new room feature is only
+  # there once the Worker is.
+  deploy-server:
+    needs: check
+    if: github.event_name != 'pull_request' && (needs.check.outputs.server == 'true' || inputs.deploy_server)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,11 +67,32 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Deploy the rooms Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN isn't set: the rooms Worker wasn't deployed (npm run server:deploy by hand)."
+            exit 0
+          fi
+          npm run server:deploy
+
+  build:
+    needs: [check, deploy-server]
+    # Runs when the Worker deployed or had nothing to deploy, never after a failed deploy.
+    if: always() && github.event_name != 'pull_request' && needs.check.result == 'success' && needs.deploy-server.result != 'failure' && needs.deploy-server.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - run: npm run build
         env:
-          # The online rooms Worker (wss://…workers.dev). Set it under Settings → Secrets and
-          # variables → Actions → Variables. Without it, "Play online" stays hidden.
           VITE_ROOMS_URL: ${{ vars.ROOMS_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -39,7 +101,11 @@ jobs:
 
   deploy:
     needs: build
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
