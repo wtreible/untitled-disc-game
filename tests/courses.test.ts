@@ -32,7 +32,7 @@ const PT = DISCS.find((d) => d.id === 'PT')!;
 const throwAt = (_c: DiscCourseFile, w: DiscWorld, o: Partial<ThrowInput> & { start: Vec2; aim: number }) =>
   simulateThrow({ power: 1, disc: MR, hyzer: 0, perfect: true, ...o }, w, mulberry32(3));
 
-describe.each(['silly', 'fantasy', 'rainbow', 'pirate', 'graveyard'])('%s course', (id) => {
+describe.each(['silly', 'fantasy', 'rainbow', 'pirate', 'graveyard', 'winter'])('%s course', (id) => {
   const c = load(id);
   const grid = gridOf(c);
   const colliders = (c.props ?? []).flatMap((p) => p.colliders);

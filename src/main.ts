@@ -25,7 +25,7 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'prater' | 'fantasy' | 'rainbow' | 'pirate' | 'graveyard' | 'range' | 'tutorial' | 'crazy-tutorial' | 'putting';
+type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'prater' | 'fantasy' | 'rainbow' | 'pirate' | 'graveyard' | 'winter' | 'range' | 'tutorial' | 'crazy-tutorial' | 'putting';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
 type Group = 'real' | 'arcade' | 'training';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
@@ -103,6 +103,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     id: 'graveyard', group: 'arcade', name: 'Graveyard Shift', meta: 'A haunted cemetery at night', holes: 9,
     blurb: 'Through the cemetery gates at night: a pumpkin patch, round a great crypt, past a wandering ghost, through dead woods, over the bog, down Lantern Lane, between shuffling zombies, and into the vampire’s lair.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2a2342"/><circle cx="48" cy="14" r="7" fill="#f2ecc8"/><rect x="0" y="44" width="64" height="20" fill="#1f2a22"/>${[[10, 44], [24, 46], [40, 45]].map(([x, y]) => `<path d="M${x} ${y} v-9 a4 4 0 0 1 8 0 v9 z" fill="#8a8f9a"/>`).join('')}<circle cx="54" cy="52" r="5" fill="#e8822a"/><path d="M52 51 l1.2 -1.4 l1.2 1.4 M55 51 l1.2 -1.4 l1.2 1.4" stroke="#2a1a0a" stroke-width="1"/><path d="M8 30 q4 -10 8 0 q-2 6 -4 4 q-2 2 -4 -4z" fill="#e9e6f5" opacity=".85"/></svg>`,
+  },
+  {
+    id: 'winter', group: 'arcade', name: 'Frosty Pines', meta: 'A snowy wood, snowmen and a toy train', holes: 9,
+    blurb: 'Nine holes in falling snow: down an alley of snowmen, slalom the candy canes, carry a frozen pond, time the toy train shuttling across 4, find the gap in the snow fort, dodge the reindeer, down Lamplight Lane, into a basket ringed by giant presents, and round a giant Christmas tree to finish. Through the ice: +1.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#cdd8e4"/><rect y="44" width="64" height="20" fill="#eef3f8"/>${[[14, 44, 1], [50, 46, 0.8]].map(([x, y, k]) => `<path d="M${x} ${y - 30 * k} l${10 * k} ${16 * k} h-${4 * k} l${7 * k} ${12 * k} h-${26 * k} l${7 * k} -${12 * k} h-${4 * k} z" fill="#2e6b4a"/><path d="M${x} ${y - 30 * k} l${5 * k} ${8 * k} h-${10 * k} z" fill="#fff"/>`).join('')}<circle cx="32" cy="46" r="7" fill="#fff"/><circle cx="32" cy="35" r="5" fill="#fff"/><path d="M28 31 h8 v-6 h-8z M26 31 h12" stroke="#1d1d1d" stroke-width="2" fill="#1d1d1d"/><path d="M32 36 l5 1 l-5 1z" fill="#ff8c2e"/>${[[8, 10], [22, 18], [44, 8], [56, 22], [38, 24], [12, 28]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.3" fill="#fff"/>`).join('')}</svg>`,
   },
   {
     id: 'tutorial', group: 'training', name: 'Tutorial', meta: 'Ten steps on the range, from aiming to a made putt', holes: 10,

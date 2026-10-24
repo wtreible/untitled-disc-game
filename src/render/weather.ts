@@ -1,7 +1,7 @@
 // Weather and time of day for a round: the light, sky and fog, and whether it rains. Cosmetic
 // only (the flight model has its own wind). Picked from a seed every player shares, so an online
 // room sees the same sky.
-export type WeatherId = 'clear' | 'golden' | 'overcast' | 'rain' | 'night';
+export type WeatherId = 'clear' | 'golden' | 'overcast' | 'rain' | 'night' | 'snow';
 
 export interface Weather {
   id: WeatherId;
@@ -16,6 +16,8 @@ export interface Weather {
   /** Multiplies the flat-shaded ground (photo, class and drawn ground), which ignores lights. */
   ground: string;
   rain: boolean;
+  /** Falling snow (Frosty Pines). */
+  snow?: boolean;
   /** Cloud shadows drifting over the course (a sunny sky). */
   clouds: boolean;
   birds: boolean;
@@ -42,6 +44,11 @@ export const WEATHER: Record<WeatherId, Weather> = {
   night: {
     id: 'night', label: 'Night', sky: '#2a2342', fog: [60, 420], hemi: ['#8f94cc', '#1c221a', 1.05], sun: ['#c9d4ff', 0.8, 0.6],
     ground: '#8c91b2', rain: false, clouds: false, birds: false,
+  },
+  // Snowfall under a pale sky: never picked at random; a course asks for it (Frosty Pines).
+  snow: {
+    id: 'snow', label: 'Snow', sky: '#cdd8e4', fog: [55, 400], hemi: ['#eef4ff', '#9aa6b4', 1.7], sun: ['#ffffff', 0.85, 0.55],
+    ground: '#ffffff', rain: false, snow: true, clouds: false, birds: false,
   },
 };
 

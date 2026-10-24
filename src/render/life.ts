@@ -59,6 +59,7 @@ export class Life {
   private readonly flag = new THREE.Group();
   private readonly cloth: THREE.Mesh;
   private rain: THREE.LineSegments | null = null;
+  private snow: THREE.Points | null = null;
   private star: { line: THREE.Line; t: number; life: number } | null = null;
   private nextStar = 3;
   private wind: Vec2 = [0, 0];
@@ -113,6 +114,8 @@ export class Life {
     for (const c of this.clouds) c.mesh.visible = w.clouds;
     if (w.rain && !this.rain) this.rain = this.makeRain();
     if (this.rain) this.rain.visible = w.rain;
+    if (w.snow && !this.snow) this.snow = this.makeSnow();
+    if (this.snow) this.snow.visible = !!w.snow;
   }
 
   /** New hole: the flock circles it, butterflies at the tee and basket, the streamer on the basket. */
@@ -184,6 +187,7 @@ export class Life {
     }
     pos.needsUpdate = true;
     if (this.rain?.visible) this.stepRain(dt, eye);
+    if (this.snow && this.weather?.snow) this.stepSnow(dt, eye);
     if (this.space) this.stepStars(dt);
   }
 
@@ -218,6 +222,38 @@ export class Life {
       p[i + 3] = x - vx * 0.04; p[i + 4] = y - vy * 0.04; p[i + 5] = z - 0.35;
     }
     pos.needsUpdate = true;
+  }
+
+  // Snow: flakes in a box around the first-person eye, drifting down, swaying, blown by the wind.
+  private makeSnow(): THREE.Points {
+    const n = 1800;
+    const pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) pos.set([rnd(-25, 25), rnd(-25, 25), rnd(0, 20)], i * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const snow = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.09, transparent: true, opacity: 0.9, depthWrite: false }));
+    snow.frustumCulled = false;
+    this.group.add(snow);
+    return snow;
+  }
+
+  private stepSnow(dt: number, eye: Vec3 | null): void {
+    const snow = this.snow!;
+    snow.visible = !!eye;
+    if (!eye) return;
+    snow.position.set(eye[0], eye[1], 0);
+    const p = (snow.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+    const [wx, wy] = this.wind;
+    const t = performance.now() / 1000;
+    for (let i = 0; i < p.length; i += 3) {
+      const sway = Math.sin(t * 1.3 + i * 0.37) * 0.35;
+      let x = p[i] + (wx * 0.35 + sway) * dt, y = p[i + 1] + (wy * 0.35 + Math.cos(t * 1.1 + i * 0.21) * 0.3) * dt, z = p[i + 2] - 1.1 * dt;
+      if (z < 0) { x = rnd(-25, 25); y = rnd(-25, 25); z = 20; }
+      if (x < -25) x += 50; else if (x > 25) x -= 50;
+      if (y < -25) y += 50; else if (y > 25) y -= 50;
+      p[i] = x; p[i + 1] = y; p[i + 2] = z;
+    }
+    (snow.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
   }
 
   // Shooting stars: every few seconds a streak across the dome (first person only).
