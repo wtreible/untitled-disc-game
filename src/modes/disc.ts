@@ -1722,7 +1722,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('wind-compass').hidden = $('reticle').hidden; // with the reticle: first person, lining up
     updateAugPanel();
     if (now - fpsSince >= 500) {
-      if (!$('fps').hidden) $('fps').textContent = `${Math.round((fpsFrames * 1000) / (now - fpsSince))} fps`;
+      if (!$('fps').hidden) {
+        $('fps').textContent = `${Math.round((fpsFrames * 1000) / (now - fpsSince))} fps`;
+        // Below whatever's in the top-right corner (the leaderboard, or the range's, tutorial's or putting's card).
+        const below = ['scoreboard', 'range-panel', 'tutorial', 'putting'].map((id) => $(id)).filter((el) => !el.hidden && el.offsetHeight > 0)
+          .reduce((y, el) => Math.max(y, el.getBoundingClientRect().bottom), 6);
+        $('fps').style.top = `${Math.round(below + 8)}px`;
+      }
       fpsFrames = 0;
       fpsSince = now;
     }

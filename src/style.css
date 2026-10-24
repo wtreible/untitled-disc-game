@@ -390,7 +390,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .keys-table td:first-child { white-space: nowrap; color: var(--muted); }
 .keys-table kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.25); border-bottom-width: 2px; font: 600 12px var(--body); text-align: center; opacity: 1; margin-left: 0; color: var(--text); background: rgba(255, 255, 255, 0.06); }
 #status { position: fixed; top: 92px; left: 16px; color: var(--muted); font-size: 12px; text-shadow: 0 1px 2px #000; }
-#fps { position: fixed; top: 96px; right: 16px; font: 600 12px var(--body); color: #d9ff6b; background: rgba(8, 18, 28, 0.7); padding: 3px 8px; border-radius: 6px; }
+#fps { position: fixed; top: 14px; right: 16px; font: 600 12px var(--body); color: #d9ff6b; background: rgba(8, 18, 28, 0.7); padding: 3px 8px; border-radius: 6px; }
 #attribution { position: fixed; bottom: 2px; right: 6px; font-size: 10px; color: rgba(255, 255, 255, 0.7); text-shadow: 0 1px 2px #000; }
 #toast { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 12px 22px; border-radius: 12px; font: 700 22px var(--head); pointer-events: none; }
 
