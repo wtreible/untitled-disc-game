@@ -25,6 +25,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | **Pirate's Cove** | 9 | Sandy islands in the sea: carry the cove, round a stranded wreck and a lookout tower, time the ghost ship, hit the island basket. Overboard is +1. |
 | **Graveyard Shift** | 9 | A haunted cemetery at night: through the cemetery gates, a pumpkin patch, round a great crypt, past a wandering ghost, dead woods, the bog, Lantern Lane, shuffling zombies, and the vampire's fenced lair. |
 | **Tutorial** | – | Training: ten steps on the range, each done by doing it, from aiming to a made putt (aim, distance, throw, the wobble zone, discs, hyzer and anhyzer, forehand, shots, the map, a putt). Played alone, even in a room. |
+| **Crazy Mode Tutorial** | – | Training: a draft dealt from the real cards, then augments to try one at a time on the range (ghost lines, Perfect Form, Phase Disc through a wall of trees, Clone Disc, Black Hole chains); hexes, your-course augments and mulligans explained. Played alone. |
 | **Putting** | – | Training: a putting ladder on the range. Three putts at each of five stations (30, 40, 50, 60 and 70 ft), worth 1 to 5 points a make; 45 is perfect. Friends take turns putt by putt (hot seat or online). |
 | **Driving Range** | – | Training: a long open range with a line every 50 ft and big signs every 100 ft. Set the wind and weather, place and remove baskets and trees, and see how far and how far off line each throw went. Friends take turns from the tee (hot seat or online); whoever is up sets the range. Nothing scored. |
 

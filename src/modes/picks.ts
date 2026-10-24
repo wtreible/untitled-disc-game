@@ -54,7 +54,8 @@ export interface DraftPick {
   color: string;
   /** The first draft of a run: a starter augment. */
   starter: boolean;
-  tier: Tier;
+  /** The draft's tier (null: cards of every tier, as Crazy mode's tutorial deals). */
+  tier: Tier | null;
   /** Augment ids on offer, and which one (if any) was bumped up a tier. */
   cards: string[];
   bumped?: number | null;
@@ -70,8 +71,8 @@ export interface DraftPick {
 export function showDraft(d: DraftPick): void {
   const cards = d.cards.map(byId);
   $('draft-title').innerHTML = `<span style="color:${d.color}">●</span> ${esc(d.name)}: ${d.starter ? 'pick your starter augment' : 'pick an augment'}`;
-  $('draft-tier').textContent = `${d.tier[0].toUpperCase()}${d.tier.slice(1)} draft`;
-  $('draft-tier').className = `tier ${d.tier}`;
+  $('draft-tier').textContent = d.tier ? `${d.tier[0].toUpperCase()}${d.tier.slice(1)} draft` : 'One of each tier';
+  $('draft-tier').className = `tier ${d.tier ?? ''}`;
   $('draft-cards').innerHTML = cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
       <span class="ptier">${c.tier}${d.bumped === i ? ' ★ bumped' : ''}</span>
       <span class="pcat">${esc(CATEGORIES.find((k) => k.id === c.category)?.label ?? '')}</span>

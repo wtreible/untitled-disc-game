@@ -5,7 +5,7 @@ import { decodeTrees, type DiscCourseFile, type Tree } from '../course/disc-type
 import { DISCS, PUTTER_DISC, suggestDisc, type Disc } from '../disc/discs';
 import { FLIGHT, simulateThrow, type DiscWorld, type Shot, type ThrowInput, type ThrowResult } from '../disc/flight';
 import { TreeIndex } from '../disc/trees';
-import { effectiveMods } from '../disc/mods';
+import { effectiveMods, neutralMods } from '../disc/mods';
 import { PLACE_TEXT, place, pondsFor, teeFor, treesFor } from '../rogue/course';
 import { byId, drawOffer, rollTier, type Tier } from '../rogue/powerups';
 import { cleanRules, tierWeights, type CrazyRules } from '../rogue/rules';
@@ -46,7 +46,8 @@ import { mountNetStatus } from '../ui/netStatus';
 import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../course/range';
 import { rangeMarkers } from '../render/rangeMarkers';
 import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
-import { mountTutorial, type Tutorial, type TutorialThrow } from './tutorial';
+import { BASICS, mountTutorial, type StepSetup, type Tutorial, type TutorialThrow } from './tutorial';
+import { CRAZY_TUTORIAL } from './crazyTutorial';
 import { puttingState, renderPutting, stationBasket } from './putting';
 import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, meterAt, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
 
@@ -72,6 +73,8 @@ export interface DiscOptions {
   colors?: string[];
   /** The tutorial (src/modes/tutorial.ts): the range, alone, with a card of steps. */
   tutorial?: boolean;
+  /** …Crazy mode's tutorial (src/modes/crazyTutorial.ts): a draft, then augments to try one at a time. */
+  crazyTutorial?: boolean;
   /** The putting ladder (src/modes/putting.ts): the range with one basket, moved back station by station. */
   putting?: boolean;
   /** Best shot: each player's team (src/game/teams.ts). */
@@ -197,9 +200,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // ---------- driving range: baskets and trees placed at will, wind and weather picked ----------
   /** This browser's copy (the panel edits it, saved here); the round's own is st.range. The tutorial's is fresh and calm, and not saved. */
   const putting = range && !!opts.putting;
+  /** Crazy mode's tutorial: its augments act and show (the side panel, the bar, Perfect Form's key) like Crazy mode's. */
+  const crazyTut = range && !!opts.tutorial && !!opts.crazyTutorial;
   const rs = opts.tutorial || putting ? freshRange() : loadRange();
   // Putting: one basket at the first station, and no aim line (it would make every putt).
   if (putting) { rs.baskets = [stationBasket(0)]; rs.ghost = false; }
+  if (crazyTut) rs.ghost = false; // ghost lines come from the augments here
   /** The range everyone plays: the round's, or ours until the round has one. */
   const R = () => st.range ?? rs;
   let rangeTrees = new TreeIndex(rs.trees);
@@ -379,7 +385,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let augKey = '';
   function updateAugPanel(): void {
     const el = $('aug-panel');
-    const show = rogue && !$('hud').hidden && $('results').hidden && $('draft').hidden;
+    const show = (rogue || crazyTut) && !$('hud').hidden && $('results').hidden && $('draft').hidden;
     if (!show) { el.hidden = true; return; }
     const i = game().current;
     const hexes = owned.flatMap((ids, k) => (k === i ? [] : ids.filter((id) => byId(id)?.kind === 'hex').map((id) => ({ id, by: opts.names[k] }))));
@@ -834,7 +840,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Throw held while the camera was still on its way to the disc: it starts once it's there. */
   let chargeQueued = false;
   function startCharge(): void {
-    if (phase !== 'aim') return;
+    if (phase !== 'aim' || !$('draft').hidden) return; // not behind a draft (Crazy mode's tutorial deals one on the range)
     // Not before the camera is at the disc (it glides there from the last throw).
     if (scene.gliding) { chargeQueued = true; return; }
     chargeQueued = false;
@@ -859,7 +865,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const perfect = perfectArmed;
     perfectArmed = false;
     const input = { ...throwInput(Math.max(0.01, power)), perfect };
-    if (tutorial) tutorialShot = { power: input.power, hyzer, forehand, shot: input.shot ?? 'standard', putt: input.style === 'putt' };
+    if (tutorial) tutorialShot = { power: input.power, hyzer, forehand, shot: input.shot ?? 'standard', putt: input.style === 'putt', perfect };
     let result = simulateThrow(input, world());
     let other: ThrowResult | null = null;
     if (modsFor(me).clone) {
@@ -1271,8 +1277,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('shot').textContent = SHOT_LABELS[puttStyle() ? 'standard' : shot];
     $('shot').hidden = puttStyle();
     const me = game().current;
-    $('rogue-bar').hidden = !rogue;
-    if (rogue) {
+    $('rogue-bar').hidden = !rogue && !crazyTut;
+    if (rogue || crazyTut) {
       const bits = [`⚡ ${owned[me].length} augment${owned[me].length === 1 ? '' : 's'}`];
       if (mods[me].mulligans) bits.push(`Mulligans ${mulligansLeft[me]} (M)`);
       if (mods[me].perfectForm) bits.push(perfectArmed ? '<b>Perfect Form ARMED</b>' : `Perfect Form ${perfectLeft[me]} (P)`);
@@ -1522,13 +1528,31 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   // ---------- tutorial: a card of steps over the range ----------
   /** Baskets a tutorial step asked for, placed once it's our turn to set the range. */
-  let tutorialBaskets: { at: Vec2[]; putt: boolean } | null = null;
+  let tutorialSetup: StepSetup | null = null;
+  /** A draft a tutorial step dealt, shown once we're lining up a throw. */
+  let tutorialDraft: { cards: string[]; picked: (id: string | null) => void } | null = null;
   /** The throw in the air, as the tutorial wants to hear of it when it lands. */
   let tutorialShot: Omit<TutorialThrow, 'holed'> | null = null;
   const tutorial: Tutorial | null = opts.tutorial ? mountTutorial($('tutorial'), {
-    setBaskets: (b, putt) => { tutorialBaskets = { at: b.map((q): Vec2 => [q[0], q[1]]), putt }; },
+    setup: (s) => {
+      if (s.augments) setAugments(s.augments);
+      if (s.baskets || s.trees) tutorialSetup = s;
+    },
+    draft: (cards, picked) => { tutorialDraft = { cards, picked }; },
     quit: () => reloadPage(),
-  }) : null;
+  }, crazyTut ? CRAZY_TUTORIAL : BASICS) : null;
+  /**
+   * Crazy mode's tutorial: the player's augments for a step, these and only these, so each is felt
+   * on its own. (The tutorial is played alone on this browser, so they're set here directly.)
+   */
+  function setAugments(ids: string[]): void {
+    Object.assign(mods[0], neutralMods());
+    owned[0].length = 0;
+    for (const id of ids) dispatchQuiet({ t: 'grant', player: 0, id });
+    perfectLeft[0] = mods[0].perfectForm;
+    perfectArmed = false;
+    if (st.holeStarted) { if (phase === 'aim') recomputeTick(); updateHud(); }
+  }
   $('pause-card').hidden = range;
 
   /**
@@ -1635,7 +1659,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'target-farther': nudgeTargetDistance(fine ? 5 : 1); break;
       case 'target-closer': nudgeTargetDistance(fine ? -5 : -1); break;
       case 'mulligan': if (rogue) takeMulligan(); break;
-      case 'perfect': if (rogue && phase === 'aim' && perfectLeft[game().current] > 0) { perfectArmed = !perfectArmed; updateHud(); } break;
+      case 'perfect': if ((rogue || crazyTut) && phase === 'aim' && perfectLeft[game().current] > 0) { perfectArmed = !perfectArmed; updateHud(); } break;
       case 'hyzer': setHyzer(1); break;
       case 'anhyzer': setHyzer(-1); break;
       case 'forehand': if (phase === 'aim') { forehand = !forehand; sfx('select'); recomputeTick(); updateHud(); } break;
@@ -1726,17 +1750,27 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       }
     }
     if (tutorial && phase === 'aim') {
-      if (tutorialBaskets && canSetRange()) {
-        const { at, putt } = tutorialBaskets;
-        tutorialBaskets = null;
-        rs.baskets = at;
+      if (tutorialSetup && canSetRange()) {
+        const { baskets, putt, trees } = tutorialSetup;
+        tutorialSetup = null;
+        if (baskets) rs.baskets = baskets.map((q): Vec2 => [q[0], q[1]]);
+        if (trees) rs.trees = trees.map((q) => rangeTree([q[0], q[1]], Math.random));
         sendRange();
-        if (putt && at.length) {
+        if (putt && rs.baskets.length) {
           // The putt step: the putter, a flat backhand, a normal shot, aimed at the basket.
           disc = PUTTER_DISC; hyzer = 0; forehand = false; shot = 'standard';
-          setAimTarget(at[0]);
+          setAimTarget(rs.baskets[0]);
           if (isFP()) scene.setEye(player().ball, yaw, pitch);
         }
+      }
+      if (tutorialDraft) {
+        const d = tutorialDraft;
+        tutorialDraft = null;
+        const done = (id: string | null) => { $('draft').hidden = true; d.picked(id); };
+        showDraft({
+          name: opts.names[0], color: COLORS[0], starter: false, tier: null, cards: d.cards, rerolls: 0, owned: owned[0],
+          pick: (i) => done(d.cards[i]), reroll: () => {}, skip: () => done(null),
+        });
       }
       const b = player().ball;
       tutorial.aim({ angle: Math.atan2(aimTarget[1] - b[1], aimTarget[0] - b[0]), dist: dist(b, aimTarget), disc: disc.id, firstPerson: isFP() });

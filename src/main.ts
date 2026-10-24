@@ -25,7 +25,7 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'prater' | 'fantasy' | 'rainbow' | 'pirate' | 'graveyard' | 'range' | 'tutorial' | 'putting';
+type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'prater' | 'fantasy' | 'rainbow' | 'pirate' | 'graveyard' | 'range' | 'tutorial' | 'crazy-tutorial' | 'putting';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
 type Group = 'real' | 'arcade' | 'training';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
@@ -110,6 +110,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2d6a3e"/><rect x="10" y="12" width="44" height="40" rx="6" fill="#16302a"/>${[0, 1, 2].map((k) => `<rect x="17" y="${20 + k * 10}" width="6" height="6" rx="1.5" fill="${k < 2 ? '#b8f25c' : 'none'}" stroke="#b8f25c" stroke-width="1.5"/><rect x="27" y="${22 + k * 10}" width="${20 - k * 4}" height="2.5" rx="1" fill="#e9f1e4" opacity=".8"/>`).join('')}</svg>`,
   },
   {
+    id: 'crazy-tutorial', group: 'training', name: 'Crazy Mode Tutorial', meta: 'Drafts, then augments to try one at a time', holes: 9,
+    blurb: 'Learn Crazy mode on the range: draft an augment from real cards, then try what augments do one at a time: ghost lines, Perfect Form, Phase Disc through a wall of trees, Clone Disc, Black Hole chains. Hexes, your-course augments and mulligans are explained. Just you.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#3a2a5c"/>${[['#9aa7b4', -14, 8], ['#9b6bff', 0, 4], ['#f2c230', 14, 8]].map(([c, dx, dy]) => `<rect x="${24 + Number(dx)}" y="${14 + Number(dy)}" width="16" height="24" rx="3" fill="#16302a" stroke="${c}" stroke-width="2" transform="rotate(${Number(dx) * 0.9} ${32 + Number(dx)} ${40})"/>`).join('')}<path d="M32 44 l3 6 l6 1 l-4.5 4 l1 6 l-5.5 -3 l-5.5 3 l1 -6 l-4.5 -4 l6 -1z" fill="#f2c230"/></svg>`,
+  },
+  {
     id: 'putting', group: 'training', name: 'Putting', meta: 'A ladder of five stations, 30 to 70 ft · alone or with friends', holes: 5,
     blurb: 'A putting ladder on the range: three putts at each of five stations, from 30 ft and 10 ft farther each time to 70 ft, worth 1 to 5 points a make. A perfect round is 45. Take turns putt by putt with friends, here or in a room.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#5f8f46"/>${[0, 1, 2, 3, 4].map((k) => `<circle cx="32" cy="${54 - k * 9}" r="${2 + k * 0.4}" fill="none" stroke="#e9f1e4" stroke-width="1.2" opacity="${0.4 + k * 0.12}"/>`).join('')}<path d="M24 12 h16 M26 12 l3 10 M32 12 v10 M38 12 l-3 10" stroke="#cfd8df" stroke-width="1.6" fill="none"/><path d="M24 22 h16 l-2 4 h-12 z" fill="#f2c230"/><circle cx="32" cy="56" r="3" fill="#ff7a45"/></svg>`,
@@ -134,7 +139,7 @@ function renderCourses(): void {
     <button class="course-card ${c.id === course ? 'on' : ''}" data-id="${c.id}" title="${c.meta}">
       <span class="art">${c.art}</span>
       <span class="text"><div class="name">${c.name}</div><div class="meta">${c.meta}</div></span>
-      <span class="holes">${c.id === 'range' ? '∞' : c.holes}<small>${c.id === 'range' ? 'THROWS' : c.id === 'tutorial' ? 'STEPS' : c.id === 'putting' ? 'STATIONS' : 'HOLES'}</small></span>
+      <span class="holes">${c.id === 'range' ? '∞' : c.holes}<small>${c.id === 'range' ? 'THROWS' : c.id === 'tutorial' || c.id === 'crazy-tutorial' ? 'STEPS' : c.id === 'putting' ? 'STATIONS' : 'HOLES'}</small></span>
     </button>`).join('')}`).join('');
   $('course-cards').querySelectorAll<HTMLButtonElement>('.course-card').forEach((b) => b.addEventListener('click', () => {
     course = b.dataset.id as CourseId;
@@ -145,7 +150,7 @@ function renderCourses(): void {
   }));
   $('setup-hole').textContent = COURSES.find((c) => c.id === course)!.blurb;
   // The range has no holes to pick and nothing to draft or bag.
-  document.querySelector<HTMLElement>('.panel-card.round')!.hidden = course === 'range' || course === 'tutorial' || course === 'putting';
+  document.querySelector<HTMLElement>('.panel-card.round')!.hidden = course === 'range' || course === 'tutorial' || course === 'crazy-tutorial' || course === 'putting';
   renderCourseInfo();
 }
 
@@ -276,7 +281,7 @@ let teamsOn = !!last.teamsOn;
 const localTeams: number[] = [...(last.teamPicks ?? [])];
 /** Online (host): each player's team, by client id, so they keep it as seats shift. */
 const roomTeams = new Map<string, number>();
-const trainingCourse = () => course === 'range' || course === 'tutorial' || course === 'putting';
+const trainingCourse = () => course === 'range' || course === 'tutorial' || course === 'crazy-tutorial' || course === 'putting';
 /** Hot seat: the rows' teams, n of them. */
 const localPlan = (n: number) => Array.from({ length: n }, (_, p) => localTeams[p] ?? defaultTeams(n)[p]);
 /** Online (host): the seats' teams; anyone new joins the smallest team. */
@@ -483,10 +488,10 @@ function pushLobby(): void {
   const seated = order.slice(0, MAX_PLAYERS);
   const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
   const colors = playerColors(seated.map((m) => m.color));
-  const training = course === 'range' || course === 'tutorial' || course === 'putting';
-  // The tutorial is played alone: the room sees the driving range.
+  const training = trainingCourse();
+  // The tutorials are played alone: the room sees the driving range.
   const teams = teamsToPlay(roomPlan(seated.map((m) => m.client)));
-  room.setLobby({ course: course === 'tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training && !teams, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
+  room.setLobby({ course: course === 'tutorial' || course === 'crazy-tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training && !teams, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -713,8 +718,8 @@ window.addEventListener('hashchange', () => {
 async function launch(l: Lobby): Promise<void> {
   if (launched || !room) return;
   launched = true;
-  // The tutorial is never a room's course (its lobby shows the range), but don't trust the wire.
-  const id = (COURSES.some((c) => c.id === l.course) && l.course !== 'tutorial' ? l.course : 'simple') as Exclude<CourseId, 'tutorial'>;
+  // The tutorials are never a room's course (its lobby shows the range), but don't trust the wire.
+  const id = (COURSES.some((c) => c.id === l.course) && l.course !== 'tutorial' && l.course !== 'crazy-tutorial' ? l.course : 'simple') as Exclude<CourseId, 'tutorial' | 'crazy-tutorial'>;
   $('setup').hidden = true;
   showGameButtons();
   $('pause-sub').textContent = `${COURSES.find((c) => c.id === id)!.name}${l.crazy ? ' · Crazy mode' : ''} · Room ${room.code}`;
@@ -730,15 +735,15 @@ async function launch(l: Lobby): Promise<void> {
 // ---------- start ----------
 $('start').addEventListener('click', async () => {
   sfx('confirm');
-  if (course === 'tutorial') {
+  if (course === 'tutorial' || course === 'crazy-tutorial') {
     // Alone, on this browser (in a room too): the first player's name.
     const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
     save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams });
     $('setup').hidden = true;
     showGameButtons();
-    $('pause-sub').textContent = 'Tutorial';
+    $('pause-sub').textContent = course === 'tutorial' ? 'Tutorial' : 'Crazy Mode Tutorial';
     const { startDisc } = await import('./modes/disc');
-    await startDisc({ names: [name], colors: rowColors().slice(0, 1), course: 'range', first: 0, count: 1, tutorial: true });
+    await startDisc({ names: [name], colors: rowColors().slice(0, 1), course: 'range', first: 0, count: 1, tutorial: true, crazyTutorial: course === 'crazy-tutorial' });
     return;
   }
   if (room) {
