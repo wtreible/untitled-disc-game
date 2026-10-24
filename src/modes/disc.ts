@@ -14,7 +14,7 @@ import { playerColors } from '../game/game';
 import { DiscRound, type RoundEvent, type WireResult } from './discRound';
 import { renderCard, renderSummary, type CardView } from './scorecard';
 import { showBagPicker, showDraft } from './picks';
-import { RoundSync, type NetPlay } from './discSync';
+import { LiveGate, RoundSync, type NetPlay } from './discSync';
 import { headingAt, newChase, stepChase, type Chase } from './chaseCam';
 import { keyAction } from './discKeys';
 import { SurfaceGrid } from '../game/surfaces';
@@ -42,7 +42,7 @@ import { FT, rangeConditions, rangeCourse, rangeTree, rangeWind } from '../cours
 import { rangeMarkers } from '../render/rangeMarkers';
 import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } from '../ui/rangePanel';
 import { mountTutorial, type Tutorial, type TutorialThrow } from './tutorial';
-import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
+import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, meterAt, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
 
 /** idle: between steps; watching: another player's turn (online). */
 type Phase = 'aim' | 'charging' | 'flying' | 'replay' | 'between' | 'placing' | 'watching' | 'idle';
@@ -79,8 +79,8 @@ interface LiveAim {
   forehand: boolean;
   shot?: Shot;
   fp: boolean;
-  /** Meter fill while charging, else 0. */
-  power: number;
+  /** Charging: ms since the charge began, as sent. Watchers run the meter from it (meterAt). */
+  charge?: number;
 }
 
 
@@ -372,35 +372,55 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   });
 
   // ---------- live aim (online): what the thrower is doing, before they throw ----------
-  let lastLive = '';
-  let lastLiveAt = 0;
-  /** Ours, while aiming or charging: on change, at most ~10 per second. */
+  /** At most 5 a second, on change. */
+  const liveGate = new LiveGate(200);
+  /**
+   * Ours, while aiming or charging: on change, at most 5 a second. The meter isn't streamed: the
+   * start of a charge is sent once and watchers run it themselves.
+   */
   function sendLiveAim(now: number): void {
     if (!net || (phase !== 'aim' && phase !== 'charging') || !mine(game().current)) return;
     const a: LiveAim = {
       player: game().current, yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), target: [+aimTarget[0].toFixed(2), +aimTarget[1].toFixed(2)],
-      disc: disc.id, hyzer, forehand, shot, fp: isFP(), power: phase === 'charging' ? +power.toFixed(2) : 0,
+      disc: disc.id, hyzer, forehand, shot, fp: isFP(),
     };
-    const key = JSON.stringify(a);
-    if (key === lastLive || now - lastLiveAt < 100) return;
-    lastLive = key;
-    lastLiveAt = now;
+    if (!liveGate.pass(JSON.stringify(a) + phase, now)) return;
+    if (phase === 'charging') a.charge = Math.round(now - chargeStart);
     net.room.sendLive(a);
   }
 
+  /** Theirs as shown: eased toward each update, so 5 a second still moves smoothly. */
+  let shownAim: { yaw: number; pitch: number; target: Vec2; at: number } | null = null;
+  /** When their charge began, on our clock. */
+  let liveChargeAt: number | null = null;
+  function liveReceived(a: LiveAim): void {
+    liveAim = a;
+    liveChargeAt = a.charge !== undefined ? performance.now() - a.charge : null;
+  }
+
   /** Theirs: their aim line and target, their disc and release angle, their meter, their view. */
-  function showLiveAim(): void {
+  function showLiveAim(now: number): void {
     const a = liveAim;
-    if (!a) return;
+    if (!a) { shownAim = null; return; }
+    const turn = (x: number) => Math.atan2(Math.sin(x), Math.cos(x));
+    if (!shownAim || Math.abs(turn(a.yaw - shownAim.yaw)) > 1.5) shownAim = { yaw: a.yaw, pitch: a.pitch, target: [...a.target], at: now };
+    else {
+      const k = 1 - Math.exp(-Math.min(0.1, (now - shownAim.at) / 1000) / 0.09);
+      shownAim.yaw += turn(a.yaw - shownAim.yaw) * k;
+      shownAim.pitch += (a.pitch - shownAim.pitch) * k;
+      shownAim.target = [shownAim.target[0] + (a.target[0] - shownAim.target[0]) * k, shownAim.target[1] + (a.target[1] - shownAim.target[1]) * k];
+      shownAim.at = now;
+    }
     const p = player();
-    scene.setAim(p.ball, a.target, p.color);
-    scene.setTarget3d(isFP() ? p.ball : null, a.target, p.color);
-    if (isFP()) scene.setEye(p.ball, a.yaw, a.pitch);
+    scene.setAim(p.ball, shownAim.target, p.color);
+    scene.setTarget3d(isFP() ? p.ball : null, shownAim.target, p.color);
+    if (isFP()) scene.setEye(p.ball, shownAim.yaw, shownAim.pitch);
     const d = DISCS.find((x) => x.id === a.disc);
     if (d) picker.update(d, a.forehand);
     $('release').textContent = releaseText(a.hyzer, a.forehand, a.shot ?? 'standard');
     $('shot').textContent = SHOT_LABELS[a.shot ?? 'standard'];
-    $('meter-fill').style.width = `${a.power * 100}%`;
+    const fill = liveChargeAt === null ? 0 : meterAt(now - liveChargeAt, modsFor(a.player).meterSpeed);
+    $('meter-fill').style.width = `${fill * 100}%`;
   }
 
   // ---------- away players (online) ----------
@@ -601,8 +621,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** The current player's turn: aim and throw if they're ours, else watch for their throw. */
   function startTurn(): void {
     phase = mine(game().current) ? 'aim' : 'watching';
-    liveAim = null;
-    lastLive = '';
+    liveAim = null; shownAim = null; liveChargeAt = null;
+    liveGate.reset();
     hyzer = 0; // every throw starts flat and normal (forehand / backhand carries through the hole)
     shot = 'standard';
     $('hud').hidden = false;
@@ -846,7 +866,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (following(flight)) flight.speed = REPLAY_SPEED; // ridden along at replay pace
     follow = newChase(e.result.samples);
     scene.lockTrees(e.result.samples.map((q): Vec2 => [q[0], q[1]])); // no tree LOD changes while following it
-    liveAim = null;
+    liveAim = null; shownAim = null; liveChargeAt = null;
     phase = 'flying';
     scene.setPreview(null, '#fff');
     updateHud();
@@ -1574,8 +1594,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       tutorial.aim({ angle: Math.atan2(aimTarget[1] - b[1], aimTarget[0] - b[0]), dist: dist(b, aimTarget), disc: disc.id, firstPerson: isFP() });
     }
     if (phase === 'charging') {
-      const t = (((now - chargeStart) / 1000) * modsFor(game().current).meterSpeed) % 2;
-      power = t < 1 ? t : 2 - t;
+      power = meterAt(now - chargeStart, modsFor(game().current).meterSpeed);
       $('meter-fill').style.width = `${power * 100}%`;
     }
     const g = game();
@@ -1586,7 +1605,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     sendLiveAim(now);
     // Not during the flyover: the thrower's live aim would pin the camera at the tee.
-    if (phase === 'watching' && !intro) showLiveAim();
+    if (phase === 'watching' && !intro) showLiveAim(now);
     if (flight && replay) {
       const s = flight.result.samples;
       const t = replay.t, cam = replay.cam;
@@ -1690,7 +1709,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
           return;
         }
         const a = s as LiveAim | null;
-        if (a && Array.isArray(a.target) && a.player === game().current && !mine(a.player) && phase === 'watching') liveAim = a;
+        if (a && Array.isArray(a.target) && a.player === game().current && !mine(a.player) && phase === 'watching') liveReceived(a);
       },
       ended: () => backToLobby(),
       host: (h) => hostChanged(h === net.room.id),

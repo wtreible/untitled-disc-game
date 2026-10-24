@@ -163,3 +163,12 @@ export function drawWind(): Vec2 {
   const a = Math.random() * Math.PI * 2;
   return [Math.cos(a) * speed, Math.sin(a) * speed];
 }
+
+/**
+ * The meter's fill `ms` into a charge: up to full, back down, and round again, at `speed` sweeps a
+ * second. The thrower's and every watcher's meter run from this, so only the start is sent.
+ */
+export function meterAt(ms: number, speed: number): number {
+  const t = ((ms / 1000) * speed) % 2;
+  return t < 1 ? t : 2 - t;
+}

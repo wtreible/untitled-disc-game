@@ -2,6 +2,7 @@
 // The room orders game events; this client sends ours with the log position they claim and hands
 // everyone else's to the game, in order.
 import type { RoundEvent } from '../modes/discRound';
+import { packEvent, unpackEvent } from './wire';
 
 export interface Seat {
   name: string;
@@ -161,6 +162,7 @@ export class RoomClient {
       switch (m.type) {
         case 'welcome': {
           const w = m as unknown as Welcome;
+          w.log = w.log.map((x) => ({ ...x, e: unpackEvent(x.e) }));
           this.protocol = w.protocol ?? 1;
           this.game = w.started ? w.game ?? '' : '';
           this.have = w.count ?? w.log.length;
@@ -173,7 +175,7 @@ export class RoomClient {
         case 'ended': this.game = ''; this.have = 0; h.ended?.(m.lobby as Lobby | null); break;
         case 'host': h.host?.(m.host as string); break;
         case 'members': h.members?.(m.members as Member[]); break;
-        case 'event': this.saw(m.seq as number); h.event?.(m.seq as number, m.from as string, m.e as RoundEvent); break;
+        case 'event': this.saw(m.seq as number); h.event?.(m.seq as number, m.from as string, unpackEvent(m.e)); break;
         case 'ack': this.saw(m.seq as number); break;
         case 'reject': h.reject?.(m.expected as number); break;
         case 'live': h.live?.(m.from as string, m.s); break;
@@ -250,6 +252,6 @@ export class RoomClient {
   end(): void { this.send({ type: 'end' }); }
   /** Passing state for the others (dropped if not connected; the next update replaces it). */
   sendLive(s: unknown): void { this.send({ type: 'live', s }); }
-  /** Our event at log position seq (the number of events before it). */
-  sendEvent(seq: number, e: RoundEvent): void { this.send({ type: 'event', seq, e }); }
+  /** Our event at log position seq (the number of events before it). Throws go packed (src/net/wire.ts). */
+  sendEvent(seq: number, e: RoundEvent): void { this.send({ type: 'event', seq, e: packEvent(e) }); }
 }

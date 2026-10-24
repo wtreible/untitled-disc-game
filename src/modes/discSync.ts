@@ -98,3 +98,26 @@ export class RoundSync {
     this.pump();
   }
 }
+
+/**
+ * When passing state (live aim) goes out: only when it changed, and at most once per `ms`. A change
+ * held back by the limit goes on a later frame, once the time is up.
+ */
+export class LiveGate {
+  private last = '';
+  private at = -Infinity;
+  constructor(private readonly ms: number) {}
+
+  /** Should state `key` go now? */
+  pass(key: string, now: number): boolean {
+    if (key === this.last || now - this.at < this.ms) return false;
+    this.last = key;
+    this.at = now;
+    return true;
+  }
+
+  /** Forget what was sent (a new turn sends its first state straight away). */
+  reset(): void {
+    this.last = '';
+  }
+}
