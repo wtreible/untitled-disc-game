@@ -74,8 +74,8 @@ export interface DiscOptions {
   tutorial?: boolean;
   /** The putting ladder (src/modes/putting.ts): the range with one basket, moved back station by station. */
   putting?: boolean;
-  /** Best shot: teams of this many, in seat order (src/modes/discRound.ts). */
-  teamSize?: number;
+  /** Best shot: each player's team (src/game/teams.ts). */
+  teams?: number[];
 }
 
 /** The thrower's aim, streamed to the others while they line up a throw (not part of the log). */
@@ -109,7 +109,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const rogue = !!opts.rogue && !range;
   /** Each player's color, as picked on the menu (or the defaults). */
   const COLORS = playerColors(opts.names.map((_, i) => opts.colors?.[i]));
-  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range, colors: COLORS, teamSize: opts.teamSize }, blocked);
+  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range, colors: COLORS, teams: opts.teams }, blocked);
   /** Best shot: a team's name ("Ann & Bo"), or the player's own. */
   const teamName = (p: number) => (st.teams ? st.teams[st.teamOf(p)].map((q) => opts.names[q]).join(' & ') : opts.names[p]);
   /** The rows of the leaderboard and card: one per team, or per player. Each row's first member stands for it. */

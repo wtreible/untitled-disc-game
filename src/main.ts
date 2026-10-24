@@ -5,6 +5,7 @@ import { COLOR_CHOICES, PLAYER_COLORS, playerColors } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { isKey, keyFor, type KeyAction } from './keys';
 import { reloadPage } from './ui/leaveGuard';
+import { defaultTeams, nextTeam, teamGroups, teamsLabel } from './game/teams';
 import { mountNetStatus } from './ui/netStatus';
 import { IMAGERY, data } from './assets';
 import { fmtLen } from './units';
@@ -120,7 +121,7 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
   },
 ];
 
-const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teams?: number }>('untitled-disc-game:menu', {});
+const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teamsOn?: boolean; teamPicks?: number[] }>('untitled-disc-game:menu', {});
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
 let players = Math.min(MAX_PLAYERS, Math.max(1, last.players ?? 2));
 const savedNames = load<string[]>('untitled-disc-game:names', []);
@@ -204,10 +205,15 @@ const colorPop = document.createElement('div');
 colorPop.className = 'color-pop';
 colorPop.hidden = true;
 document.body.appendChild(colorPop);
-/** The palette under row i's swatch. Hot seat: colors other players have are taken. */
+/** Colors other people in the room have: their seats' (as the host's lobby gave them), else their picks. */
+function roomColorsTaken(): string[] {
+  const seat = (c: string) => lobby?.seats.find((q) => q.client === c)?.color;
+  return members.filter((m) => m.client !== me).map((m) => seat(m.client) ?? m.color).filter((c): c is string => !!c);
+}
+/** The palette under row i's swatch. Colors other players have are taken (hot seat: the other rows; online: the room's). */
 function openColors(i: number, anchor: HTMLElement): void {
   const cols = rowColors();
-  const taken = room ? [] : cols.filter((_, k) => k !== i && k < players);
+  const taken = room ? roomColorsTaken() : cols.filter((_, k) => k !== i && k < players);
   colorPop.innerHTML = COLOR_CHOICES.map((c) => `<button data-c="${c}" style="background:${c}" class="${c === cols[i] ? 'on' : ''}" ${taken.includes(c) ? 'disabled title="Taken"' : ''}></button>`).join('');
   colorPop.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
     colorPicks[i] = b.dataset.c!;
@@ -225,6 +231,15 @@ function openColors(i: number, anchor: HTMLElement): void {
 document.addEventListener('pointerdown', (e) => {
   if (!colorPop.hidden && !colorPop.contains(e.target as Node) && !(e.target as HTMLElement).classList.contains('swatch')) colorPop.hidden = true;
 });
+
+// ---------- online room state (the room itself is further down) ----------
+// Declared here because the menu (players, teams) reads it from its first render.
+let room: RoomClient | null = null;
+let me = '';
+let host = '';
+let members: Member[] = [];
+let lobby: Lobby | null = null;
+let launched = false;
 
 // ---------- players ----------
 function renderPlayers(): void {
@@ -252,27 +267,66 @@ function renderPlayers(): void {
 }
 
 // ---------- teams: best shot ----------
-// Teams of 2 or 3 in seat order (the rows above), when the players split into two or more whole
-// teams: 2 v 2, 2 v 2 v 2, 3 v 3. Not with Crazy mode, or on the training courses.
-let teamSize = last.teams ?? 0;
-const teamSizes = (n: number) => [2, 3].filter((k) => n % k === 0 && n / k >= 2);
+// Teams on: every player has a team (src/game/teams.ts), any split: 1 v 2, 1 v 1 v 2, 2 v 3…
+// Click a player's team chip to move them to the next team. Hot seat: the chips are on the rows
+// above; online, on the room's member list (the host's to change). Not with Crazy mode, or on the
+// training courses.
+let teamsOn = !!last.teamsOn;
+/** Hot seat: each row's team (missing rows take the default split). */
+const localTeams: number[] = [...(last.teamPicks ?? [])];
+/** Online (host): each player's team, by client id, so they keep it as seats shift. */
+const roomTeams = new Map<string, number>();
 const trainingCourse = () => course === 'range' || course === 'tutorial' || course === 'putting';
-/** The team size a game with n players would use (0: everyone alone). */
-const teamsFor = (n: number) => (teamSizes(n).includes(teamSize) && !trainingCourse() ? teamSize : 0);
+/** Hot seat: the rows' teams, n of them. */
+const localPlan = (n: number) => Array.from({ length: n }, (_, p) => localTeams[p] ?? defaultTeams(n)[p]);
+/** Online (host): the seats' teams; anyone new joins the smallest team. */
+function roomPlan(clients: string[]): number[] {
+  const n = clients.length;
+  return clients.map((c, i) => {
+    let t = roomTeams.get(c);
+    if (t === undefined || t >= Math.max(2, n - 1)) {
+      const sizes = new Map<number, number>();
+      for (const k of clients.slice(0, i)) sizes.set(roomTeams.get(k) ?? 0, (sizes.get(roomTeams.get(k) ?? 0) ?? 0) + 1);
+      t = [0, 1].sort((a, b) => (sizes.get(a) ?? 0) - (sizes.get(b) ?? 0))[0];
+      roomTeams.set(c, t);
+    }
+    return t;
+  });
+}
+/** The teams a game would use (undefined: everyone alone, or not two teams yet). */
+const teamsToPlay = (plan: number[]) => (teamsOn && !trainingCourse() && teamGroups(plan, plan.length) ? plan : undefined);
+const TEAM_COLORS = ['#ffd23f', '#3fc1ff', '#ff6b9a', '#7ee081', '#b48cff'];
+const teamChip = (t: number, click: boolean) => `<button class="team-chip" ${click ? '' : 'disabled'} style="--tc:${TEAM_COLORS[t % TEAM_COLORS.length]}" title="${click ? 'Click to move to the next team' : `Team ${t + 1}`}">T${t + 1}</button>`;
+
+/** The Teams row (Solo or Teams, and the split), and hot seat's team chips. n: players. */
 function renderTeams(n: number): void {
-  const sizes = teamSizes(n);
-  $('teams-row').hidden = !sizes.length;
-  const cur = teamsFor(n);
-  const label = (k: number) => Array.from({ length: n / k }, () => k).join(' v ');
-  $('teams-seg').innerHTML = [[0, 'Solo'] as [number, string], ...sizes.map((k): [number, string] => [k, label(k)])]
-    .map(([v, l]) => `<button data-v="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('');
+  $('teams-row').hidden = n < 2 || trainingCourse();
+  // Online: the host's own plan (the room's copy comes back a moment later), else the room's.
+  const plan = room ? (amHost() ? roomPlan((lobby?.seats ?? []).map((q) => q.client)) : lobby?.teams ?? []) : localPlan(n);
+  const groups = teamGroups(plan, n);
+  $('teams-seg').innerHTML = `<button data-v="0" class="${teamsOn ? '' : 'on'}">Solo</button><button data-v="1" class="${teamsOn ? 'on' : ''}">Teams</button>`;
+  $('teams-note').textContent = !teamsOn ? '' : groups ? teamsLabel(groups) : 'One team: everyone plays alone';
   $('teams-seg').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
-    teamSize = parseInt(b.dataset.v!, 10);
-    if (teamSize) { crazy.checked = false; syncCrazy(); } // best shot is played on the real course
-    renderTeams(n);
+    teamsOn = b.dataset.v === '1';
+    if (teamsOn) { crazy.checked = false; syncCrazy(); } // best shot is played on the real course
+    save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamsOn });
+    renderPlayers();
     pushLobby();
+    renderRoom();
   }));
-  [...$('player-names').children].forEach((r, i) => { (r as HTMLElement).dataset.team = cur ? `Team ${Math.floor(i / cur) + 1}` : ''; });
+  if (room) return;
+  // Hot seat: a chip on each row.
+  [...$('player-names').children].forEach((r, i) => {
+    r.querySelector('.team-chip')?.remove();
+    if (!teamsOn) return;
+    r.insertAdjacentHTML('beforeend', teamChip(plan[i], true));
+    r.querySelector<HTMLButtonElement>('.team-chip')!.addEventListener('click', () => {
+      for (let k = 0; k < n; k++) localTeams[k] = plan[k];
+      localTeams[i] = nextTeam(plan[i], n);
+      save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamPicks: localTeams });
+      renderTeams(n);
+    });
+  });
 }
 
 // ---------- crazy mode ----------
@@ -324,7 +378,7 @@ $('aug-close').addEventListener('click', closeAugmentBrowser);
 $('aug-browser').addEventListener('click', (e) => { if (e.target === $('aug-browser')) closeAugmentBrowser(); });
 renderRules();
 crazy.addEventListener('change', () => {
-  if (crazy.checked && teamSize) { teamSize = 0; renderTeams(room ? lobby?.seats.length ?? members.length : players); } // not both
+  if (crazy.checked && teamsOn) { teamsOn = false; renderPlayers(); renderRoom(); } // not both
   syncCrazy(); pushLobby(); renderCourseInfo();
 });
 $('holes').addEventListener('change', () => { pushLobby(); renderCourseInfo(); });
@@ -395,12 +449,6 @@ window.addEventListener('keydown', (e) => {
 // Host a room or join one by code (or link, #room=CODE). The host's course, holes and Crazy mode
 // setting are the room's; everyone connected gets a player (up to MAX_PLAYERS; more can watch).
 // Hosting or joining asks for your name first; it can be changed in the lobby until the start.
-let room: RoomClient | null = null;
-let me = '';
-let host = '';
-let members: Member[] = [];
-let lobby: Lobby | null = null;
-let launched = false;
 /** The room's events so far. Handed to the game, which keeps appending until it takes over. */
 const roomLog: { seq: number; from: string; e: RoundEvent }[] = [];
 const amHost = () => !!room && me === host;
@@ -437,9 +485,8 @@ function pushLobby(): void {
   const colors = playerColors(seated.map((m) => m.color));
   const training = course === 'range' || course === 'tutorial' || course === 'putting';
   // The tutorial is played alone: the room sees the driving range.
-  const teams = teamsFor(seated.length);
+  const teams = teamsToPlay(roomPlan(seated.map((m) => m.client)));
   room.setLobby({ course: course === 'tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training && !teams, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
-  renderTeams(seated.length);
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -463,7 +510,7 @@ function showLobby(l: Lobby): void {
   if (COURSES.some((c) => c.id === l.course)) course = l.course as CourseId;
   crazy.checked = l.crazy;
   bagMode.checked = !!l.bag;
-  teamSize = l.teams ?? 0;
+  teamsOn = !!l.teams;
   renderTeams(l.seats.length);
   renderCourses();
   renderHoles();
@@ -488,11 +535,14 @@ function renderRoom(): void {
   const seats = lobby?.seats ?? members.map((m) => ({ name: m.name, client: m.client }));
   const watching = members.filter((m) => !seats.some((q) => q.client === m.client));
   const ready = (c: string) => !!members.find((m) => m.client === c)?.ready;
+  // Teams: the host's own plan (clickable chips), or the room's for everyone else.
+  const plan = amHost() ? roomPlan(seats.map((q) => q.client)) : lobby?.teams ?? [];
+  const teamCell = (c: string, i: number) => (teamsOn && plan[i] !== undefined ? teamChip(plan[i], amHost()).replace('class="team-chip"', `class="team-chip" data-client="${c}"`) : '');
   $('room-members').innerHTML = [
     ...seats.map((q, i) => `<div class="m"><i style="background:${('color' in q && q.color) || PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${[
-      lobby?.teams ? `Team ${Math.floor(i / lobby.teams) + 1}` : '', q.client === me ? 'you' : '', q.client === host ? 'host' : '',
+      q.client === me ? 'you' : '', q.client === host ? 'host' : '',
       members.some((m) => m.client === q.client) ? '' : 'away, seat kept 1 min',
-    ].filter(Boolean).join(' · ')}</small>${q.client !== host && ready(q.client) ? '<b class="ready">✓ Ready</b>' : ''}</div>`),
+    ].filter(Boolean).join(' · ')}</small>${q.client !== host && ready(q.client) ? '<b class="ready">✓ Ready</b>' : ''}${teamCell(q.client, i)}</div>`),
     ...watching.map((m) => `<div class="m"><i style="background:#555"></i><span>${escapeHtml(m.name)}</span><small>watching</small></div>`),
   ].join('');
   // Ready (rooms from protocol 2): everyone but the host says when they're set; the host sees how
@@ -503,6 +553,17 @@ function renderRoom(): void {
   $('ready-btn').textContent = ready(me) ? '✓ Ready' : 'Ready?';
   const others = seats.filter((q) => q.client !== host && members.some((m) => m.client === q.client));
   const count = canReady && others.length ? ` (${others.filter((q) => ready(q.client)).length}/${others.length} ready)` : '';
+  // Our swatch shows the color the room gave us (a clash goes to whoever was seated first).
+  const myColor = lobby?.seats.find((q) => q.client === me)?.color;
+  const sw = $('player-names').querySelector<HTMLElement>('.swatch');
+  if (sw && myColor) sw.style.background = myColor;
+  if (amHost()) $('room-members').querySelectorAll<HTMLButtonElement>('.team-chip[data-client]').forEach((b) => b.addEventListener('click', () => {
+    const c = b.dataset.client!;
+    roomTeams.set(c, nextTeam(roomTeams.get(c) ?? 0, seats.length));
+    pushLobby();
+    renderRoom();
+  }));
+  renderTeams(seats.length);
   $('room-note').textContent = amHost()
     ? 'Send friends the link (or the code). Pick the course and round here; everyone in the room plays.'
     : 'The host picks the course and starts the game.';
@@ -660,7 +721,7 @@ async function launch(l: Lobby): Promise<void> {
   const r = room;
   const { startDisc } = await import('./modes/disc');
   await startDisc({
-    names: l.seats.map((q) => q.name), colors: l.seats.map((q) => q.color ?? ''), course: id === 'putting' ? 'range' : id, putting: id === 'putting', first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag, teamSize: l.teams,
+    names: l.seats.map((q) => q.name), colors: l.seats.map((q) => q.color ?? ''), course: id === 'putting' ? 'range' : id, putting: id === 'putting', first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag, teams: l.teams,
     net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog, seats: l.seats.map((q) => q.client), present: members.map((m) => m.client) },
     rules, // only the host's are used: they send them as the round's first event
   });
@@ -672,7 +733,7 @@ $('start').addEventListener('click', async () => {
   if (course === 'tutorial') {
     // Alone, on this browser (in a room too): the first player's name.
     const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teams: teamSize });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams });
     $('setup').hidden = true;
     showGameButtons();
     $('pause-sub').textContent = 'Tutorial';
@@ -682,7 +743,7 @@ $('start').addEventListener('click', async () => {
   }
   if (room) {
     if (!amHost()) return;
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teams: teamSize });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams });
     pushLobby();
     room.start();
     return;
@@ -691,7 +752,7 @@ $('start').addEventListener('click', async () => {
   const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
   save('untitled-disc-game:names', typed);
-  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked, teams: teamSize });
+  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams });
   $('setup').hidden = true;
   showGameButtons();
   const n = COURSES.find((c) => c.id === course)!.holes;
@@ -703,6 +764,6 @@ $('start').addEventListener('click', async () => {
     return;
   }
   const training = course === 'range'; // no Crazy mode or bags on the range
-  const teams = teamsFor(names.length);
-  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training && !teams, rules, bag: bagMode.checked && !training, teamSize: teams });
+  const teams = teamsToPlay(localPlan(names.length));
+  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training && !teams, rules, bag: bagMode.checked && !training, teams });
 });

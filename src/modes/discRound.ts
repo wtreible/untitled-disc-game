@@ -12,6 +12,7 @@ import type { ThrowEvent, ThrowResult } from '../disc/flight';
 import { DISCS } from '../disc/discs';
 import { neutralMods, rogueStartMods, type Mods } from '../disc/mods';
 import { Round } from '../game/round';
+import { teamGroups } from '../game/teams';
 import type { Vec3 } from '../game/terrain';
 import { emptyChanges, pinFor, placementQueue, teeFor, type HoleChanges, type PlaceKind } from '../rogue/course';
 import { byId, type Tier } from '../rogue/powerups';
@@ -97,11 +98,11 @@ export interface RoundOptions {
   /** Each player's color (src/game/game.ts playerColors). */
   colors?: string[];
   /**
-   * Best shot: teams of this many, in seat order (players 0–1 are a team, 2–3 the next…). Every
-   * member throws from the team's spot and the team plays the best. Only for real holes (not Crazy
-   * mode or the range), with whole teams and at least two of them; otherwise everyone plays alone.
+   * Best shot: each player's team (src/game/teams.ts), however uneven. Every member throws from the
+   * team's spot and the team plays the best. Only for real holes (not Crazy mode or the range), with
+   * at least two teams; otherwise everyone plays alone.
    */
-  teamSize?: number;
+  teams?: number[];
 }
 
 /** The best throw of a volley: holed, then fewer penalty strokes, then nearest the basket; ties to the first thrown. */
@@ -180,9 +181,7 @@ export class DiscRound {
     this.perfectLeft = opts.names.map(() => 0);
     this.bags = opts.names.map(() => null);
     this.changes = emptyChanges(n);
-    const size = opts.teamSize ?? 0;
-    this.teams = size >= 2 && n % size === 0 && n / size >= 2 && !opts.rogue && !opts.range
-      ? Array.from({ length: n / size }, (_, t) => Array.from({ length: size }, (_, k) => t * size + k)) : null;
+    this.teams = !opts.rogue && !opts.range ? teamGroups(opts.teams, n) : null;
     // Per-player tees/baskets (Forward Tee, Back Tees, Short Pin), decided when the hole is set up.
     this.round.setup = (hi) => {
       const h = holes[hi];

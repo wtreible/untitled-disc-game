@@ -226,14 +226,17 @@ describe.skipIf(!BASE)('room server', () => {
     b.close(); c.close();
   }, 20000);
 
-  it('the lobby keeps a best-shot team size of 2 or 3, and drops anything else', async () => {
+  it('the lobby keeps best-shot teams (one per seat, two or more teams), and drops anything else', async () => {
     const code = room();
     const a = await connect(code, 'client-aaaa', 'Ann');
     await a.until('welcome');
-    a.send({ type: 'lobby', lobby: { ...lobby([{ name: 'Ann', client: 'client-aaaa' }]), teams: 3 } });
-    expect((await a.until('lobby')).lobby.teams).toBe(3);
-    a.send({ type: 'lobby', lobby: { ...lobby([{ name: 'Ann', client: 'client-aaaa' }]), teams: 7 } });
-    expect((await a.until('lobby')).lobby.teams).toBeUndefined();
+    const three = [{ name: 'Ann', client: 'client-aaaa' }, { name: 'Bo', client: 'client-bbbb' }, { name: 'Cy', client: 'client-cccc' }];
+    a.send({ type: 'lobby', lobby: { ...lobby(three), teams: [1, 0, 1] } }); // 1 v 2
+    expect((await a.until('lobby')).lobby.teams).toEqual([1, 0, 1]);
+    for (const bad of [[0, 0, 0], [0, 1], [0, 9, 1], 3]) {
+      a.send({ type: 'lobby', lobby: { ...lobby(three), teams: bad } });
+      expect((await a.until('lobby')).lobby.teams).toBeUndefined();
+    }
     a.close();
   });
 

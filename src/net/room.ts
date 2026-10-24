@@ -18,8 +18,8 @@ export interface Lobby {
   crazy: boolean;
   /** Bag building (older rooms don't have it). */
   bag?: boolean;
-  /** Best shot: teams of this many, in seat order (rooms from 2026-10-24 on; older ones drop it). */
-  teams?: number;
+  /** Best shot: each seat's team (rooms from 2026-10-24 on; older ones drop it). */
+  teams?: number[];
   seats: Seat[];
 }
 

@@ -40,7 +40,7 @@ describe('best shot', () => {
   });
 
   it("2v2: a volley doesn't move anyone until the team has all thrown, then everyone plays the best", () => {
-    const opts: RoundOptions = { names: ['A', 'B', 'C', 'D'], first: 0, count: 2, rogue: false, teamSize: 2 };
+    const opts: RoundOptions = { names: ['A', 'B', 'C', 'D'], first: 0, count: 2, rogue: false, teams: [0, 0, 1, 1] };
     const r = new DiscRound(course.holes, trees, opts, blocked);
     expect(r.teams).toEqual([[0, 1], [2, 3]]);
     r.apply({ t: 'hole-start', wind: [0.5, -0.5] });
@@ -72,12 +72,29 @@ describe('best shot', () => {
     expect(again.game.players.map((p) => [p.ball, p.strokes])).toEqual(r.game.players.map((p) => [p.ball, p.strokes]));
   });
 
-  it("3v3 makes two teams of three; teams that don't fit (or Crazy mode) play alone", () => {
-    const six = ['A', 'B', 'C', 'D', 'E', 'F'];
-    expect(new DiscRound(course.holes, trees, { names: six, first: 0, count: 1, rogue: false, teamSize: 3 }, blocked).teams).toEqual([[0, 1, 2], [3, 4, 5]]);
-    expect(new DiscRound(course.holes, trees, { names: six, first: 0, count: 1, rogue: false, teamSize: 2 }, blocked).teams?.length).toBe(3);
-    expect(new DiscRound(course.holes, trees, { names: six.slice(0, 5), first: 0, count: 1, rogue: false, teamSize: 2 }, blocked).teams).toBeNull();
-    expect(new DiscRound(course.holes, trees, { names: six.slice(0, 4), first: 0, count: 1, rogue: true, teamSize: 2 }, blocked).teams).toBeNull();
-    expect(new DiscRound(course.holes, trees, { names: six.slice(0, 3), first: 0, count: 1, rogue: false, teamSize: 3 }, blocked).teams).toBeNull(); // one team isn't a match
+  it('3v3, uneven teams (1 v 2, 1 v 1 v 2, 2 v 3 not by seat), and no match when it isn\u2019t one', () => {
+    const r = (names: number, teams: number[] | undefined, rogue = false) => new DiscRound(course.holes, trees, { names: ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, names), first: 0, count: 1, rogue, teams }, blocked).teams;
+    expect(r(6, [0, 0, 0, 1, 1, 1])).toEqual([[0, 1, 2], [3, 4, 5]]);
+    expect(r(3, [0, 1, 1])).toEqual([[0], [1, 2]]);
+    expect(r(4, [0, 1, 2, 2])).toEqual([[0], [1], [2, 3]]);
+    expect(r(5, [0, 1, 0, 1, 1])).toEqual([[0, 2], [1, 3, 4]]);
+    expect(r(4, [0, 0, 0, 0])).toBeNull(); // one team
+    expect(r(4, [0, 0, 1, 1], true)).toBeNull(); // Crazy mode
+  });
+
+  it('1 v 2: the lone player plays every throw; the pair plays its best; non-adjacent teammates take turns', () => {
+    const opts: RoundOptions = { names: ['A', 'B', 'C'], first: 0, count: 1, rogue: false, teams: [1, 0, 1] }; // B alone; A and C a pair
+    const r = new DiscRound(course.holes, trees, opts, blocked);
+    r.apply({ t: 'hole-start', wind: [0, 0] });
+    expect(r.game.current).toBe(0); // A (tee order)
+    throwTurn(r, 3);
+    expect(r.game.current).toBe(2); // A's teammate C throws next, from the tee
+    throwTurn(r, 4);
+    expect(r.game.players[0].strokes).toBe(1);
+    expect(r.game.players[2].ball).toEqual(r.game.players[0].ball);
+    expect(r.game.current).toBe(1); // B, alone and away, is up
+    throwTurn(r, 5);
+    expect(r.game.players[1].strokes).toBe(1); // B's throw counts at once
+    expect(r.volley.size).toBe(0);
   });
 });

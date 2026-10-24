@@ -47,8 +47,8 @@ export interface Lobby {
   count: number;
   crazy: boolean;
   bag?: boolean;
-  /** Best shot: teams of this many (2 or 3), in seat order. */
-  teams?: number;
+  /** Best shot: each seat's team (0–5), at least two teams. */
+  teams?: number[];
   seats: Seat[];
 }
 
@@ -354,6 +354,7 @@ function cleanLobby(l: unknown): Lobby | null {
     if (!s || typeof s.name !== 'string' || typeof s.client !== 'string' || !ID.test(s.client)) return null;
     seats.push({ name: s.name.trim().slice(0, 16) || 'Player', client: s.client, ...(typeof s.color === 'string' && COLOR.test(s.color) ? { color: s.color } : {}) });
   }
-  const teams = o.teams === 2 || o.teams === 3 ? o.teams : undefined;
+  // One team per seat, 0–5, and at least two different ones; anything else is dropped.
+  const teams = Array.isArray(o.teams) && o.teams.length === seats.length && o.teams.every((t) => Number.isInteger(t) && t >= 0 && t < MAX_SEATS) && new Set(o.teams).size >= 2 ? [...o.teams] : undefined;
   return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, ...(teams ? { teams } : {}), seats };
 }
