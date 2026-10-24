@@ -5,7 +5,7 @@ import { COLOR_CHOICES, PLAYER_COLORS, playerColors } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { isKey, keyFor, type KeyAction } from './keys';
 import { reloadPage } from './ui/leaveGuard';
-import { IMAGERY, asset } from './assets';
+import { IMAGERY, data } from './assets';
 import { fmtLen } from './units';
 import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
@@ -143,7 +143,7 @@ function renderCourses(): void {
 
 // ---------- course info card: name, description, par and stats for the holes being played ----------
 let summary: Record<string, { pars: number[]; lengths: number[]; refs?: string[] }> | null = null;
-fetch(asset('courses/summary.json')).then((r) => r.json()).then((s) => { summary = s; renderHoles(); }).catch(() => { /* stats are optional */ });
+fetch(data('courses/summary.json')).then((r) => r.json()).then((s) => { summary = s; renderHoles(); }).catch(() => { /* stats are optional */ });
 /** A hole's number as the course has it (Skatås' 14b, Blue Lake's 9 after 7), by position. */
 const holeName = (i: number): string => summary?.[course]?.refs?.[i] ?? String(i + 1);
 

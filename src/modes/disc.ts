@@ -24,7 +24,7 @@ import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
 import { mountDiscPicker } from '../ui/discPicker';
-import { IMAGERY, asset } from '../assets';
+import { IMAGERY, data } from '../assets';
 import { VIEW_LABELS } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
 import { convertText, fmtLen, fmtSpeed } from '../units';
@@ -88,7 +88,7 @@ interface LiveAim {
 
 export async function startDisc(opts: DiscOptions): Promise<void> {
   const range = opts.course === 'range';
-  const course: DiscCourseFile = opts.course === 'range' ? rangeCourse() : await (await fetch(asset(DISC_COURSES[opts.course]))).json();
+  const course: DiscCourseFile = opts.course === 'range' ? rangeCourse() : await (await fetch(data(DISC_COURSES[opts.course]))).json();
   const trees = decodeTrees(course.trees);
   const frame = new LocalFrame(course.origin);
   const grid = SurfaceGrid.fromHole({
