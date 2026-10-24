@@ -18,6 +18,7 @@ Real flight numbers (speed, glide, turn, fade) drive a physics flight model: dis
 | **Kincaid Park** | 18 | [Kincaid Park](https://www.openstreetmap.org/way/767928285) (Anchorage, Alaska): long and tight holes through birch and spruce. |
 | **Julkujärvi** | 18 | The PRO course at [Julkujärvi](https://www.openstreetmap.org/way/1562971247) (Ylöjärvi, near Tampere): par 4s and 5s through Finnish pine and birch. |
 | **Blue Lake** | 18 | [Blue Lake Park](https://www.openstreetmap.org/way/142321221) (Portland, Oregon), host of the 2014 PDGA Worlds and the first Portland Open, among oaks and firs. OSM has no hole 8, so ours is made up: a 111 m par 3 across open ground from the 7th basket. |
+| **Greer** | 18 | [Greer Disc Golf Course](https://www.openstreetmap.org/way/1100949276) (Greer, South Carolina, between Greenville and Spartanburg): eighteen short, tight holes through oak and pine woods. OSM draws hole 1 basket to tee (turned round) and leaves hole 3 outside the course area (taken with `--with-hole`). |
 | **Mini Golf Madness** | 9 | Full-size disc golf themed like mini golf: a windmill with spinning blades, a castle gate, giant animals. |
 | **Fantasy Fairways** | 9 | Medieval: a giant knight, a basket inside a castle courtyard, a dragon on the last hole. |
 | **Rainbow Runs** | 9 | A rainbow road floating in space. Off the road is OB. Mystery boxes, rings, asteroids, a gap to jump. |
@@ -90,6 +91,7 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 | `npm run disc-course -- --course 767928285 --out kincaid --trees osm --broadleaf Birch --conifer Spruce --hole-ref 996506301:4 --name "Kincaid Park"` | Rebuild Kincaid Park. `--hole-ref way:ref` numbers a hole line mapped without one |
 | `npm run disc-course -- --course 1562971247 --out julkujarvi --trees osm --broadleaf Birch --conifer Pine,Spruce --name "Julkujärvi PRO"` | Rebuild Julkujärvi |
 | `npm run disc-course -- --course 142321221 --out blue-lake --trees osm --broadleaf Oak,CommonTree --conifer Spruce --name "Blue Lake Park" --add-hole "8:45.555344,-122.439403;45.556125,-122.438512:3"` | Rebuild Blue Lake. `--add-hole REF:lat,lon;lat,lon[:PAR]` adds a hole OSM doesn't have (tee first, basket last) |
+| `npm run disc-course -- --course 1100949276 --out greer --trees osm --broadleaf Oak,CommonTree --conifer Pine --name "Greer Disc Golf Course" --with-hole 1108615556` | Rebuild Greer. `--with-hole way,…` keeps hole lines outside the mapped course area |
 | `npm run import-trees -- --src <pack folder>` | Import the birches, spruces and oaks from Quaternius' [Textured LowPoly Trees](https://opengameart.org/content/lowpoly-textured-trees) (CC0), then `npm run tree-shapes` |
 | `npm run disc-course -- --course relation/14543666 --out prater --trees osm --broadleaf Oak,CommonTree --conifer Pine --name "Wiener Prater"` | Rebuild Wiener Prater |
 | `npm run silly-course` / `fantasy-course` / `rainbow-course` / `pirate-course` / `graveyard-course` / `winter-course` | Rebuild the themed courses |

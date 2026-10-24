@@ -37,6 +37,8 @@ const { values: args } = parseArgs({
      * Repeatable. Its line, tee and basket are added to the OSM data before the build.
      */
     'add-hole': { type: 'string', multiple: true },
+    /** Hole lines (way ids, comma-separated) to keep though they lie outside the course area. */
+    'with-hole': { type: 'string' },
   },
 });
 
@@ -181,6 +183,7 @@ const course = buildDiscCourse(osm, canopy, {
   osmTimestamp: raw.osm3s?.timestamp_osm_base ?? 'unknown',
   trees: osmTrees ? 'osm' : simple ? 'recreation' : 'canopy',
   holeIds: relation?.members?.filter((m) => m.type === 'way').map((m) => `way/${m.ref}`),
+  extraHoleIds: args['with-hole']?.split(',').map((w) => `way/${w.trim()}`),
   holeRefs: args['hole-ref'] ? Object.fromEntries(args['hole-ref'].split(',').map((p) => { const [w, r] = p.split(':'); return [`way/${w.trim()}`, r.trim()]; })) : undefined,
   name: args.name ?? relation?.tags?.name,
   attribution: [

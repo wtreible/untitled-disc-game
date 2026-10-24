@@ -34,6 +34,8 @@ export interface DiscBuildOptions {
   holeIds?: string[];
   /** Hole numbers by way ("way/…" → ref): for a hole line mapped without one, or mapped wrong. */
   holeRefs?: Record<string, string>;
+  /** Hole lines ("way/…") to keep though they lie outside the course area (an area mapped too small). */
+  extraHoleIds?: string[];
   name?: string;
   margin?: number;
 }
@@ -236,7 +238,7 @@ export function compareRefs(a: string, b: string): number {
  * to its PRO). Where two lines still share a number (a second set of short lines at Kincaid), the
  * one with a tee and basket mapped (as points) at its ends wins, then the longer.
  */
-export function selectHoles(feats: Feature<Geometry, Props>[], course: Feature<Geometry, Props> | undefined, opts: Pick<DiscBuildOptions, 'holeIds' | 'holeRefs'>): Feature<Geometry, Props>[] {
+export function selectHoles(feats: Feature<Geometry, Props>[], course: Feature<Geometry, Props> | undefined, opts: Pick<DiscBuildOptions, 'holeIds' | 'holeRefs' | 'extraHoleIds'>): Feature<Geometry, Props>[] {
   const holeSet = opts.holeIds ? new Set(opts.holeIds) : null;
   const area = !holeSet && course ? polygonsOf(course.geometry) : [];
   const refOf = (f: Feature<Geometry, Props>) => opts.holeRefs?.[String(f.id)] ?? f.properties.ref;
@@ -246,7 +248,7 @@ export function selectHoles(feats: Feature<Geometry, Props>[], course: Feature<G
     return pts.filter((p) => area.some((poly) => pointInRings([p[0], p[1]], poly as Vec2[][]))).length >= pts.length / 2;
   };
   const lines = feats.filter((f) => f.properties.disc_golf === 'hole' && refOf(f) && f.geometry.type === 'LineString'
-    && (holeSet ? holeSet.has(String(f.id)) : !area.length || inside(f)));
+    && (holeSet ? holeSet.has(String(f.id)) : !area.length || inside(f) || !!opts.extraHoleIds?.includes(String(f.id))));
   const ends = (kind: string) => feats.filter((f) => f.properties.disc_golf === kind && f.geometry.type === 'Point').map((f) => (f.geometry as { coordinates: Position }).coordinates);
   const tees = ends('tee'), baskets = ends('basket');
   // Lon/lat → meters, well enough to tell "at the line's end" (8 m) from not and longer from shorter.
@@ -295,8 +297,14 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
   const nearest = (p: Vec2, set: Vec2[]) => set.reduce<{ p: Vec2 | null; d: number }>((b, q) => (dist(p, q) < b.d ? { p: q, d: dist(p, q) } : b), { p: null, d: Infinity });
 
   const holes: DiscHole[] = holeFeats.map((f) => {
-    const routing = (f.geometry as { coordinates: Position[] }).coordinates.map(P);
+    let routing = (f.geometry as { coordinates: Position[] }).coordinates.map(P);
     const warnings: string[] = [];
+    // A line drawn from the basket to the tee (a tee at its end, a basket at its start): turn it round.
+    const at = (p: Vec2, set: Vec2[]) => nearest(p, set).d < 8;
+    if (!at(routing[0], tees) && !at(routing[routing.length - 1], baskets) && at(routing[routing.length - 1], tees) && at(routing[0], baskets)) {
+      routing = [...routing].reverse();
+      warnings.push('line drawn basket to tee; reversed');
+    }
     const t = nearest(routing[0], tees);
     const b = nearest(routing[routing.length - 1], baskets);
     const tee = t.d < 8 ? t.p! : routing[0];

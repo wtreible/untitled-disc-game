@@ -10,6 +10,7 @@ Six more real courses from OpenStreetMap, chosen from a survey of every mapped c
 | Julkujärvi PRO, Ylöjärvi | [way 1562971247](https://www.openstreetmap.org/way/1562971247) | 18, OSM pars | 13 woodland outlines | Birch / Pine, Spruce |
 | Blue Lake Park, Portland | [way 142321221](https://www.openstreetmap.org/way/142321221) | 18 (hole 8 made up: none in OSM) | 12 woodland outlines | Oak, CommonTree / Spruce |
 | Wiener Prater, Vienna | [relation 14543666](https://www.openstreetmap.org/relation/14543666) | 18, OSM pars | 9 woodland outlines + mapped trees | Oak, CommonTree / Pine |
+| Greer Disc Golf Course, Greer SC | [way 1100949276](https://www.openstreetmap.org/way/1100949276) | 18 | woodland outlines + mapped trees | Oak, CommonTree / Pine |
 
 Build commands are in the README. Oak Grove now uses the oak models too (`--broadleaf Oak`); its holes and trees are unchanged.
 
@@ -28,6 +29,7 @@ These are `selectHoles` and `compareRefs` in `src/course/disc-build.ts`. Tali, T
 
 ## Known gaps
 
+- **Greer's hole 1 is drawn basket to tee** in OSM: the builder turns a line round when its start is on a basket and its end on a tee (and not the other way). That also fixed Oak Grove's 13th, which played backwards. **Greer's hole 3 lies outside the course area** as mapped, so it's taken by way id (`--with-hole`).
 - **Blue Lake's hole 8 is made up** (OSM has no line, tee or basket for it): `--add-hole` puts a 111 m par 3 from 10 m past the 7th basket across open rough, picked by a search for a line with no water, OB or trees on it that keeps 18 m from every other hole.
 - **Julkujärvi has no tees or baskets mapped**: holes run from line start to line end.
 - **Woods are planted evenly**: woodland outlines become solid forest, so open stretches the satellite photo shows (right of Běchovice's 1st, Blue Lake's open park) play wooded. Skatås, with its mapped trees, is closest to the real thing.

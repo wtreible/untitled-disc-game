@@ -25,7 +25,7 @@ const save = (k: string, v: unknown) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ }
 };
 
-type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'prater' | 'fantasy' | 'rainbow' | 'pirate' | 'graveyard' | 'winter' | 'range' | 'tutorial' | 'crazy-tutorial' | 'putting';
+type CourseId = 'simple' | 'silly' | 'forest' | 'oakgrove' | 'bechovice' | 'skatas' | 'kincaid' | 'julkujarvi' | 'bluelake' | 'prater' | 'greer' | 'fantasy' | 'rainbow' | 'pirate' | 'graveyard' | 'winter' | 'range' | 'tutorial' | 'crazy-tutorial' | 'putting';
 /** Real: actual courses from map data. Arcade: hand-built themed courses. */
 type Group = 'real' | 'arcade' | 'training';
 const GROUPS: { id: Group; label: string; sub: string }[] = [
@@ -83,6 +83,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     id: 'prater', group: 'real', name: 'Wiener Prater', meta: `Vienna, Austria${IMAGERY ? ' · satellite imagery' : ''} · park woods`, holes: 18,
     blurb: 'The disc golf course in Vienna’s Prater, from OpenStreetMap: eighteen holes from 65 to 210 m through the old park’s chestnuts, oaks and poplars, with the course’s own pars.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#5e7c3e"/>${[[10, 12, 8], [30, 8, 6], [52, 18, 8], [8, 40, 7], [56, 46, 8], [26, 56, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#35522a"/>`).join('')}<circle cx="44" cy="38" r="9" fill="none" stroke="#e7e2d0" stroke-width="2"/><path d="M44 29 V47 M35 38 H53" stroke="#e7e2d0" stroke-width="1.4"/><path d="M8 58 C 18 46, 22 30, 30 20" stroke="#cdd39a" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="30" cy="20" r="3.5" fill="#f2c230"/></svg>`,
+  },
+  {
+    id: 'greer', group: 'real', name: 'Greer', meta: `Greer, South Carolina${IMAGERY ? ' · satellite imagery' : ''} · 18 holes`, holes: 18,
+    blurb: 'Greer Disc Golf Course, between Greenville and Spartanburg, from OpenStreetMap: eighteen short, tight holes from 40 to 170 m through oak and pine woods.',
+    art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#5b7a3c"/>${[[10, 10, 7], [28, 16, 6], [50, 8, 7], [12, 34, 6], [54, 32, 7], [22, 54, 7], [46, 54, 6]].map(([x, y, r], k) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${k % 2 ? '#2f5a2c' : '#3e6a2e'}"/>`).join('')}<path d="M14 58 C 24 40, 34 30, 44 16" stroke="#c9b28a" stroke-width="3" fill="none" stroke-dasharray="4 3"/><circle cx="44" cy="16" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
     id: 'fantasy', group: 'arcade', name: 'Fantasy Fairways', meta: 'Knights, a castle keep, one dragon', holes: 9,

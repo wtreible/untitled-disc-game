@@ -23,6 +23,7 @@ export const DISC_COURSES = {
   julkujarvi: 'courses/julkujarvi.json',
   bluelake: 'courses/blue-lake.json',
   prater: 'courses/prater.json',
+  greer: 'courses/greer.json',
   graveyard: 'courses/graveyard.json',
   winter: 'courses/winter.json',
 } as const;
@@ -60,7 +61,7 @@ export function cutByDistance(q: Vec3[], frac: number): Vec3[] {
 }
 export const CHAIN_MID = (BASKET.trayTop + BASKET.chainTop) / 2;
 /** Music per course. */
-export const TRACKS: Record<keyof typeof DISC_COURSES | 'range', Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', pirate: 'minigolf', oakgrove: 'park', bechovice: 'park', skatas: 'park', kincaid: 'park', julkujarvi: 'park', bluelake: 'park', prater: 'park', graveyard: 'fantasy', winter: 'minigolf', range: 'park' };
+export const TRACKS: Record<keyof typeof DISC_COURSES | 'range', Track> = { simple: 'park', forest: 'park', silly: 'minigolf', fantasy: 'fantasy', rainbow: 'space', pirate: 'minigolf', oakgrove: 'park', bechovice: 'park', skatas: 'park', kincaid: 'park', julkujarvi: 'park', bluelake: 'park', prater: 'park', greer: 'park', graveyard: 'fantasy', winter: 'minigolf', range: 'park' };
 /** Landing puff colors by what it landed on. */
 export const PUFF: Record<string, string[]> = {
   fairway: ['#7a9a4a', '#9bb565', '#8a7a55'], rough: ['#6f8f45', '#8a7a55', '#a3b06a'], green: ['#7fb04f', '#a6c96e'],
