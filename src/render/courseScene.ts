@@ -4,6 +4,8 @@
 // Overlays (pixel-sized markers, aim line) only show top-down; 3D trees, baskets and discs show in
 // first person, and trees also show in the top-down class view (the photo already has real trees).
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { asset } from '../assets';
 import type { DiscCourseFile, DiscHole, Tree, TreeMix } from '../course/disc-types';
 import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
@@ -237,7 +239,8 @@ export class CourseScene {
   setWeather(w: Weather): void {
     this.skyColor.set(w.sky);
     this.fog.color.set(w.sky);
-    [this.fog.near, this.fog.far] = w.fog;
+    this.weatherFog = [w.fog[0], w.fog[1]];
+    this.applyFog();
     this.hemi.color.set(w.hemi[0]);
     this.hemi.groundColor.set(w.hemi[1]);
     this.hemi.intensity = w.hemi[2];
@@ -534,20 +537,82 @@ export class CourseScene {
       this.ponds.add(m);
     }
     for (const b of this.baskets) b.scale.set(v.basketScale, v.basketScale, 1);
-    const cur = this.baskets[this.holeIndex];
-    if (cur) cur.position.set(v.pin[0], v.pin[1], 0);
-    this.basketMarker.position.set(v.pin[0], v.pin[1], OVERLAY_Z);
     this.basketMarker.userData.scale = v.basketScale;
     this.teeMarker.position.set(v.tee[0], v.tee[1], OVERLAY_Z);
-    this.beaconAt = v.pin;
-    this.beacon.position.set(v.pin[0], v.pin[1], 1.6 + 8);
     this.magnetRing.visible = v.magnet > 0;
-    this.magnetRing.position.set(v.pin[0], v.pin[1], 0.06);
     this.magnetRing.scale.setScalar(Math.max(0.01, v.magnet));
+    this.moveBasket(v.pin);
   }
+
+  /**
+   * Put the viewer's basket at p, and everything that goes with it (its marker, the beacon, the
+   * magnet ring, and the augment looks on it). Moving Basket calls this every frame.
+   */
+  moveBasket(p: Vec2): void {
+    const cur = this.baskets[this.holeIndex];
+    if (cur) cur.position.set(p[0], p[1], 0);
+    this.basketMarker.position.set(p[0], p[1], OVERLAY_Z);
+    this.beaconAt = p;
+    this.beacon.position.set(p[0], p[1], 1.6 + 8);
+    this.magnetRing.position.set(p[0], p[1], 0.06);
+    this.fxPin.position.set(p[0], p[1], 0);
+  }
+
+  /** Fog of War: see only this far (m); null clears it back to the weather's own fog. */
+  setFogLimit(r: number | null): void {
+    this.fogLimit = r;
+    this.applyFog();
+  }
+  private fogLimit: number | null = null;
+  private weatherFog: [number, number] = [80, 520];
+  private applyFog(): void {
+    [this.fog.near, this.fog.far] = this.fogLimit ? [this.fogLimit * 0.3, this.fogLimit] : this.weatherFog;
+  }
+
+  /** Earthquake: shake the camera for this long (s). */
+  shake(seconds: number): void {
+    this.shakeUntil = performance.now() + seconds * 1000;
+  }
+  private shakeUntil = 0;
+
+  /** Bridge Builder: plank bridges over the water on the viewer's line (none: []). */
+  setBridges(spans: { a: Vec2; b: Vec2; half: number }[]): void {
+    for (const c of [...this.bridges.children]) { this.bridges.remove(c); (c as THREE.Mesh).geometry?.dispose(); }
+    if (!this.bridges.parent) this.scene.add(this.bridges);
+    for (const s of spans) {
+      const L = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]), yaw = Math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0]);
+      const n = Math.max(1, Math.round(L / 0.6));
+      for (let k = 0; k < n; k++) {
+        const f = (k + 0.5) / n;
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(0.5, s.half * 2, 0.12), BRIDGE_WOOD[k % 2]);
+        plank.position.set(s.a[0] + (s.b[0] - s.a[0]) * f, s.a[1] + (s.b[1] - s.a[1]) * f, 0.18);
+        plank.rotation.z = yaw;
+        this.bridges.add(plank);
+      }
+      // Rails along both sides.
+      for (const side of [-1, 1]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(L, 0.12, 0.12), BRIDGE_WOOD[0]);
+        rail.position.set((s.a[0] + s.b[0]) / 2 - Math.sin(yaw) * side * s.half, (s.a[1] + s.b[1]) / 2 + Math.cos(yaw) * side * s.half, 0.9);
+        rail.rotation.z = yaw;
+        this.bridges.add(rail);
+      }
+    }
+  }
+  private readonly bridges = new THREE.Group();
+
+  /** Basket Buddy: the monkey hops (it just nudged a disc in). */
+  buddyHop(): void {
+    this.hopAt = performance.now();
+  }
+  private hopAt = 0;
 
   // ---------- legendary augments you can see (Crazy mode) ----------
   private readonly fx = new THREE.Group();
+  /** The augment looks that sit on the basket, moved with it (moveBasket). */
+  private readonly fxPin = new THREE.Group();
+  private fxSpot?: THREE.Group;
+  private fxBuddy?: THREE.Group;
+  private buddyLoading = false;
   private fxMagnet?: THREE.Group;
   private fxVortex?: THREE.Group;
   private fxGimme?: THREE.Mesh;
@@ -557,30 +622,50 @@ export class CourseScene {
   /** The viewer's own legendary effects, drawn on their basket and course. */
   private setFieldFx(f: FieldFx, pin: Vec2, basketScale: number): void {
     if (!this.fx.parent) this.scene.add(this.fx, this.stumps);
+    if (!this.fxPin.parent) this.fx.add(this.fxPin);
+    this.fxPin.position.set(pin[0], pin[1], 0);
     const top = BASKET.bandTop * 1 + 0.05;
     if (f.magnet && !this.fxMagnet) this.fxMagnet = magnetModel();
     if (this.fxMagnet) {
       this.fxMagnet.visible = !!f.magnet;
-      this.fxMagnet.position.set(pin[0], pin[1], top + 0.45);
-      if (!this.fxMagnet.parent) this.fx.add(this.fxMagnet);
+      this.fxMagnet.position.set(0, 0, top + 0.45);
+      if (!this.fxMagnet.parent) this.fxPin.add(this.fxMagnet);
     }
     if (f.blackHole && !this.fxVortex) this.fxVortex = vortexModel();
     if (this.fxVortex) {
       this.fxVortex.visible = !!f.blackHole;
-      this.fxVortex.position.set(pin[0], pin[1], (BASKET.trayTop + BASKET.chainTop) / 2);
+      this.fxVortex.position.set(0, 0, (BASKET.trayTop + BASKET.chainTop) / 2);
       this.fxVortex.scale.setScalar(basketScale);
-      if (!this.fxVortex.parent) this.fx.add(this.fxVortex);
+      if (!this.fxVortex.parent) this.fxPin.add(this.fxVortex);
     }
     if (f.gimme && !this.fxGimme) {
       this.fxGimme = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 96), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
       this.fxGimme.renderOrder = 3;
-      this.fx.add(this.fxGimme);
+      this.fxPin.add(this.fxGimme);
     }
     if (this.fxGimme) {
       this.fxGimme.visible = (f.gimme ?? 0) > 0;
-      this.fxGimme.position.set(pin[0], pin[1], 0.07);
+      this.fxGimme.position.set(0, 0, 0.07);
       this.fxGimme.scale.setScalar(Math.max(0.01, f.gimme ?? 0));
     }
+    if (f.spotlight && !this.fxSpot) { this.fxSpot = spotlightModel(); this.fxPin.add(this.fxSpot); }
+    if (this.fxSpot) this.fxSpot.visible = !!f.spotlight;
+    if (f.buddy && !this.fxBuddy && !this.buddyLoading) {
+      // A monkey (Kenney Cube Pets) sitting on the band, looking down the hole.
+      this.buddyLoading = true;
+      new GLTFLoader().loadAsync(asset('models/pets/animal-monkey.glb')).then((g) => {
+        const m = new THREE.Group();
+        const inner = g.scene;
+        inner.rotation.x = Math.PI / 2;
+        inner.scale.setScalar(0.42);
+        m.add(inner);
+        m.position.set(0, 0, BASKET.bandTop + 0.02);
+        this.fxBuddy = m;
+        this.fxPin.add(m);
+        m.visible = !!this.lastViewer?.fx?.buddy;
+      }).catch(() => { this.buddyLoading = false; });
+    }
+    if (this.fxBuddy) this.fxBuddy.visible = !!f.buddy;
     setTreeSolidity(f.phase ? 0.35 : 1);
   }
 
@@ -951,6 +1036,13 @@ export class CourseScene {
     const tt = performance.now() / 1000;
     if (this.fxMagnet?.visible) { this.fxMagnet.rotation.z = tt * 0.8; this.fxMagnet.position.z = BASKET.bandTop + 0.5 + Math.sin(tt * 2.2) * 0.06; }
     if (this.fxVortex?.visible) this.fxVortex.rotation.z = -tt * 2.5;
+    if (this.fxSpot?.visible) this.fxSpot.rotation.z = tt * 0.3;
+    if (this.fxBuddy?.visible) {
+      // The monkey looks about, and hops when it nudges a disc in.
+      const hop = (performance.now() - this.hopAt) / 1000;
+      this.fxBuddy.position.z = BASKET.bandTop + 0.02 + (hop < 0.6 ? Math.sin((hop / 0.6) * Math.PI) * 0.5 : 0);
+      this.fxBuddy.rotation.z = Math.sin(tt * 0.7) * 0.9;
+    }
     const groups = [this.trees3d, ...(this.extras.children as THREE.Group[])];
     if (this.fp) {
       // Big forests draw tree models only near the eye.
@@ -969,18 +1061,25 @@ export class CourseScene {
     };
     this.persp.layers.set(0);
     this.persp.layers.enable(SKY_LAYER);
+    // Earthquake: the camera shakes (moved for this frame only).
+    const shaking = now < this.shakeUntil;
+    const cam = this.fp ? this.persp : this.ortho;
+    const jolt = shaking ? new THREE.Vector3((Math.random() - 0.5) * 0.35, (Math.random() - 0.5) * 0.35, (Math.random() - 0.5) * 0.18) : null;
+    if (jolt) cam.position.add(jolt);
     if (!this.fp) {
       scalePixels(this.ppm);
       this.ortho.layers.enableAll();
       this.ortho.layers.disable(1);
       this.ortho.layers.disable(SKY_LAYER);
       this.renderer.render(this.scene, this.ortho);
+      if (jolt) cam.position.sub(jolt);
       return;
     }
     // First person, then the minimap inset drawn top-down over the bottom-left corner.
     this.previewMat.dashSize = 0.25;
     this.previewMat.gapSize = 0.18;
     this.renderer.render(this.scene, this.persp);
+    if (jolt) cam.position.sub(jolt);
     if (!this.minimapEnabled) return;
 
     const { x, y, w, h } = this.minimap;
@@ -1100,9 +1199,32 @@ export interface FieldFx {
   gimme?: number;
   /** Phase Disc: see through every tree. */
   phase?: boolean;
+  /** Spotlight: a beam of light on the basket. */
+  spotlight?: boolean;
+  /** Basket Buddy: a monkey sitting on the basket. */
+  buddy?: boolean;
 }
 
 /** A red horseshoe magnet with silver tips, poles down (for the top of a basket). */
+/** Bridge Builder's planks: two woods, alternating. */
+const BRIDGE_WOOD = [new THREE.MeshLambertMaterial({ color: '#8a5a32' }), new THREE.MeshLambertMaterial({ color: '#9c6a3c' })];
+
+/** Spotlight: a soft beam coming down on the basket, and its pool of light on the ground. */
+function spotlightModel(): THREE.Group {
+  const g = new THREE.Group();
+  const beam = new THREE.Mesh(
+    new THREE.ConeGeometry(2.4, 11, 32, 1, true),
+    new THREE.MeshBasicMaterial({ color: '#fff6c8', transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+  );
+  beam.rotation.x = Math.PI / 2; // the cone's tip (+y) up to +z, its wide end on the ground
+  beam.position.z = 5.5;
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(2.4, 40), new THREE.MeshBasicMaterial({ color: '#fff6c8', transparent: true, opacity: 0.28, depthWrite: false }));
+  pool.position.z = 0.05;
+  pool.renderOrder = 2;
+  g.add(beam, pool);
+  return g;
+}
+
 function magnetModel(): THREE.Group {
   const g = new THREE.Group();
   const arm = new THREE.Group(); // built in the x–z plane, turned upright

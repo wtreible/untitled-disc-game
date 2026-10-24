@@ -10,7 +10,7 @@
 // basket (pole, tray, chains, top band). The whole throw is simulated up front; renderers play
 // back `samples` at 60 Hz.
 import type { Tree } from '../course/disc-types';
-import type { Vec2 } from '../course/geo';
+import { distToPolyline, type Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
 import type { Rng } from '../game/physics';
 import type { SurfaceGrid } from '../game/surfaces';
@@ -153,6 +153,20 @@ export interface DiscWorld {
   treeShape?: (t: Tree) => TreeShape | null;
   /** Wind (m/s, the direction it blows toward) at 10 m up; weaker near the ground (windAt). */
   wind?: Vec2;
+  /** Moving Basket (an opponent's hex): the basket drifts by `amp` × sin(2π t / period), t = clock. */
+  basketDrift?: { amp: Vec2; period: number };
+  /** Bridge Builder: water within `half` m of these segments plays as dry ground for this thrower. */
+  bridges?: { a: Vec2; b: Vec2; half: number }[];
+  /** The hole line (Gardener trims branches near it). */
+  line?: Vec2[];
+}
+
+/** Where the basket is at absolute time `t` (it drifts with Moving Basket). */
+export function basketAt(world: Pick<DiscWorld, 'basket' | 'basketDrift'>, t: number): Vec2 {
+  const d = world.basketDrift;
+  if (!d) return world.basket;
+  const k = Math.sin((2 * Math.PI * t) / d.period);
+  return [world.basket[0] + d.amp[0] * k, world.basket[1] + d.amp[1] * k];
 }
 
 /**
@@ -167,7 +181,10 @@ export function windAt(w: Vec2, z: number): Vec2 {
 /** Surface under (x, y) for this world's thrower: the course grid, plus any personal hazards. */
 export function surfaceAt(world: DiscWorld, x: number, y: number): SurfaceClass {
   for (const h of world.hazards ?? []) if (Math.hypot(x - h.c[0], y - h.c[1]) < h.r) return 'water';
-  return world.grid.classAt(x, y);
+  const c = world.grid.classAt(x, y);
+  // Bridge Builder: the water under your bridge is dry going.
+  if (c === 'water' && world.bridges?.some((b) => distToPolyline([x, y], [b.a, b.b]) < b.half)) return 'path';
+  return c;
 }
 
 export interface ThrowInput {
@@ -198,6 +215,12 @@ export interface ThrowInput {
   fromTee?: boolean;
   /** Zero execution error: fly exactly the ghost line (Perfect Form). */
   perfect?: boolean;
+  /** Go on from mid-flight (Split Disc's other half): position, velocity and bank there. */
+  resume?: { p: Vec3; v: Vec3; bank: number };
+  /** Basket Buddy has a nudge left this hole. */
+  buddy?: boolean;
+  /** Thrown in an earthquake (an opponent's hex): much more wobble. */
+  quake?: boolean;
 }
 
 export type Shot = 'standard' | 'tomahawk' | 'thumber' | 'roller';
@@ -207,7 +230,14 @@ export function shotLaunch(shot: Shot | undefined, disc: Disc): number {
   return shot === 'tomahawk' || shot === 'thumber' ? 0.72 : shot === 'roller' ? -0.03 : disc.launch;
 }
 
-export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed' | 'phased' | 'saved' | 'gimme' | 'magnet' | 'prop';
+export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed' | 'phased' | 'saved' | 'gimme' | 'magnet' | 'prop'
+  | 'skip' | 'burned' | 'boomerang' | 'buddy' | 'insured';
+
+/**
+ * Something to show at a moment of the flight (an augment at work): at sample k, what happened.
+ * Played as the disc gets there, live and in the replay (src/modes/disc.ts).
+ */
+export type Mark = 'phase' | 'burn' | 'skip' | 'split' | 'buddy' | 'boomerang' | 'saved' | 'insured' | 'kick' | 'chop' | 'magnet' | 'gimme';
 
 export interface ThrowResult {
   samples: Vec3[];
@@ -222,6 +252,12 @@ export interface ThrowResult {
   treesHit: Tree[];
   /** Tags of props hit, in order ('windmill', 'cow', …). */
   propHits?: string[];
+  /** Fireball: trees burned away (gone for the thrower for the rest of the hole). */
+  burned?: Tree[];
+  /** Augments at work, by sample (see Mark). */
+  marks?: [number, Mark][];
+  /** Split Disc: where it split (the top of the flight), to fly the other half from. */
+  apex?: { p: Vec3; v: Vec3; bank: number; k: number };
 }
 
 // Release-speed fractions at which each disc's `curve` (distance fractions) was measured.
@@ -282,7 +318,9 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const mirror = input.mirror ? -1 : 1;
   const shot: Shot = putt ? 'standard' : input.shot ?? 'standard';
   const overhand = shot === 'tomahawk' || shot === 'thumber';
-  const err = putt ? m.puttAimError : m.aimError * (overhand ? m.overhandAim : 1);
+  // Spotlight: no wobble on putts from close in. An earthquake: a lot more.
+  const spot = putt && m.spotlight > 0 && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) <= m.spotlight;
+  const err = (spot ? 0 : putt ? m.puttAimError : m.aimError * (overhand ? m.overhandAim : 1)) * (input.quake ? 2.5 : 1);
   const noise = opt.ghost || input.perfect ? () => 0 : () => gaussian(rng) * err;
   /** Overhand: which way it rolls over (tomahawk: to the left of travel). */
   const side = shot === 'thumber' ? -1 : 1;
@@ -301,6 +339,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const speed0 = disc.v0 * power * (overhand ? FLIGHT.overSpeed : 1);
   let p: Vec3 = [input.start[0], input.start[1], world.terrain.heightAt(input.start[0], input.start[1]) + (input.releaseZ ?? 1.0)];
   let v: Vec3 = [Math.cos(yaw) * Math.cos(launch) * speed0, Math.sin(yaw) * Math.cos(launch) * speed0, Math.sin(launch) * speed0];
+  if (input.resume) { p = [...input.resume.p]; v = [...input.resume.v]; bank = input.resume.bank; }
 
   const cl0 = FLIGHT.cl0 + FLIGHT.cl0PerGlide * (disc.glide - 5);
   const cd0 = Math.max(FLIGHT.cd0Min, FLIGHT.cd0 + FLIGHT.cd0PerSpeed * disc.speed);
@@ -310,7 +349,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
 
   const samples: Vec3[] = [[...p]];
   const banks: number[] = [bank];
-  if (!opt.ghost && putt && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) < Math.max(TAP_IN, m.tapIn)) {
+  if (!opt.ghost && !input.resume && putt && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) < Math.max(TAP_IN, m.tapIn)) {
     // Tap-in: inside a meter you just drop it in.
     const [bx, by] = world.basket;
     for (let k = 1; k <= 20; k++) samples.push([p[0] + (bx - p[0]) * (k / 20), p[1] + (by - p[1]) * (k / 20), p[2] + (BASKET.trayBottom + 0.05 - p[2]) * (k / 20)]);
@@ -318,7 +357,12 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   }
   const events: ThrowEvent[] = [];
   const propHits: string[] = [];
-  const tctx: TreeCtx = { m, phaseLeft: m.phaseTrees, passed: new Set(), hits: [], basket: world.basket, rng, events };
+  const marks: [number, Mark][] = [];
+  const mark = (kind: Mark, k = samples.length) => { marks.push([k, kind]); };
+  const tctx: TreeCtx = { m, phaseLeft: m.phaseTrees, fireLeft: m.fireball, burned: [], passed: new Set(), hits: [], basket: world.basket, rng, events, mark, line: m.gardener > 0 ? world.line : undefined };
+  let skipsLeft = m.skips;
+  let apex: ThrowResult['apex'];
+  const t0 = world.clock0 ?? 0;
   const bopt: BasketOpts = {
     B: scaledBasket(m.basketScale),
     catchBonus: m.catchBonus + (input.fromTee ? m.teeCatchBonus : 0),
@@ -337,6 +381,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const inChains = baskets.map(() => false);
 
   for (let step = 1; step * DT < MAX_T; step++) {
+    if (world.basketDrift) baskets[0] = basketAt(world, t0 + step * DT); // Moving Basket
     const s = Math.hypot(v[0], v[1], v[2]);
     const ground = world.terrain.heightAt(p[0], p[1]);
 
@@ -389,7 +434,13 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       const L = FLIGHT.K * sa * sa * CL;
       const D = FLIGHT.K * sa * CD; // × air below gives K·sa²·CD against the airflow
       const n: Vec3 = [u[0] * Math.cos(bank) - r[0] * Math.sin(bank), u[1] * Math.cos(bank) - r[1] * Math.sin(bank), u[2] * Math.cos(bank) - r[2] * Math.sin(bank)];
-      const a: Vec3 = [L * n[0] - D * air[0], L * n[1] - D * air[1], L * n[2] - D * air[2] - G];
+      // Kite: a wind toward the basket lifts the disc more (as much more as it blows that way).
+      let lift = L;
+      if (m.kite > 0 && w && state === 'flight') {
+        const bx = world.basket[0] - p[0], by = world.basket[1] - p[1], db = Math.hypot(bx, by) || 1, ws = Math.hypot(w[0], w[1]);
+        if (ws > 0.1) lift *= 1 + m.kite * Math.max(0, (w[0] * bx + w[1] * by) / (db * ws));
+      }
+      const a: Vec3 = [lift * n[0] - D * air[0], lift * n[1] - D * air[1], lift * n[2] - D * air[2] - G];
       if (m.homing > 0 && state === 'flight') {
         // Homing: steer the horizontal velocity toward the basket late in flight, within 80 m.
         const bx = world.basket[0] - p[0], by = world.basket[1] - p[1];
@@ -402,7 +453,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
           a[1] += (v[0] / sh) * k;
         }
       }
+      const vzBefore = v[2];
       v = [v[0] + a[0] * DT, v[1] + a[1] * DT, v[2] + a[2] * DT];
+      // Split Disc: note the top of the flight, where the other half peels off.
+      if (m.split && !apex && !input.resume && state === 'flight' && vzBefore > 0 && v[2] <= 0) { apex = { p: [...p], v: [...v], bank, k: samples.length }; mark('split'); }
       const prev: Vec3 = p;
       p = [p[0] + v[0] * DT, p[1] + v[1] * DT, p[2] + v[2] * DT];
 
@@ -445,6 +499,16 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       if (p[2] <= ground) {
         // Landing: keep a fraction of horizontal speed as a skid.
         p = [p[0], p[1], ground];
+        // Skipping Stone: fast enough onto water, it skips on instead of sinking.
+        const sh0 = Math.hypot(v[0], v[1]);
+        if (skipsLeft > 0 && sh0 > 4 && surfaceAt(world, p[0], p[1]) === 'water') {
+          skipsLeft--;
+          v = [v[0] * 0.7, v[1] * 0.7, Math.max(2.4, Math.abs(v[2]) * 0.3)];
+          p = [p[0], p[1], ground + 0.02];
+          events.push('skip');
+          mark('skip');
+          continue;
+        }
         // A roller lands on edge and rolls on; an overhand throw lands upside down and stops.
         const rolls: boolean = shot === 'roller' && state === 'flight' && !m.sticky;
         const keep = m.sticky ? 0 : rolls ? 0.85 : state === 'dead' ? 0.25 : overhand ? 0.12 : 0.4;
@@ -463,6 +527,8 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   }
 
   const treesHit = tctx.hits;
+  const extra = (): Partial<ThrowResult> => ({ ...(tctx.burned.length ? { burned: tctx.burned } : {}), ...(marks.length ? { marks } : {}), ...(apex ? { apex } : {}) });
+  const tEnd = t0 + (samples.length / 60);
   const holedResult = (from: Vec3, ev: ThrowEvent): ThrowResult => {
     // Drop into the tray.
     const [bx, by] = holedIn;
@@ -474,7 +540,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     }
     if (ev !== 'holed') events.push(ev);
     events.push('holed');
-    return { samples, banks, rest: holedIn, restSurface: 'green', holed: true, penalty: 0, events, treesHit, propHits };
+    return { samples, banks, rest: holedIn, restSurface: 'green', holed: true, penalty: 0, events, treesHit, propHits, ...extra() };
   };
   if (holedAt) return holedResult(holedAt, 'holed');
 
@@ -492,35 +558,65 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     // Sticky Plastic: a near miss (within 2 m of the edge) is saved, no penalty.
     if (m.sticky && Math.hypot(drop[0] - rest[0], drop[1] - rest[1]) <= 2) {
       events.push('saved');
-      return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: 0, events, treesHit, propHits };
+      mark('saved', samples.length - 1);
+      return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: 0, events, treesHit, propHits, ...extra() };
     }
     events.push(surf);
-    return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit, propHits };
+    if (m.obInsurance) { events.push('insured'); mark('insured', samples.length - 1); }
+    return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit, propHits, ...extra() };
   }
   if (!opt.ghost) {
-    const d = Math.hypot(rest[0] - world.basket[0], rest[1] - world.basket[1]);
-    if (d < m.gimme) return holedResult([...p], 'gimme');
-    if (m.magnet > 0 && d < m.magnet && d > 0.4) {
-      // Magnet Basket: slide up to magnetPull m toward the basket.
-      const slide = Math.min(m.magnetPull, d - 0.3);
-      const ux = (world.basket[0] - rest[0]) / d, uy = (world.basket[1] - rest[1]) / d;
+    const pin = basketAt(world, tEnd);
+    /** Slide the resting disc `by` m toward the basket (a few samples of it sliding). */
+    const slide = (by: number) => {
+      const d0 = Math.hypot(rest[0] - pin[0], rest[1] - pin[1]) || 1;
+      const ux = (pin[0] - rest[0]) / d0, uy = (pin[1] - rest[1]) / d0;
       for (let k = 1; k <= 30; k++) {
-        const t = (k / 30) * slide;
+        const t = (k / 30) * by;
         samples.push([rest[0] + ux * t, rest[1] + uy * t, p[2]]);
         banks.push(0);
       }
-      rest = [rest[0] + ux * slide, rest[1] + uy * slide];
+      rest = [rest[0] + ux * by, rest[1] + uy * by];
+    };
+    let d = Math.hypot(rest[0] - pin[0], rest[1] - pin[1]);
+    if (d < m.gimme) { mark('gimme', samples.length - 1); return holedResult([...p], 'gimme'); }
+    if (m.magnet > 0 && d < m.magnet && d > 0.4) {
+      // Magnet Basket: slide up to magnetPull m toward the basket.
+      mark('magnet', samples.length - 1);
+      slide(Math.min(m.magnetPull, d - 0.3));
       events.push('magnet');
+      d = Math.hypot(rest[0] - pin[0], rest[1] - pin[1]);
+    }
+    // Boomerang: at rest past the basket (going away from where it was thrown), it comes back.
+    const fx = pin[0] - input.start[0], fy = pin[1] - input.start[1], fl = Math.hypot(fx, fy) || 1;
+    if (m.boomerang > 0 && d > 0.6 && ((rest[0] - pin[0]) * fx + (rest[1] - pin[1]) * fy) / fl > 0.3) {
+      mark('boomerang', samples.length - 1);
+      slide(Math.min(m.boomerang, d - 0.3));
+      events.push('boomerang');
+      d = Math.hypot(rest[0] - pin[0], rest[1] - pin[1]);
+    }
+    // Basket Buddy: a near miss is nudged in (once a hole; the round keeps count).
+    if (input.buddy && d < 3) {
+      mark('buddy', samples.length - 1);
+      holedIn = pin;
+      return holedResult([rest[0], rest[1], Math.max(p[2], 0.3)], 'buddy');
     }
   }
-  return { samples, banks, rest, restSurface: surfaceAt(world, rest[0], rest[1]), holed: false, penalty: 0, events, treesHit, propHits };
+  return { samples, banks, rest, restSurface: surfaceAt(world, rest[0], rest[1]), holed: false, penalty: 0, events, treesHit, propHits, ...extra() };
 }
 
 interface TreeCtx {
   m: Mods;
   /** Trees left to pass through this throw (Ghost/Phase Disc), and ones already passed. */
   phaseLeft: number;
+  /** Trees left to burn away this throw (Fireball), and the ones burned. */
+  fireLeft: number;
+  burned: Tree[];
   passed: Set<Tree>;
+  /** Show something at this moment of the flight. */
+  mark: (kind: Mark) => void;
+  /** Gardener: the hole line (branches near it are trimmed). */
+  line?: Vec2[];
   hits: Tree[];
   basket: Vec2;
   rng: Rng;
@@ -529,13 +625,22 @@ interface TreeCtx {
   lastKick?: Vec3;
 }
 
-/** True if the disc should ignore this tree (phasing through it). */
+/** True if the disc should ignore this tree (burning it away, or phasing through it). */
 function phases(t: Tree, c: TreeCtx): boolean {
   if (c.passed.has(t)) return true;
+  if (c.fireLeft > 0) {
+    c.fireLeft--;
+    c.passed.add(t);
+    c.burned.push(t);
+    c.events.push('burned');
+    c.mark('burn');
+    return true;
+  }
   if (c.phaseLeft > 0) {
     c.phaseLeft--;
     c.passed.add(t);
     c.events.push('phased');
+    c.mark('phase');
     return true;
   }
   return false;
@@ -563,7 +668,9 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
       if (k >= 1) continue;
       density = 1.4 - k; // denser toward the crown's middle
     }
-    const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * m.branch * density;
+    // Gardener: the branches near your hole line are trimmed back.
+    const trimmed = c.line && distToPolyline([t.x, t.y], c.line) < m.gardener ? 0.35 : 1;
+    const lambda = (world.branchDensity ?? FLIGHT.branchDensity) * m.branch * density * trimmed;
     // Pinball Wizard: one bounce per few meters, not a pinball machine inside one crown.
     if (m.liveKicks && c.lastKick && Math.hypot(p[0] - c.lastKick[0], p[1] - c.lastKick[1], p[2] - c.lastKick[2]) < 3) continue;
     if (rng() < 1 - Math.exp(-lambda * ds)) {
@@ -571,6 +678,8 @@ function treeCollide(prev: Vec3, p: Vec3, v: Vec3, world: DiscWorld, near: Tree[
       if (m.branchPass > 0 && rng() < m.branchPass) continue;
       events.push('branch');
       if (!c.hits.includes(t)) c.hits.push(t);
+      if (m.treeChopper) c.mark('chop');
+      if (m.kickToward || m.liveKicks) c.mark('kick');
       // Kick in a random direction (or toward the basket with Lucky Kicks), keep 20–40% of the speed.
       const s = Math.hypot(v[0], v[1], v[2]) * Math.min(0.95, (0.2 + rng() * 0.2) * m.kickKeep);
       const yaw = m.kickToward
@@ -618,6 +727,7 @@ function trunkCollide(p: Vec3, v: Vec3, world: DiscWorld, near: Tree[], c: TreeC
     p[1] = cy + ny * R;
     c.events.push('trunk');
     if (!c.hits.includes(t)) c.hits.push(t);
+    if (c.m.treeChopper) c.mark('chop');
     return true;
   }
   return false;

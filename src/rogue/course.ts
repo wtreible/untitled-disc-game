@@ -22,17 +22,21 @@ export function emptyChanges(players: number): HoleChanges {
   return { trees: [], ponds: [], cleared: Array.from({ length: players }, () => new Set<Tree>()) };
 }
 
-/** Trees player p's throws interact with (and p sees). */
-export function treesFor(base: Tree[], removed: Set<Tree>, ch: HoleChanges, p: number): Tree[] {
+/** Players on one side: everyone alone, or (best shot) by team. A hex spares its owner's side. */
+export type TeamOf = (p: number) => number;
+const alone: TeamOf = (p) => p;
+
+/** Trees player p's throws interact with (and p sees): not hex trees their own side planted. */
+export function treesFor(base: Tree[], removed: Set<Tree>, ch: HoleChanges, p: number, teamOf: TeamOf = alone): Tree[] {
   const cleared = ch.cleared[p];
   return [
     ...base.filter((t) => !removed.has(t) && !cleared.has(t)),
-    ...ch.trees.filter((t) => t.owner !== p).map((t) => t.tree),
+    ...ch.trees.filter((t) => teamOf(t.owner) !== teamOf(p)).map((t) => t.tree),
   ];
 }
 
-export function pondsFor(ch: HoleChanges, p: number): Pond[] {
-  return ch.ponds.filter((q) => q.owner !== p);
+export function pondsFor(ch: HoleChanges, p: number, teamOf: TeamOf = alone): Pond[] {
+  return ch.ponds.filter((q) => teamOf(q.owner) !== teamOf(p));
 }
 
 /** Point along a polyline at arc length s (clamped). */
@@ -54,10 +58,10 @@ export function pointAt(line: Vec2[], s: number): Vec2 {
  * (behind the pad, away from the first leg) by opponents' Back Tees. Forward is capped at 40% of
  * the hole. Falls back to the real tee if the moved spot is blocked (OB/water).
  */
-export function teeFor(h: DiscHole, all: Mods[], p: number, blocked: (q: Vec2) => boolean = () => false): Vec2 {
+export function teeFor(h: DiscHole, all: Mods[], p: number, blocked: (q: Vec2) => boolean = () => false, teamOf: TeamOf = alone): Vec2 {
   const L = polylineLength(h.routing);
   const fwd = Math.min(all[p].teeForward, L * 0.4);
-  const back = backTeeFor(all, p);
+  const back = backTeeFor(all, p, teamOf);
   let q: Vec2 = fwd > 0 ? pointAt(h.routing, fwd) : h.tee;
   if (back > 0) {
     const [a, b] = [h.routing[0], h.routing[1] ?? h.pin];

@@ -1,6 +1,7 @@
 // Little bursts where a throw makes contact: a puff of grass or dust on landing, a splash and
 // ripples in water, leaves shaken loose from a tree, sparks off a prop. Played from the same cues
-// as the sounds (src/audio/cues.ts), so they happen live and again in the replay.
+// as the sounds (src/audio/cues.ts), so they happen live and again in the replay. Augments add
+// their own: fire, confetti, glows, a shield, wisps, wood chips, and trails behind the disc.
 import * as THREE from 'three';
 import type { Vec3 } from '../game/terrain';
 
@@ -20,6 +21,33 @@ interface Burst {
 }
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+
+/** Trails behind a disc, by augment (src/modes/disc.ts picks them from the thrower's augments). */
+export type TrailStyle = 'comet' | 'kite' | 'gold' | 'ghost' | 'homing' | 'laser' | 'feather' | 'cannon' | 'perfect' | 'ember' | 'frost';
+const TRAILS: Record<TrailStyle, { colors: string[]; n: number; size: number; life: number; spread: number; rise: number; gravity: number; flutter?: number }> = {
+  /** Comet Tail: a long, bright, icy tail. */
+  comet: { colors: ['#e8f7ff', '#9fdcff', '#ffffff'], n: 4, size: 0.16, life: 1.6, spread: 0.12, rise: 0, gravity: 0 },
+  /** Kite: streamers fluttering behind. */
+  kite: { colors: ['#ff4d6d', '#ffd23f', '#4dabf7', '#5ee07a'], n: 2, size: 0.09, life: 0.9, spread: 0.3, rise: 0, gravity: 0.4, flutter: 3 },
+  /** Golden Arm: gold sparkle. */
+  gold: { colors: ['#ffd23f', '#fff3a0', '#ffb800'], n: 2, size: 0.07, life: 0.7, spread: 0.25, rise: 0, gravity: 1.5 },
+  /** Phase Disc, Ghost Disc: ghostly wisps. */
+  ghost: { colors: ['#b48cff', '#d9c8ff'], n: 2, size: 0.11, life: 1, spread: 0.2, rise: 0.2, gravity: 0, flutter: 1 },
+  /** Homing Chains: a thin blue line. */
+  homing: { colors: ['#5fd4ff', '#c4f0ff'], n: 2, size: 0.06, life: 0.6, spread: 0.04, rise: 0, gravity: 0 },
+  /** Laser Disc: a red laser line. */
+  laser: { colors: ['#ff3b3b', '#ff9a9a'], n: 3, size: 0.05, life: 0.5, spread: 0.01, rise: 0, gravity: 0 },
+  /** Featherweight, Hover Plastic: white feathers drifting down. */
+  feather: { colors: ['#ffffff', '#eef3f8'], n: 1, size: 0.09, life: 1.4, spread: 0.3, rise: 0.3, gravity: 0.6, flutter: 2 },
+  /** Cannon Arm: smoke and sparks off the release. */
+  cannon: { colors: ['#ff9a3c', '#ffd23f', '#6a625a'], n: 3, size: 0.12, life: 0.8, spread: 0.3, rise: 0.3, gravity: -0.5 },
+  /** An armed Perfect Form throw: a pale gold aura. */
+  perfect: { colors: ['#fff6c8', '#ffe28a'], n: 2, size: 0.13, life: 0.6, spread: 0.1, rise: 0, gravity: 0 },
+  /** Fireball, once it has burned a tree: embers. */
+  ember: { colors: ['#ff7a1a', '#ffcf3f', '#ff4d1a'], n: 2, size: 0.08, life: 0.8, spread: 0.2, rise: 0.4, gravity: -0.8 },
+  /** Ice Veins (putts): frost. */
+  frost: { colors: ['#cfefff', '#ffffff'], n: 2, size: 0.07, life: 0.8, spread: 0.15, rise: 0, gravity: 0.3 },
+};
 
 /** Round, soft-edged particle sprite (Points are squares without one). */
 let dotTex: THREE.Texture | null = null;
@@ -64,6 +92,50 @@ export class Effects {
   /** A prop (windmill, cow, castle…): a little shower of sparks. */
   sparks(at: Vec3): void {
     this.particles(at, 18, ['#fff3a0', '#ffd23f', '#ffffff'], 0.06, 0.6, () => [rnd(-3, 3), rnd(-3, 3), rnd(0, 3)], 6, 3);
+  }
+
+  /** Fireball: a tree going up in flames and smoke. */
+  fire(at: Vec3): void {
+    const base: Vec3 = [at[0], at[1], Math.max(0.5, at[2])];
+    this.particles(base, 46, ['#ff4d1a', '#ff9a2e', '#ffd23f', '#fff3a0'], 0.22, 1.4, () => [rnd(-1.2, 1.2), rnd(-1.2, 1.2), rnd(2, 6)], -1.5, 1.8);
+    this.particles(base, 22, ['#3a3530', '#5a524a', '#7a7068'], 0.32, 2.6, () => [rnd(-0.8, 0.8), rnd(-0.8, 0.8), rnd(1.5, 3.5)], -0.6, 0.8, 0.6);
+  }
+
+  /** Trick Shot (and aces): confetti thrown up over the basket. */
+  confetti(at: Vec3): void {
+    this.particles([at[0], at[1], Math.max(1, at[2])], 70, ['#ff4d6d', '#ffd23f', '#4dabf7', '#5ee07a', '#b48cff', '#ffffff'], 0.09, 2.6, () => [rnd(-3.5, 3.5), rnd(-3.5, 3.5), rnd(4, 9)], 5, 1.2, 2);
+  }
+
+  /** A soft burst of light (a save, a catch, a split, a nudge): `colors`, rising a little. */
+  glow(at: Vec3, colors: string[], n = 24, size = 0.12): void {
+    this.particles(at, n, colors, size, 0.9, () => { const a = Math.random() * Math.PI * 2, r = rnd(0.6, 2); return [Math.cos(a) * r, Math.sin(a) * r, rnd(0.2, 1.6)]; }, -0.4, 2.5);
+  }
+
+  /** OB Insurance: a shield ring flashing where it saved you. */
+  shield(at: Vec3): void {
+    this.ripple([at[0], at[1], 0.4], 2.4, 0, '#7ee0ff');
+    this.glow(at, ['#7ee0ff', '#ffffff'], 18);
+  }
+
+  /** Phasing through a tree: ghostly wisps. */
+  wisps(at: Vec3, colors = ['#b48cff', '#d9c8ff', '#ffffff']): void {
+    this.particles(at, 16, colors, 0.14, 1.1, () => [rnd(-0.8, 0.8), rnd(-0.8, 0.8), rnd(0.2, 1)], -0.5, 1.5, 1);
+  }
+
+  /** Lumberjack: wood chips flying off the trunk. */
+  chips(at: Vec3): void {
+    this.particles(at, 16, ['#c79a5a', '#a87a42', '#e2c08a'], 0.08, 1.2, () => [rnd(-3, 3), rnd(-3, 3), rnd(1, 4)], 9.8, 1.5);
+  }
+
+  /** Storm Front: a gust swirling past (leaves and dust carried along `dir`). */
+  gust(at: Vec3, dir: [number, number]): void {
+    this.particles(at, 20, ['#dfe8ef', '#c7d6b0', '#ffffff'], 0.07, 1.6, () => [dir[0] * rnd(3, 6) + rnd(-0.6, 0.6), dir[1] * rnd(3, 6) + rnd(-0.6, 0.6), rnd(0, 1.2)], 0.3, 0.4, 1.5);
+  }
+
+  /** A few trail particles behind a disc in flight, in a style (see TRAILS); call every frame or two. */
+  trail(at: Vec3, style: TrailStyle): void {
+    const t = TRAILS[style];
+    this.particles(at, t.n, t.colors, t.size, t.life, () => [rnd(-t.spread, t.spread), rnd(-t.spread, t.spread), rnd(-t.spread, t.spread) + t.rise], t.gravity, 2, t.flutter);
   }
 
   update(dt: number): void {
@@ -115,9 +187,9 @@ export class Effects {
     this.bursts.push({ obj, vel, age: 0, life, gravity, drag, flutter });
   }
 
-  private ripple(at: Vec3, grow: number, delay: number): void {
-    const obj = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color: '#e8f4ff', transparent: true, opacity: 0.7, depthWrite: false }));
-    obj.position.set(at[0], at[1], 0.06);
+  private ripple(at: Vec3, grow: number, delay: number, color = '#e8f4ff'): void {
+    const obj = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthWrite: false }));
+    obj.position.set(at[0], at[1], Math.max(0.06, at[2]));
     obj.visible = false;
     this.group.add(obj);
     this.bursts.push({ obj, age: -delay, life: 1.3, gravity: 0, drag: 0, grow });

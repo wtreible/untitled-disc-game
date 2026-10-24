@@ -91,6 +91,13 @@ export function playCue(c: Cue, gain: number): void {
     case 'land': sfx(c.surface === 'path' ? 'land-hard' : c.surface === 'bunker' ? 'land-sand' : 'land-grass', { gain: gain * 0.8 }); break;
     case 'splash': sfx('splash', { gain }); break;
     case 'ob': sfx('ob'); break;
+    case 'mark':
+      // Augments at work: most are seen, not heard.
+      if (c.mark === 'skip') sfx('splash', { gain: gain * 0.6 });
+      else if (c.mark === 'buddy') sfx('chain', { gain });
+      else if (c.mark === 'saved' || c.mark === 'insured') sfx('confirm', { gain: gain * 0.7 });
+      else if (c.mark === 'chop') sfx('tree', { gain: gain * 0.7 });
+      break;
   }
 }
 
@@ -101,6 +108,7 @@ export const EVENT_TOASTS: Partial<Record<ThrowEvent, string>> = {
   trunk: 'Tree!', branch: 'Kicked by branches', spit: 'Spit out!', cut: 'Cut through the chains', band: 'Top band!',
   tray: 'Off the cage', pole: 'Pole hit', water: 'Splash! +1', oob: 'OB! +1',
   phased: 'Phased through a tree', saved: 'Saved by Sticky Plastic', magnet: 'Magnet pull',
+  skip: 'Skipped across the water!', burned: 'Fireball!', boomerang: 'Boomerang!', buddy: 'Nudged in by your basket buddy!', insured: 'Insured: no penalty',
 };
 
 /** Position at fractional sample index t (60 Hz samples), linearly interpolated. */

@@ -43,6 +43,18 @@ export const CRAZY_TUTORIAL: TutorialCourse = {
       thrown: () => true,
     },
     {
+      title: 'Fire and light',
+      body: 'Some augments show themselves in the air. <b>Fireball</b> (legendary) burns the first tree it hits and flies on; <b>Comet Tail</b> leaves a glowing trail (and the wind moves it less). Throw through the wall again.',
+      trees: WALL, augments: ['fireball', 'comet-tail'],
+      thrown: () => true,
+    },
+    {
+      title: 'Split',
+      body: '<b>Split Disc</b> (legendary): at the top of its flight the disc splits in two, and you play the better half. Watch for the split.',
+      trees: [], augments: ['split-disc'],
+      thrown: () => true,
+    },
+    {
       title: 'Two throws',
       body: '<b>Second Chances</b>: <b>Clone Disc</b> (legendary) throws every throw twice and keeps the better one; the other flies faded. Throw one.',
       trees: [], augments: ['clone-disc'],

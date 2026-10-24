@@ -4,10 +4,11 @@
 // passes each cue, live and again in the replay.
 import type { Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
-import type { ThrowEvent } from '../disc/flight';
+import type { Mark, ThrowEvent } from '../disc/flight';
 import type { Vec3 } from '../game/terrain';
 
-export type CueSound = 'tree' | 'branch' | 'bonk' | 'chains' | 'clank' | 'land' | 'splash' | 'ob';
+/** `mark`: an augment at work (the flight model's marks), shown and sometimes heard. */
+export type CueSound = 'tree' | 'branch' | 'bonk' | 'chains' | 'clank' | 'land' | 'splash' | 'ob' | 'mark';
 
 export interface Cue {
   /** Sample index (60 Hz) at which it plays. */
@@ -17,6 +18,8 @@ export interface Cue {
   at: Vec3;
   /** Landing: what it landed on. */
   surface?: SurfaceClass;
+  /** An augment at work ('mark' cues). */
+  mark?: Mark;
 }
 
 /** What a cue needs from a throw (a ThrowResult or its wire form). */

@@ -122,6 +122,25 @@ export const POWERUPS: Powerup[] = [
   P('legendary', 'flight', 'laser-disc', 'Laser Disc', 'Your discs fly dead straight: no turn, no fade, and the wind can’t move them.', (m) => { m.straight = true; m.windScale = 0; }, true),
   P('legendary', 'power', 'cannon-arm', 'Cannon Arm', '+50% distance, but your power meter runs 50% faster.', (m) => { m.distance *= 1.5; m.meterSpeed *= 1.5; }, true),
   hex('legendary', 'butterfingers', 'Butterfingers', 'Opponents’ throws and putts wobble twice as much, and their power meters run 40% faster.', (m) => { m.hexWobble *= 2; m.hexMeter *= 1.4; }, true),
+  // Visual and dynamic augments (2026-10-24): each shows itself in play.
+  P('common', 'flight', 'comet-tail', 'Comet Tail', 'Your disc trails a glowing tail, and the wind pushes it 20% less.', (m) => { m.comet = true; m.windScale *= 0.8; }, true),
+  P('common', 'flight', 'kite', 'Kite', 'A wind blowing toward the basket lifts your disc up to 15% more. Streamers fly from it.', (m) => { m.kite += 0.15; }),
+  personal('common', 'gardener', 'Gardener', 'Branches within 8 m of your hole line are trimmed back: far fewer catch your disc.', (m) => { m.gardener = Math.max(m.gardener, 8); }, true),
+  P('common', 'putting', 'hype-crowd', 'Hype Crowd', '+10% chance the chains catch, and the crowd is on its feet for your putts.', (m) => { m.catchBonus += 0.1; m.hype = true; }),
+  P('epic', 'flight', 'boomerang', 'Boomerang', 'A disc that stops past the basket comes back toward it, up to 5 m.', (m) => { m.boomerang += 5; }),
+  P('epic', 'trees', 'skipping-stone', 'Skipping Stone', 'A fast landing on water skips on once instead of sinking.', (m) => { m.skips += 1; }),
+  P('epic', 'flight', 'storm-front', 'Storm Front', 'Each throw a gust (2–4 m/s, mostly toward the basket) joins the wind. You see it before you throw.', (m) => { m.gusts = true; }, true),
+  personal('epic', 'bridge-builder', 'Bridge Builder', 'Water across your hole line is bridged, for you: land on it and play on.', (m) => { m.bridge = true; }, true),
+  P('epic', 'putting', 'spotlight', 'Spotlight', 'Putts from within 15 m never wobble. A spotlight shows the basket.', (m) => { m.spotlight = Math.max(m.spotlight, 15); }, true),
+  hex('epic', 'moving-basket', 'Moving Basket', 'Opponents’ baskets drift 3 m back and forth.', (m) => { m.hexDrift = Math.max(m.hexDrift, 3); }, true),
+  hex('epic', 'fog-of-war', 'Fog of War', 'Opponents can only see 40 m ahead.', (m) => { m.hexFog = 40; }, true),
+  hex('epic', 'rainmaker', 'Rainmaker', 'It rains on opponents: their discs slide 60% farther after landing.', (m) => { m.hexRain = true; }, true),
+  P('legendary', 'trees', 'fireball', 'Fireball', 'The first tree your disc hits each throw bursts into flame: it flies on, and the tree is gone, for you, for the rest of the hole.', (m) => { m.fireball += 1; }),
+  P('legendary', 'luck', 'split-disc', 'Split Disc', 'At the top of its flight your disc splits in two, and you play the better half.', (m) => { m.split = true; }, true),
+  P('legendary', 'putting', 'basket-buddy', 'Basket Buddy', 'Once a hole, the monkey on your basket nudges in a disc that stops within 3 m.', (m) => { m.buddy += 1; }),
+  P('legendary', 'flight', 'trick-shot', 'Trick Shot', 'Hole out off a tree or a prop and it counts as an ace.', (m) => { m.trickShot = true; }, true),
+  hex('legendary', 'earthquake', 'Earthquake', 'Once a hole, at random, an opponent throws in an earthquake: the ground shakes and their aim wobbles 2.5×.', (m) => { m.hexQuake = true; }, true),
+  hex('legendary', 'night-shift', 'Night Shift', 'Opponents play at night: no ghost line, and 15% more wobble.', (m) => { m.hexNight = true; }, true),
 ];
 
 export const byId = (id: string) => POWERUPS.find((p) => p.id === id)!; // undefined for unknown ids

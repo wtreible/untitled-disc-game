@@ -66,6 +66,31 @@ export interface Mods {
   windScale: number;
   /** For you, the wind blows toward the basket (same strength). */
   tailwind: boolean;
+  /** Kite: + fraction of lift when the wind blows toward the basket (scaled by how much it does). */
+  kite: number;
+  /** Boomerang: a disc at rest past the basket slides back toward it, up to this far (m). */
+  boomerang: number;
+  /** Skipping Stone: landings in water that skip on instead, per throw. */
+  skips: number;
+  /** Fireball: trees per throw that burn away when the disc hits them (gone for you this hole). */
+  fireball: number;
+  /** Split Disc: the disc splits at the top of its flight; you play the better half. */
+  split: boolean;
+  /** Spotlight: putts from within this distance (m) of the basket never wobble. */
+  spotlight: number;
+  /** Basket Buddy: near misses (within 3 m) nudged in, this many per hole. */
+  buddy: number;
+  /** Trick Shot: holing out off a tree or prop counts as an ace. */
+  trickShot: boolean;
+  /** Gardener: branches within this distance (m) of the hole line are trimmed back. */
+  gardener: number;
+  /** Bridge Builder: water across your line is bridged, for you. */
+  bridge: boolean;
+  /** Storm Front: each throw a gust joins the wind, mostly toward the basket, shown before you throw. */
+  gusts: boolean;
+  // Looks only (the disc's trail and the crowd): Comet Tail, Hype Crowd.
+  comet: boolean;
+  hype: boolean;
   // Turn/round-level effects, handled by the controller rather than the flight model:
   meterSpeed: number;
   pickupBonus: number;
@@ -109,6 +134,23 @@ export interface Mods {
   hexDistance: number;
   /** × opponents' ghost line (0 hides it). */
   hexGhost: number;
+  /** Opponents' baskets drift back and forth this far (m). */
+  hexDrift: number;
+  /** Opponents see only this far (m; 0 = off). */
+  hexFog: number;
+  /** Once a hole, at random, an opponent's throw comes in an earthquake. */
+  hexQuake: boolean;
+  /** Opponents play at night (and lose their ghost line), and in the rain (their discs slide on). */
+  hexNight: boolean;
+  hexRain: boolean;
+  // What opponents' hexes do to you (effectiveMods fills these in):
+  /** Your basket drifts this far back and forth. */
+  drift: number;
+  /** You see only this far (m; 0 = clear). */
+  fog: number;
+  quake: boolean;
+  night: boolean;
+  rain: boolean;
 }
 
 export function neutralMods(): Mods {
@@ -118,9 +160,12 @@ export function neutralMods(): Mods {
     catchBonus: 0, teeCatchBonus: 0, cutToCatch: 0, basketScale: 1, tapIn: 1, gimme: 0, magnet: 0, magnetPull: 1.5,
     branch: 1, branchPass: 0, trunkKeep: 1, phaseTrees: 0, kickToward: false, kickKeep: 1, liveKicks: false,
     skid: 1, roll: 1, overhandDistance: 1, overhandAim: 1, straight: false, metalIn: 0, sticky: false, obInsurance: false, puttRange: 1, homing: 0, windScale: 1, tailwind: false,
+    kite: 0, boomerang: 0, skips: 0, fireball: 0, split: false, spotlight: 0, buddy: 0, trickShot: false, gardener: 0, bridge: false, gusts: false, comet: false, hype: false,
     meterSpeed: 1, pickupBonus: 0, mulligans: 0, perfectForm: 0, clone: false, treeChopper: false, rerolls: 0, extraCard: 0, bagSlots: 0,
     ghost: 1, ghostCone: false, teeForward: 0, pinCloser: 0, clearCut: 0,
     hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1, hexWind: 1, hexWobble: 1, hexDistance: 1, hexGhost: 1,
+    hexDrift: 0, hexFog: 0, hexQuake: false, hexNight: false, hexRain: false,
+    drift: 0, fog: 0, quake: false, night: false, rain: false,
   };
 }
 
@@ -130,13 +175,18 @@ export function rogueStartMods(): Mods {
 }
 
 /**
- * The modifiers that act on `player`'s throws: their own, plus every other player's hexes.
- * Hexes never affect their owner.
+ * The modifiers that act on `player`'s throws: their own, plus every opponent's hexes. Hexes never
+ * affect their owner, nor (`teamOf`, when there are teams) the owner's teammates.
  */
-export function effectiveMods(all: Mods[], player: number): Mods {
+export function effectiveMods(all: Mods[], player: number, teamOf: (p: number) => number = (p) => p): Mods {
   const m = { ...all[player] };
   all.forEach((o, i) => {
-    if (i === player) return;
+    if (i === player || teamOf(i) === teamOf(player)) return;
+    m.drift = Math.max(m.drift, o.hexDrift);
+    if (o.hexFog > 0) m.fog = m.fog > 0 ? Math.min(m.fog, o.hexFog) : o.hexFog;
+    m.quake ||= o.hexQuake;
+    if (o.hexNight) { m.night = true; m.ghost = 0; m.aimError *= 1.15; m.puttAimError *= 1.15; }
+    if (o.hexRain) { m.rain = true; m.skid *= 1.6; }
     m.meterSpeed *= o.hexMeter;
     m.basketScale *= o.hexShrink;
     m.windScale *= o.hexWind;
@@ -148,9 +198,9 @@ export function effectiveMods(all: Mods[], player: number): Mods {
   return m;
 }
 
-/** Meters the player's tee moves back because of opponents' Back Tees. */
-export function backTeeFor(all: Mods[], player: number): number {
-  return all.reduce((s, o, i) => (i === player ? s : s + o.hexBackTee), 0);
+/** Meters the player's tee moves back because of opponents' Back Tees (not a teammate's). */
+export function backTeeFor(all: Mods[], player: number, teamOf: (p: number) => number = (p) => p): number {
+  return all.reduce((s, o, i) => (i === player || teamOf(i) === teamOf(player) ? s : s + o.hexBackTee), 0);
 }
 
 export const NEUTRAL: Readonly<Mods> = Object.freeze(neutralMods());

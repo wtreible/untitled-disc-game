@@ -8,7 +8,7 @@ import type { DiscHole, Tree } from '../course/disc-types';
 import { rangeConditions, rangeWind, type RangeConditions } from '../course/range';
 import type { Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
-import type { ThrowEvent, ThrowResult } from '../disc/flight';
+import type { Mark, ThrowEvent, ThrowResult } from '../disc/flight';
 import { DISCS } from '../disc/discs';
 import { neutralMods, rogueStartMods, type Mods } from '../disc/mods';
 import { Round } from '../game/round';
@@ -32,6 +32,10 @@ export interface WireResult {
   events: ThrowEvent[];
   treesHit: TreeRef[];
   propHits?: string[];
+  /** Fireball: trees burned away (for the thrower, this hole). */
+  burned?: TreeRef[];
+  /** Augments at work, by sample (shown as the disc gets there). */
+  marks?: [number, Mark][];
 }
 
 export type RoundEvent =
@@ -84,7 +88,16 @@ export type Stage =
   /** The hole is over: its scorecard, until the host goes on (the final card stays). */
   | 'card';
 
-interface Undo { idx: number; ball: Vec2; lie: SurfaceClass; strokes: number; pickedUp: boolean; lastFrom?: Vec2 }
+/** What a mulligan puts back: the thrower (or their whole team), a volley in progress, and what the throw used up. */
+interface Undo {
+  idx: number;
+  players: { i: number; ball: Vec2; lie: SurfaceClass; strokes: number; pickedUp: boolean; lastFrom?: Vec2 }[];
+  /** Best shot: the team's volley before this throw joined it. */
+  volley?: { team: number; before: { player: number; result: WireResult }[] };
+  buddy: number;
+  /** Trees this throw burned away (Fireball). */
+  burned: Tree[];
+}
 
 export interface RoundOptions {
   names: string[];
@@ -99,8 +112,8 @@ export interface RoundOptions {
   colors?: string[];
   /**
    * Best shot: each player's team (src/game/teams.ts), however uneven. Every member throws from the
-   * team's spot and the team plays the best. Only for real holes (not Crazy mode or the range), with
-   * at least two teams; otherwise everyone plays alone.
+   * team's spot and the team plays the best. Not on the range; at least two teams, or everyone plays
+   * alone. With Crazy mode, hexes spare the owner's teammates.
    */
   teams?: number[];
 }
@@ -125,6 +138,8 @@ export class DiscRound {
   readonly owned: string[][];
   readonly mulligansLeft: number[];
   readonly perfectLeft: number[];
+  /** Basket Buddy nudges left this hole. */
+  readonly buddyLeft: number[];
   changes: HoleChanges;
   /** Lumberjack: course trees cut down for everyone. */
   readonly removed = new Set<Tree>();
@@ -179,13 +194,14 @@ export class DiscRound {
     this.owned = opts.names.map(() => []);
     this.mulligansLeft = opts.names.map(() => 0);
     this.perfectLeft = opts.names.map(() => 0);
+    this.buddyLeft = opts.names.map(() => 0);
     this.bags = opts.names.map(() => null);
     this.changes = emptyChanges(n);
-    this.teams = !opts.rogue && !opts.range ? teamGroups(opts.teams, n) : null;
+    this.teams = !opts.range ? teamGroups(opts.teams, n) : null;
     // Per-player tees/baskets (Forward Tee, Back Tees, Short Pin), decided when the hole is set up.
     this.round.setup = (hi) => {
       const h = holes[hi];
-      return { tees: opts.names.map((_, i) => teeFor(h, this.mods, i, blocked)), pins: opts.names.map((_, i) => pinFor(h, this.mods[i])) };
+      return { tees: opts.names.map((_, i) => teeFor(h, this.mods, i, blocked, (p) => this.teamOf(p))), pins: opts.names.map((_, i) => pinFor(h, this.mods[i])) };
     };
     this.round.restartHole();
   }
@@ -241,7 +257,7 @@ export class DiscRound {
       case 'hole-start': {
         if (this.started) this.round.nextHole();
         this.started = true;
-        this.mods.forEach((m, i) => { this.mulligansLeft[i] = m.mulligans; this.perfectLeft[i] = m.perfectForm; this.round.capBonus[i] = m.pickupBonus; });
+        this.mods.forEach((m, i) => { this.mulligansLeft[i] = m.mulligans; this.perfectLeft[i] = m.perfectForm; this.buddyLeft[i] = m.buddy; this.round.capBonus[i] = m.pickupBonus; });
         this.round.restartHole(); // this hole's per-player tees/baskets (nobody has thrown yet)
         this.changes = emptyChanges(this.opts.names.length);
         this.version++;
@@ -289,12 +305,18 @@ export class DiscRound {
           return;
         }
         g.current = idx;
-        if (this.teams) return this.teamThrow(idx, e.result);
-        const pl = g.players[idx];
-        this.undo = { idx, ball: pl.ball, lie: pl.lie, strokes: pl.strokes, pickedUp: pl.pickedUp, lastFrom: pl.lastFrom };
-        if (e.perfect) this.perfectLeft[idx]--;
         const r = e.result;
-        g.applyShot({ rest: [r.rest[0], r.rest[1]], restSurface: r.restSurface, holed: r.holed, penalty: r.penalty });
+        const side = this.teams ? this.teams[this.teamOf(idx)] : [idx];
+        const snap = (i: number) => { const q = g.players[i]; return { i, ball: q.ball, lie: q.lie, strokes: q.strokes, pickedUp: q.pickedUp, lastFrom: q.lastFrom }; };
+        this.undo = { idx, players: side.map(snap), buddy: this.buddyLeft[idx], burned: [] };
+        if (e.perfect) this.perfectLeft[idx]--;
+        if (r.events.includes('buddy')) this.buddyLeft[idx] = Math.max(0, this.buddyLeft[idx] - 1);
+        // Fireball: the burned trees are gone for the thrower, for the rest of the hole.
+        for (const ref of r.burned ?? []) {
+          const t = this.resolve(ref);
+          if (t && !this.changes.cleared[idx].has(t)) { this.changes.cleared[idx].add(t); this.undo.burned.push(t); }
+        }
+        if (r.burned?.length) this.version++;
         // Lumberjack: cut down every tree the disc touched (a placed hex tree just leaves this hole).
         if (this.mods[idx].treeChopper && r.treesHit.length) {
           const hit = r.treesHit.map((t) => this.resolve(t));
@@ -305,6 +327,9 @@ export class DiscRound {
           }
           this.version++;
         }
+        if (this.teams) return this.teamThrow(idx, r);
+        g.applyShot({ rest: [r.rest[0], r.rest[1]], restSurface: r.restSurface, holed: r.holed, penalty: r.penalty });
+        if (this.trickShot(idx, r)) g.players[idx].strokes = 1;
         if (g.finished) this.round.recordCurrent();
         return;
       }
@@ -312,11 +337,18 @@ export class DiscRound {
         const u = this.undo;
         if (!u || u.idx !== e.player) return;
         this.undo = null;
-        Object.assign(this.game.players[u.idx], { ball: u.ball, lie: u.lie, strokes: u.strokes, pickedUp: u.pickedUp, lastFrom: u.lastFrom });
+        // The thrower (and their team, in best shot) back where they were; the volley as it was.
+        for (const q of u.players) {
+          Object.assign(this.game.players[q.i], { ball: q.ball, lie: q.lie, strokes: q.strokes, pickedUp: q.pickedUp, lastFrom: q.lastFrom });
+          this.round.scores[q.i][this.round.index] = undefined; // the hole isn't over for them any more
+        }
+        if (u.volley) this.volley.set(u.volley.team, [...u.volley.before]);
+        this.resolved = null;
+        this.buddyLeft[u.idx] = u.buddy;
+        for (const t of u.burned) this.changes.cleared[u.idx].delete(t);
+        if (u.burned.length) this.version++;
         this.game.current = u.idx;
         this.mulligansLeft[u.idx]--;
-        // The hole isn't over any more for this player: un-record it.
-        this.round.scores[u.idx][this.round.index] = undefined;
         return;
       }
       case 'offer':
@@ -371,6 +403,7 @@ export class DiscRound {
     const g = this.game;
     const team = this.teamOf(idx);
     const v = this.volley.get(team) ?? [];
+    if (this.undo) this.undo.volley = { team, before: [...v] };
     v.push({ player: idx, result });
     this.volley.set(team, v);
     this.resolved = null;
@@ -379,10 +412,19 @@ export class DiscRound {
     const k = bestThrow(v, g.pins[idx]);
     const best = v[k].result;
     this.volley.delete(team);
-    for (const p of this.teams![team]) g.applyTo(p, { rest: best.rest, restSurface: best.restSurface, holed: best.holed, penalty: best.penalty });
+    const ace = this.trickShot(v[k].player, best);
+    for (const p of this.teams![team]) {
+      g.applyTo(p, { rest: best.rest, restSurface: best.restSurface, holed: best.holed, penalty: best.penalty });
+      if (ace) g.players[p].strokes = 1;
+    }
     this.resolved = { team, best: v[k].player };
     g.advance();
     if (g.finished) this.round.recordCurrent();
+  }
+
+  /** Trick Shot: holed off a tree or a prop counts as an ace. */
+  trickShot(player: number, r: WireResult): boolean {
+    return this.mods[player].trickShot && r.holed && (r.treesHit.length > 0 || (r.propHits?.length ?? 0) > 0);
   }
 
   private grant(player: number, id: string): void {
@@ -420,6 +462,8 @@ export class DiscRound {
       restSurface: r.restSurface, holed: r.holed, penalty: r.penalty, events: r.events,
       treesHit: r.treesHit.map((t) => this.refOf(t)),
       propHits: r.propHits,
+      ...(r.burned?.length ? { burned: r.burned.map((t) => this.refOf(t)) } : {}),
+      ...(r.marks?.length ? { marks: r.marks } : {}),
     };
   }
 }

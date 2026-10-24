@@ -120,7 +120,7 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2d6a3e"/><rect x="10" y="12" width="44" height="40" rx="6" fill="#16302a"/>${[0, 1, 2].map((k) => `<rect x="17" y="${20 + k * 10}" width="6" height="6" rx="1.5" fill="${k < 2 ? '#b8f25c' : 'none'}" stroke="#b8f25c" stroke-width="1.5"/><rect x="27" y="${22 + k * 10}" width="${20 - k * 4}" height="2.5" rx="1" fill="#e9f1e4" opacity=".8"/>`).join('')}</svg>`,
   },
   {
-    id: 'crazy-tutorial', group: 'training', name: 'Crazy Mode Tutorial', meta: 'Drafts, then augments to try one at a time', holes: 9,
+    id: 'crazy-tutorial', group: 'training', name: 'Crazy Mode Tutorial', meta: 'Drafts, then augments to try one at a time', holes: 11,
     blurb: 'Learn Crazy mode on the range: draft an augment from real cards, then try what augments do one at a time: ghost lines, Perfect Form, Phase Disc through a wall of trees, Clone Disc, Black Hole chains. Hexes, your-course augments and mulligans are explained. Just you.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#3a2a5c"/>${[['#9aa7b4', -14, 8], ['#9b6bff', 0, 4], ['#f2c230', 14, 8]].map(([c, dx, dy]) => `<rect x="${24 + Number(dx)}" y="${14 + Number(dy)}" width="16" height="24" rx="3" fill="#16302a" stroke="${c}" stroke-width="2" transform="rotate(${Number(dx) * 0.9} ${32 + Number(dx)} ${40})"/>`).join('')}<path d="M32 44 l3 6 l6 1 l-4.5 4 l1 6 l-5.5 -3 l-5.5 3 l1 -6 l-4.5 -4 l6 -1z" fill="#f2c230"/></svg>`,
   },
@@ -284,8 +284,8 @@ function renderPlayers(): void {
 // ---------- teams: best shot ----------
 // Teams on: every player has a team (src/game/teams.ts), any split: 1 v 2, 1 v 1 v 2, 2 v 3…
 // Click a player's team chip to move them to the next team. Hot seat: the chips are on the rows
-// above; online, on the room's member list (the host's to change). Not with Crazy mode, or on the
-// training courses.
+// above; online, on the room's member list (the host's to change). With Crazy mode too (hexes spare
+// teammates). Not on the training courses.
 let teamsOn = !!last.teamsOn;
 /** Hot seat: each row's team (missing rows take the default split). */
 const localTeams: number[] = [...(last.teamPicks ?? [])];
@@ -323,7 +323,6 @@ function renderTeams(n: number): void {
   $('teams-note').textContent = !teamsOn ? '' : groups ? teamsLabel(groups) : 'One team: everyone plays alone';
   $('teams-seg').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
     teamsOn = b.dataset.v === '1';
-    if (teamsOn) { crazy.checked = false; syncCrazy(); } // best shot is played on the real course
     save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamsOn });
     renderPlayers();
     pushLobby();
@@ -393,7 +392,6 @@ $('aug-close').addEventListener('click', closeAugmentBrowser);
 $('aug-browser').addEventListener('click', (e) => { if (e.target === $('aug-browser')) closeAugmentBrowser(); });
 renderRules();
 crazy.addEventListener('change', () => {
-  if (crazy.checked && teamsOn) { teamsOn = false; renderPlayers(); renderRoom(); } // not both
   syncCrazy(); pushLobby(); renderCourseInfo();
 });
 $('holes').addEventListener('change', () => { pushLobby(); renderCourseInfo(); });
@@ -501,7 +499,7 @@ function pushLobby(): void {
   const training = trainingCourse();
   // The tutorials are played alone: the room sees the driving range.
   const teams = teamsToPlay(roomPlan(seated.map((m) => m.client)));
-  room.setLobby({ course: course === 'tutorial' || course === 'crazy-tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training && !teams, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
+  room.setLobby({ course: course === 'tutorial' || course === 'crazy-tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -780,5 +778,5 @@ $('start').addEventListener('click', async () => {
   }
   const training = course === 'range'; // no Crazy mode or bags on the range
   const teams = teamsToPlay(localPlan(names.length));
-  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training && !teams, rules, bag: bagMode.checked && !training, teams });
+  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training, teams });
 });
