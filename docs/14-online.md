@@ -38,7 +38,7 @@ The room service runs on Cloudflare's Workers Free plan (Durable Objects with th
 |---|---|
 | Local room server | `npm run server:dev` (Cloudflare's runtime, on ws://127.0.0.1:8787; dev builds of the game use it automatically) |
 | Protocol tests | `npm run test:rooms` (starts and stops its own `wrangler dev`; CI runs it too) |
-| Deploy the server | CI deploys it on a push to `main` that changes `server/` (repo secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`), before the site. By hand: `npx wrangler login` once, then `npm run server:deploy`; it prints `https://untitled-disc-game-rooms.<you>.workers.dev` |
+| Deploy the server | CI deploys it on a push to `main` when `server/` changed since the last successful run (repo secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`), before the site. By hand: `npx wrangler login` once, then `npm run server:deploy`; it prints `https://untitled-disc-game-rooms.<you>.workers.dev` |
 | Point the site at it | GitHub repo → Settings → Secrets and variables → Actions → Variables: `ROOMS_URL` = `wss://untitled-disc-game-rooms.<you>.workers.dev`, then re-run the Pages deploy |
 
 Without `ROOMS_URL`, public builds hide "Play online".

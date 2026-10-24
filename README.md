@@ -68,7 +68,7 @@ Dev builds stream Esri satellite imagery under Tali Forest; public builds don't 
 
 ## Deploying (GitHub Pages)
 
-Every push to `main` typechecks, runs the tests (the room server's too, against `wrangler dev`), deploys the rooms Worker if `server/` changed, then builds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). Pull requests get the checks only. One-time setup: in the repo on GitHub, **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+Every push to `main` typechecks, runs the tests (the room server's too, against `wrangler dev`), deploys the rooms Worker if `server/` changed since the last successful run (so a failed Worker deploy is retried on the next push), then builds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). Pull requests get the checks only. One-time setup: in the repo on GitHub, **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
 The build is a static site with relative asset URLs, so `dist/` also works on Netlify, Cloudflare Pages, or any file server, from any folder.
 

@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # to find the last successful run (see "Did the room server change")
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('check-{0}', github.ref) || 'deploy' }}
@@ -34,6 +35,8 @@ jobs:
       server: ${{ steps.changes.outputs.server }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # history, to compare server/ with the last successful run
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -46,13 +49,21 @@ jobs:
         run: npm run test:rooms
         env:
           WRANGLER_SEND_METRICS: 'false'
-      - uses: dorny/paths-filter@v3
+      # Against the last successful run on main, not just this push: a Worker deploy that failed
+      # (or never ran) is tried again on the next push until one goes through.
+      - name: Did the room server change since the last successful run?
         if: github.event_name == 'push'
         id: changes
-        with:
-          filters: |
-            server:
-              - 'server/**'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          base=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch main --status success --limit 1 --json headSha -q '.[0].headSha // empty')
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null && git diff --quiet "$base" HEAD -- server/; then
+            echo "server=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "server=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Compared server/ with ${base:-nothing (no successful run yet)}"
 
   # The Worker goes first: the game speaks to older room servers, but a new room feature is only
   # there once the Worker is.
