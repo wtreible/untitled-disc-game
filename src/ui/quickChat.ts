@@ -1,6 +1,6 @@
 // Quick chat: a wheel of fixed lines, and in its middle a second wheel of emoji. Hold Z (Settings →
-// Controls) and it opens at the pointer; point at a line and let go (or press 1–8). Click the
-// middle to switch between lines and emoji. The chat button opens it where you click. Messages
+// Controls), point at a line and let go (or press 1–8), or click the chat button and pick one.
+// Click the middle to switch between lines and emoji. Messages
 // show as speech bubbles over the player (src/ui/chatBubbles.ts). Fixed lines and emoji only, so
 // there is nothing to moderate; online they travel as passing 'live' state (relayed by the room,
 // not stored).
@@ -40,9 +40,6 @@ export function mountQuickChat(send: (m: ChatMsg) => void, enabled: () => boolea
   let open: 'hold' | 'click' | null = null;
   let picked: number | null = null;
   let last = 0;
-  /** Where the pointer is, and the wheel's middle. */
-  let pointer: [number, number] = [window.innerWidth / 2, window.innerHeight / 2];
-  let mid: [number, number] = pointer;
   let items: HTMLButtonElement[] = [];
 
   const entries = () => (page === 'chat' ? CHAT_LINES : EMOJI);
@@ -51,7 +48,7 @@ export function mountQuickChat(send: (m: ChatMsg) => void, enabled: () => boolea
     wheel.classList.toggle('emoji-page', page === 'emoji');
     wheel.innerHTML = `<button class="chat-hub" data-hub title="${page === 'chat' ? 'Emoji' : 'Chat lines'}">${page === 'chat' ? '😀' : '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="currentColor"/></svg>'}</button>${list.map((t, i) => {
       const a = -Math.PI / 2 + (i / list.length) * Math.PI * 2;
-      return `<button data-i="${i}" style="left:calc(var(--cx) + ${Math.round(Math.cos(a) * REACH[0])}px);top:calc(var(--cy) + ${Math.round(Math.sin(a) * REACH[1])}px)"><small>${i + 1}</small>${esc(t)}</button>`;
+      return `<button data-i="${i}" style="left:calc(50% + ${Math.round(Math.cos(a) * REACH[0])}px);top:calc(50% + ${Math.round(Math.sin(a) * REACH[1])}px)"><small>${i + 1}</small>${esc(t)}</button>`;
     }).join('')}`;
     items = [...wheel.querySelectorAll<HTMLButtonElement>('button[data-i]')];
     items.forEach((b) => b.addEventListener('click', () => pick(parseInt(b.dataset.i!, 10))));
@@ -67,15 +64,11 @@ export function mountQuickChat(send: (m: ChatMsg) => void, enabled: () => boolea
     picked = i;
     items.forEach((b, k) => b.classList.toggle('on', k === i));
   };
-  /** Open with its middle at (x, y), pulled in from the edges so it all fits on screen. */
-  const show = (mode: 'hold' | 'click', at: [number, number]) => {
+  /** Open in the middle of the screen (where the first-person crosshair is). */
+  const show = (mode: 'hold' | 'click') => {
     if (!enabled()) return;
     open = mode;
     page = 'chat';
-    const mx = REACH[0] + 90, my = REACH[1] + 40;
-    mid = [Math.min(Math.max(at[0], mx), Math.max(mx, window.innerWidth - mx)), Math.min(Math.max(at[1], my), Math.max(my, window.innerHeight - my))];
-    wheel.style.setProperty('--cx', `${mid[0]}px`);
-    wheel.style.setProperty('--cy', `${mid[1]}px`);
     render();
     highlight(null);
     wheel.hidden = false;
@@ -89,11 +82,10 @@ export function mountQuickChat(send: (m: ChatMsg) => void, enabled: () => boolea
     send(p === 'chat' ? { chat: i } : { emoji: i });
   };
 
-  // Holding the key: whatever the pointer points at, from the wheel's middle.
+  // Holding the key: whatever the pointer points at, from the middle of the screen.
   window.addEventListener('pointermove', (e) => {
-    pointer = [e.clientX, e.clientY];
     if (open !== 'hold') return;
-    const dx = e.clientX - mid[0], dy = e.clientY - mid[1];
+    const dx = e.clientX - window.innerWidth / 2, dy = e.clientY - window.innerHeight / 2;
     if (Math.hypot(dx, dy) < HUB_R) return highlight(null);
     const a = Math.atan2(dy, dx) + Math.PI / 2; // 0 = straight up, clockwise
     const n = entries().length;
@@ -101,12 +93,12 @@ export function mountQuickChat(send: (m: ChatMsg) => void, enabled: () => boolea
   });
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
-    if (isKey(e, 'chat') && !e.repeat && !open) show('hold', pointer);
+    if (isKey(e, 'chat') && !e.repeat && !open) show('hold');
     else if (open && /^[1-8]$/.test(e.key)) pick(parseInt(e.key, 10) - 1);
     else if (open && e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
   }, true);
   window.addEventListener('keyup', (e) => { if (isKey(e, 'chat') && open === 'hold') pick(picked); });
   window.addEventListener('blur', () => { if (open === 'hold') close(); });
   wheel.addEventListener('pointerdown', (e) => { if (e.target === wheel) close(); });
-  btn.addEventListener('click', (e) => (open ? close() : show('click', [e.clientX, e.clientY])));
+  btn.addEventListener('click', () => (open ? close() : show('click')));
 }
