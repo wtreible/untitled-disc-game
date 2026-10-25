@@ -51,7 +51,7 @@ const KEY = 'untitled-disc-game:prefs';
 const systemReduceMotion = (): boolean => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 const DEFAULTS: Prefs = {
   replays: true, follow: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false, music: 0.6, sfx: 0.8, muted: false, flyovers: true, weather: true,
-  reduceMotion: false, quickSolo: false, lookSpeed: 1, invertLook: false, confirmLeave: true, ghosts: true, keys: {},
+  reduceMotion: false, quickSolo: false, lookSpeed: 1, invertLook: false, confirmLeave: true, ghosts: false, keys: {},
 };
 
 let cache: Prefs | null = null;
