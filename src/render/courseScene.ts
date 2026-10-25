@@ -10,7 +10,7 @@ import type { DiscCourseFile, DiscHole, Tree, TreeMix } from '../course/disc-typ
 import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
 import type { Vec3 } from '../game/terrain';
-import { classCanvas } from './classTexture';
+import { classCanvas, waterCanvas } from './classTexture';
 import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreeSolidity, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
 import { BASKET } from '../disc/flight';
 import type { ViewMode } from './scene';
@@ -44,6 +44,8 @@ export class CourseScene {
   private photo?: THREE.Mesh;
   private readonly classes?: THREE.Mesh;
   private readonly overlayPlane?: THREE.Mesh;
+  /** OSM water drawn see-through over the photo. */
+  private readonly waterPlane?: THREE.Mesh;
   /** 'vector': flat drawn ground + tree symbols, no imagery. */
   readonly style: 'photo' | 'vector';
   private readonly vector?: THREE.Group;
@@ -124,8 +126,10 @@ export class CourseScene {
       const gridMax: Vec2 = [grid.min[0] + grid.cols * grid.cell, grid.min[1] + grid.rows * grid.cell];
       this.classes = this.groundPlane(classCanvas(grid, [0, 1]), [grid.min, gridMax], 0.01, 1);
       this.overlayPlane = this.groundPlane(classCanvas(grid, [0, 1], 110), [grid.min, gridMax], 0.02, 2);
+      this.waterPlane = this.groundPlane(waterCanvas(grid), [grid.min, gridMax], 0.015, 1);
       this.classes.visible = false;
       this.overlayPlane.visible = false;
+      this.waterPlane.visible = false;
     }
 
     // First-person beacon over the current basket, so it can be found from the tee.
@@ -256,7 +260,7 @@ export class CourseScene {
 
   private tintGround(): void {
     const meshes: THREE.Mesh[] = [];
-    for (const m of [this.photo, this.classes, this.vector]) m?.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
+    for (const m of [this.photo, this.classes, this.waterPlane, this.vector]) m?.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
     for (const m of meshes) {
       const mat = m.material as THREE.MeshBasicMaterial;
       if (!mat.color) continue;
@@ -349,6 +353,7 @@ export class CourseScene {
       if (this.photo) this.photo.visible = v !== 'classes';
       this.classes!.visible = v === 'classes' || !this.photo;
       this.overlayPlane!.visible = v === 'overlay' && !fp;
+      this.waterPlane!.visible = !!this.photo?.visible && !this.overlayPlane!.visible;
       // Trees: always in first person; top-down only in the class view (the photo shows real ones).
       this.trees3d.visible = fp || v === 'classes' || !this.photo;
     }

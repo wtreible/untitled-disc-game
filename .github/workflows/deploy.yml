@@ -108,6 +108,7 @@ jobs:
       - run: npm run build
         env:
           VITE_ROOMS_URL: ${{ vars.ROOMS_URL }}
+          VITE_ESRI_IMAGERY: 'on'
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

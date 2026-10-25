@@ -45,22 +45,22 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#4f8f45"/><rect x="0" y="40" width="64" height="24" fill="#2fb24c"/><path d="M26 44 L29 22 L35 22 L38 44 Z" fill="#c9a27a"/><g transform="translate(32 24)" stroke="#8a4b2e" stroke-width="4" stroke-linecap="round"><path d="M-12 -12 L12 12 M12 -12 L-12 12"/></g><circle cx="32" cy="24" r="2.5" fill="#999"/><circle cx="50" cy="50" r="5" fill="#e2504f"/></svg>`,
   },
   {
-    id: 'forest', group: 'real', name: 'Tali Forest', meta: `${IMAGERY ? 'Satellite imagery · ' : ''}10k real-canopy trees`, holes: 18,
+    id: 'forest', group: 'real', name: 'Tali Forest', meta: `Helsinki, Finland${IMAGERY ? ' · satellite imagery' : ''} · 10k real-canopy trees`, holes: 18,
     blurb: `The same Tali holes${IMAGERY ? ' over live satellite imagery' : ''}, with ~10,000 trees placed from Helsinki’s 2024 canopy data. Tight and woody.`,
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#24391f"/>${Array.from({ length: 18 }, (_, i) => `<circle cx="${(i * 37) % 64}" cy="${(i * 23) % 64}" r="${5 + (i % 3)}" fill="${i % 2 ? '#2f5a2a' : '#3b6e33'}"/>`).join('')}<path d="M10 60 L54 6" stroke="#8a9a6a" stroke-width="5" stroke-dasharray="1 0" opacity=".7"/></svg>`,
   },
   {
-    id: 'oakgrove', group: 'real', name: 'Oak Grove', meta: `Stockton, California${IMAGERY ? ' · satellite imagery' : ''} · mapped oaks`, holes: 18,
+    id: 'oakgrove', group: 'real', name: 'Oak Grove Gold', meta: `Stockton, California${IMAGERY ? ' · satellite imagery' : ''} · mapped oaks`, holes: 18,
     blurb: 'The Gold Course at Oak Grove Regional Park, from OpenStreetMap: eighteen short, open holes among the park’s oaks, every mapped tree where it stands, and a pond to cross on 17.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#6f7f45"/><path d="M6 56 C 22 46, 30 30, 54 14" stroke="#b9c47a" stroke-width="7" fill="none" stroke-linecap="round"/>${[[16, 24, 8], [44, 42, 9], [30, 52, 6], [50, 26, 5], [12, 44, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#3f5a2a"/>`).join('')}<ellipse cx="40" cy="56" rx="9" ry="4" fill="#4f8fcf"/><circle cx="54" cy="14" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
-    id: 'bechovice', group: 'real', name: 'Běchovice', meta: `Prague, Czechia${IMAGERY ? ' · satellite imagery' : ''} · mapped woods`, holes: 18,
+    id: 'bechovice', group: 'real', name: 'DiscGolfPark Běchovice', meta: `Prague, Czechia${IMAGERY ? ' · satellite imagery' : ''} · mapped woods`, holes: 18,
     blurb: 'DiscGolfPark Běchovice’s long (gold) tees, from OpenStreetMap: Prague’s hardest course, host of the 2023 Czech championship, with long par 4s and 5s through and around its woods.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#7c8a4a"/>${[[8, 10, 9], [20, 6, 8], [52, 50, 10], [58, 34, 7], [6, 40, 8], [40, 8, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#35512a"/>`).join('')}<path d="M10 58 C 24 50, 26 30, 44 24 S 56 10, 52 6" stroke="#c3cb86" stroke-width="7" fill="none" stroke-linecap="round"/><rect x="26" y="44" width="3" height="12" fill="#eef2e6"/><rect x="34" y="40" width="3" height="14" fill="#eef2e6"/><circle cx="52" cy="6" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
-    id: 'skatas', group: 'real', name: 'Skatås', meta: `Gothenburg, Sweden${IMAGERY ? ' · satellite imagery' : ''} · 2,300 mapped trees`, holes: 20,
+    id: 'skatas', group: 'real', name: 'Skatås Yellow', meta: `Gothenburg, Sweden${IMAGERY ? ' · satellite imagery' : ''} · 2,300 mapped trees`, holes: 20,
     blurb: 'The yellow course at Skatås, one of Sweden’s classic courses (since 1990), from OpenStreetMap: twenty short, technical holes through pine, spruce and birch woods, alternates 14b and 15b included.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#2c4428"/>${Array.from({ length: 14 }, (_, i) => `<path d="M${(i * 29) % 64} ${(i * 41) % 64} l5 12 h-10 z" fill="${i % 3 ? '#1f3a24' : '#3f6a3a'}"/>`).join('')}<path d="M8 58 C 20 48, 18 30, 34 26 S 52 18, 54 8" stroke="#a8b98a" stroke-width="6" fill="none" stroke-linecap="round"/><rect x="40" y="44" width="2.5" height="12" fill="#eef2e6"/><circle cx="54" cy="8" r="3.5" fill="#f2c230"/></svg>`,
   },
@@ -70,7 +70,7 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#3d5a38"/>${[[8, 12], [18, 30], [6, 48], [52, 14], [56, 40], [44, 54]].map(([x, y]) => `<path d="M${x} ${y - 8} l5 14 h-10 z" fill="#1f3a26"/>`).join('')}${[[30, 10], [48, 30], [14, 58]].map(([x, y]) => `<rect x="${x}" y="${y - 6}" width="2" height="10" fill="#f2f2ea"/><circle cx="${x + 1}" cy="${y - 7}" r="4" fill="#8db45a"/>`).join('')}<path d="M10 54 C 24 46, 30 34, 50 22" stroke="#c7cf98" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="50" cy="22" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
-    id: 'julkujarvi', group: 'real', name: 'Julkujärvi', meta: `Ylöjärvi, Finland${IMAGERY ? ' · satellite imagery' : ''} · pro course`, holes: 18,
+    id: 'julkujarvi', group: 'real', name: 'Julkujärvi DiscGolfPark', meta: `Ylöjärvi, Finland${IMAGERY ? ' · satellite imagery' : ''} · pro course`, holes: 18,
     blurb: 'The PRO course at Julkujärvi, near Tampere, from OpenStreetMap: a pro-level eighteen with par 4s and 5s through Finnish pine and birch, used at the 2025 European Amateur Open.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#4a6a3c"/>${Array.from({ length: 12 }, (_, i) => `<path d="M${(i * 23) % 64} ${(i * 37) % 64} l4 11 h-8 z" fill="#284a2c"/>`).join('')}<path d="M6 30 C 20 20, 40 44, 58 30" stroke="#d3d79e" stroke-width="7" fill="none" stroke-linecap="round"/><ellipse cx="18" cy="54" rx="11" ry="5" fill="#4f8fcf"/><circle cx="58" cy="30" r="3.5" fill="#f2c230"/></svg>`,
   },
@@ -85,8 +85,8 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#5e7c3e"/>${[[10, 12, 8], [30, 8, 6], [52, 18, 8], [8, 40, 7], [56, 46, 8], [26, 56, 6]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#35522a"/>`).join('')}<circle cx="44" cy="38" r="9" fill="none" stroke="#e7e2d0" stroke-width="2"/><path d="M44 29 V47 M35 38 H53" stroke="#e7e2d0" stroke-width="1.4"/><path d="M8 58 C 18 46, 22 30, 30 20" stroke="#cdd39a" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="30" cy="20" r="3.5" fill="#f2c230"/></svg>`,
   },
   {
-    id: 'greer', group: 'real', name: 'Greer', meta: `Greer, South Carolina${IMAGERY ? ' · satellite imagery' : ''} · 18 holes`, holes: 18,
-    blurb: 'Greer Disc Golf Course, between Greenville and Spartanburg, from OpenStreetMap: eighteen short, tight holes from 40 to 170 m through oak and pine woods.',
+    id: 'greer', group: 'real', name: 'Century Park', meta: `Greer, South Carolina${IMAGERY ? ' · satellite imagery' : ''} · 18 holes`, holes: 18,
+    blurb: 'Century Park’s course in Greer, between Greenville and Spartanburg, from OpenStreetMap: eighteen short, tight holes from 40 to 170 m through oak and pine woods.',
     art: `<svg viewBox="0 0 64 64"><rect width="64" height="64" fill="#5b7a3c"/>${[[10, 10, 7], [28, 16, 6], [50, 8, 7], [12, 34, 6], [54, 32, 7], [22, 54, 7], [46, 54, 6]].map(([x, y, r], k) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${k % 2 ? '#2f5a2c' : '#3e6a2e'}"/>`).join('')}<path d="M14 58 C 24 40, 34 30, 44 16" stroke="#c9b28a" stroke-width="3" fill="none" stroke-dasharray="4 3"/><circle cx="44" cy="16" r="3.5" fill="#f2c230"/></svg>`,
   },
   {

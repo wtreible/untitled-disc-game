@@ -51,6 +51,26 @@ export function classCanvas(grid: SurfaceGrid, holeDir: Vec2, alpha = 255): HTML
   return canvas;
 }
 
+/** OSM's water, see-through blue over the photo, so ponds read clearly even where the imagery doesn't. */
+export function waterCanvas(grid: SurfaceGrid, alpha = 110): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = grid.cols;
+  canvas.height = grid.rows;
+  const ctx = canvas.getContext('2d')!;
+  const img = ctx.createImageData(grid.cols, grid.rows);
+  const water = SURFACE_CLASSES.indexOf('water');
+  const [R, G, B] = CLASS_COLORS.water;
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      // Blue everywhere, opaque only on water: filtered edges fade out instead of darkening.
+      const o = ((grid.rows - 1 - r) * grid.cols + c) * 4;
+      img.data.set([R, G, B, grid.cls[r * grid.cols + c] === water ? alpha : 0], o);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
 function hash(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
