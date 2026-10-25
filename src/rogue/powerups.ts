@@ -65,6 +65,7 @@ export const POWERUPS: Powerup[] = [
   P('common', 'luck', 'second-wind', 'Second Wind', '+4 throws before you must pick up.', (m) => { m.pickupBonus += 4; }),
   P('common', 'accuracy', 'scouts-eye', "Scout's Eye", 'See the first 50% of your ghost flight line.', (m) => { m.ghost = Math.min(1, m.ghost + 0.5); }),
   P('common', 'flight', 'wind-cheater', 'Wind Cheater', 'Wind pushes your disc around 40% less.', (m) => { m.windScale *= 0.6; }),
+  P('common', 'accuracy', 'clean-release', 'Clean Release', '10% less wobble, and with a Dev throw style its windows, slice and beats are 40% more forgiving.', (m) => { m.aimError *= 0.9; m.puttAimError *= 0.9; m.timing *= 1.4; }),
   P('common', 'accuracy', 'caddie', 'Caddie', '15% less wobble on throws and putts, and +0.5 m tap-in range.', (m) => { m.aimError *= 0.85; m.puttAimError *= 0.85; m.tapIn += 0.5; }),
   personal('common', 'forward-tee', 'Forward Tee', 'Your tee is 15 m closer on every hole (only for you).', (m) => { m.teeForward += 15; }),
   hex('common', 'sapling', 'Sapling', 'Before each hole, plant a big bush near the basket. Opponents see and hit it; you never do.', (m) => { m.hexSapling += 1; }),
@@ -73,7 +74,7 @@ export const POWERUPS: Powerup[] = [
   hex('common', 'crosswind', 'Crosswind', 'Opponents feel 40% more wind.', (m) => { m.hexWind *= 1.4; }),
   P('common', 'flight', 'roller-skates', 'Roller Skates', 'Rollers roll 60% farther.', (m) => { m.roll *= 1.6; }),
   P('common', 'power', 'tomahawk-training', 'Tomahawk Training', 'Tomahawks and thumbers fly 15% farther and wobble 30% less.', (m) => { m.overhandDistance *= 1.15; m.overhandAim *= 0.7; }),
-  hex('common', 'jitters', 'Jitters', 'Opponents’ throws and putts wobble 25% more.', (m) => { m.hexWobble *= 1.25; }),
+  hex('common', 'jitters', 'Jitters', 'Opponents’ throws and putts wobble 25% more, and their Dev throw-style windows are 25% tighter.', (m) => { m.hexWobble *= 1.25; m.hexTiming *= 0.75; }),
   hex('common', 'heavy-plastic', 'Heavy Plastic', 'Opponents’ throws fly 7% shorter.', (m) => { m.hexDistance *= 0.93; }),
 
   // ---- Epic: bigger bumps and new tricks ----
@@ -121,7 +122,7 @@ export const POWERUPS: Powerup[] = [
   hex('legendary', 'shrink-ray', 'Shrink Ray', "Opponents' baskets are 45% smaller.", (m) => { m.hexShrink *= 0.55; }, true),
   P('legendary', 'flight', 'laser-disc', 'Laser Disc', 'Your discs fly dead straight: no turn, no fade, and the wind can’t move them.', (m) => { m.straight = true; m.windScale = 0; }, true),
   P('legendary', 'power', 'cannon-arm', 'Cannon Arm', '+50% distance, but your power meter runs 50% faster.', (m) => { m.distance *= 1.5; m.meterSpeed *= 1.5; }, true),
-  hex('legendary', 'butterfingers', 'Butterfingers', 'Opponents’ throws and putts wobble twice as much, and their power meters run 40% faster.', (m) => { m.hexWobble *= 2; m.hexMeter *= 1.4; }, true),
+  hex('legendary', 'butterfingers', 'Butterfingers', 'Opponents’ throws and putts wobble twice as much, their power meters run 40% faster, and their Dev throw-style windows are 40% tighter.', (m) => { m.hexWobble *= 2; m.hexMeter *= 1.4; m.hexTiming *= 0.6; }, true),
   // Visual and dynamic augments (2026-10-24): each shows itself in play.
   P('common', 'flight', 'comet-tail', 'Comet Tail', 'Your disc trails a glowing tail, and the wind pushes it 20% less.', (m) => { m.comet = true; m.windScale *= 0.8; }, true),
   P('common', 'flight', 'kite', 'Kite', 'A wind blowing toward the basket lifts your disc up to 15% more. Streamers fly from it.', (m) => { m.kite += 0.15; }),

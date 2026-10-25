@@ -269,17 +269,15 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .nums { color: var(--muted); font: 600 12px var(--body); margin-left: 4px; font-variant-numeric: tabular-nums; }
 #stats { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 #stats b { color: var(--text); }
-#meter { position: relative; flex: 1; min-width: 160px; height: 16px; background: rgba(255, 255, 255, 0.1); border-radius: 999px; overflow: hidden; }
+#meter { position: relative; height: 16px; background: rgba(255, 255, 255, 0.1); border-radius: 999px; overflow: hidden; }
 #meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #6fd43f, var(--accent) 60%, var(--eagle) 85%, var(--hot)); }
 /* The wobble zone (FLIGHT.wobbleFrom up): striped, and visible over the fill too. */
 #meter-wobble { position: absolute; top: 0; bottom: 0; right: 0; border-left: 2px solid rgba(255, 96, 80, 0.95);
   background: repeating-linear-gradient(135deg, rgba(255, 96, 80, 0.5) 0 4px, rgba(255, 96, 80, 0.12) 4px 8px); pointer-events: none; }
-#meter-window { position: absolute; top: 0; bottom: 0; background: rgba(255, 255, 255, 0.35); box-shadow: inset 0 0 0 1px #fff; border-radius: 4px; }
+#meter-window { position: absolute; top: 0; bottom: 0; background: rgba(111, 212, 63, 0.55); box-shadow: inset 0 0 0 2px #b8f25c; border-radius: 4px; display: grid; place-items: center; overflow: visible; }
+#meter-window span { font: 800 9px var(--head); letter-spacing: 0.08em; color: #fff; text-shadow: 0 1px 2px #000; }
+.meter-snapping #meter-fill { opacity: 0.35; }
 #meter-needle { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: #29d3ff; box-shadow: 0 0 0 1px #000, 0 0 8px #29d3ff; }
-#meter-beats { position: absolute; inset: 0; display: flex; justify-content: space-evenly; align-items: center; }
-#meter-beats i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, calc(0.15 + 0.6 * var(--t))); transform: scale(calc(0.5 + 0.6 * var(--t))); }
-#meter-beats i.good { background: #6fd43f; } #meter-beats i.ok { background: var(--eagle); } #meter-beats i.miss { background: var(--hot); }
-#meter-hint { position: absolute; inset: 0; display: grid; place-items: center; font: 700 10px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
 #meter-target { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px #000; }
 #swing { user-select: none; touch-action: none; }
 .help { color: var(--muted); font-size: 11.5px; }
@@ -623,3 +621,13 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .stats-clear { align-self: flex-start; }
 .players h3 { display: flex; align-items: center; justify-content: space-between; }
 #release.blocked { color: var(--hot); border-color: var(--hot); }
+.meter-wrap { position: relative; flex: 1; min-width: 160px; }
+#meter-hint { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); text-align: center; font: 700 11px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
+#meter-track { position: absolute; inset: 0; }
+#meter-track .beat { position: absolute; top: 1px; bottom: 1px; width: 26px; margin-left: -13px; border-radius: 6px; border: 2px solid rgba(255, 255, 255, 0.7); display: grid; place-items: center; font: 800 9px var(--head); color: #fff; }
+#meter-track .beat.hold { width: 40px; margin-left: -20px; }
+#meter-track .beat.good { background: #6fd43f; border-color: #6fd43f; } #meter-track .beat.ok { background: var(--eagle); border-color: var(--eagle); } #meter-track .beat.miss { background: var(--hot); border-color: var(--hot); }
+#meter-track .cursor { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1px; background: #29d3ff; box-shadow: 0 0 6px #29d3ff; }
+#flick-wedge { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 30; overflow: visible; }
+#putt-reticle { position: fixed; z-index: 30; pointer-events: none; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(0, 0, 0, 0.3); transform: translate(-50%, -50%); }
+#putt-reticle.tight { border-color: #6fd43f; }

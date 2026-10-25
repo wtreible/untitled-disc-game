@@ -68,3 +68,19 @@ describe('jump putts', () => {
     expect(spread({ ...putt, power: 0.62, jump: true })).toBeGreaterThan(spread({ ...putt, power: 0.75 }) * 1.3);
   });
 });
+
+describe('nose angle', () => {
+  it('nose up flies higher and shorter; nose down flies lower; putts ignore it', () => {
+    const mid = DISCS.find((d) => d.name === 'Midrange')!;
+    const fly = (nose: number) => {
+      const r = simulateThrow({ start: [0, -100], aim: NORTH, power: 0.8, disc: mid, hyzer: 0, perfect: true, nose }, world());
+      return { far: r.rest[1] + 100, peak: Math.max(...r.samples.map((s) => s[2])) };
+    };
+    const up = fly(1), level = fly(0), down = fly(-1);
+    expect(up.peak).toBeGreaterThan(level.peak);
+    expect(down.peak).toBeLessThan(level.peak);
+    expect(up.far).toBeLessThan(level.far);
+    const putt: ThrowInput = { start: [0, 130], aim: NORTH, power: 0.4, disc: PUTTER_DISC, hyzer: 0, style: 'putt', perfect: true };
+    expect(simulateThrow({ ...putt, nose: 1 }, world()).rest).toEqual(simulateThrow(putt, world()).rest);
+  });
+});

@@ -345,6 +345,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let phase: Phase = 'aim';
   let disc: Disc = DISCS[0];
   let hyzer = 0; // -1..1 in quarter steps
+  let nose = 0; // -1 (down) … +1 (up) in half steps
   let forehand = false;
   /** The kind of throw: normal, overhand (tomahawk / thumber) or roller. Back to normal each throw. */
   let shot: Shot = 'standard';
@@ -756,7 +757,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     phase = mine(game().current) ? 'aim' : 'watching';
     liveAim = null; shownAim = null; liveChargeAt = null;
     liveGate.reset();
-    hyzer = 0; // every throw starts flat and normal (forehand / backhand carries through the hole)
+    hyzer = 0; // every throw starts flat, nose level and normal (forehand / backhand carries through the hole)
+    nose = 0;
     shot = 'standard';
     $('hud').hidden = false;
     power = 0;
@@ -930,7 +932,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const start: Vec2 = side ? [b[0] + Math.sin(yaw) * side * 0.6, b[1] - Math.cos(yaw) * side * 0.6] : b;
     return {
       start, aim: yaw, power: pw, disc, hyzer, mirror: forehand, shot: puttStyle() ? 'standard' : shot,
-      ...(standstill() ? { stance: 'standstill' as const } : {}), ...(jumping() ? { jump: true } : {}),
+      ...(standstill() ? { stance: 'standstill' as const } : {}), ...(jumping() ? { jump: true } : {}), ...(nose && !puttStyle() ? { nose } : {}),
       launch: fp ? pitch + launchOffset(disc, puttStyle(), shot) : undefined,
       style: puttStyle() ? 'putt' : 'drive',
       mods: modsFor(game().current),
@@ -988,7 +990,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     phase = 'charging';
     chargeStart = performance.now();
     const m = modsFor(game().current);
-    ctl = new ThrowControl({ style: prefs().throwStyle, meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill() });
+    ctl = new ThrowControl({ style: prefs().throwStyle, meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill(), timing: m.timing, mirror: forehand });
     ctl.move(pointerAt[0], pointerAt[1], chargeStart);
     ctl.press(chargeStart);
     // Hype Crowd: the gallery's on its feet for your putt.
@@ -1012,15 +1014,41 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   });
   /** The meter's extras for the throw styles: the snap needle and window, the X-step beats, a hint. */
   function drawMeter(v: ThrowView | null): void {
-    const needle = $('meter-needle'), win = $('meter-window'), beats = $('meter-beats'), hint = $('meter-hint');
+    const needle = $('meter-needle'), win = $('meter-window'), track = $('meter-track');
     needle.hidden = v?.needle === undefined;
     win.hidden = !v?.window;
-    beats.hidden = !v?.beats;
-    hint.textContent = v?.hint ?? '';
+    track.hidden = !v?.track;
+    $('meter').classList.toggle('meter-snapping', !!v?.window || v?.reticle !== undefined);
+    $('meter-hint').textContent = v?.hint ?? '';
     if (v?.needle !== undefined) needle.style.left = `${Math.max(0, v.needle) * 100}%`;
     if (v?.window) { win.style.left = `${v.window[0] * 100}%`; win.style.width = `${(v.window[1] - v.window[0]) * 100}%`; }
-    if (v?.beats) {
-      beats.innerHTML = v.beats.map((b) => `<i class="${b.hit === null ? '' : b.hit >= 0.8 ? 'good' : b.hit >= 0.4 ? 'ok' : 'miss'}" style="--t:${b.t}"></i>`).join('');
+    // X-step: the beats on a timeline, and the cursor running across it.
+    if (v?.track) {
+      const cls = (h: number | null) => (h === null ? '' : h >= 0.8 ? 'good' : h >= 0.4 ? 'ok' : 'miss');
+      track.innerHTML = v.track.beats.map((b, k) => `<div class="beat ${b.hold ? 'hold' : ''} ${cls(b.hit)}" style="left:${b.at * 100}%">${b.hold ? 'HOLD' : k + 1}</div>`).join('')
+        + `<div class="cursor" style="left:${v.track.cursor * 100}%"></div>`;
+    }
+    // Flick: the slice at the pointer, the swipe so far inside it.
+    const svg = $('flick-wedge') as unknown as SVGSVGElement;
+    svg.toggleAttribute('hidden', !v?.wedge);
+    if (v?.wedge) {
+      const { at: [x, y], half, r0, R, reach, angle, started } = v.wedge;
+      const pt = (a: number, r: number) => `${(x + Math.sin(a) * r).toFixed(1)},${(y - Math.cos(a) * r).toFixed(1)}`;
+      const slice = `M${pt(-half, r0)} L${pt(-half, R)} A${R},${R} 0 0 1 ${pt(half, R)} L${pt(half, r0)} A${r0},${r0} 0 0 0 ${pt(-half, r0)} Z`;
+      const out = Math.abs(angle) > half;
+      const swipe = started ? `<line x1="${x}" y1="${y}" x2="${(x + Math.sin(angle) * reach * R).toFixed(1)}" y2="${(y - Math.cos(angle) * reach * R).toFixed(1)}" stroke="${out ? '#ff6a5c' : '#29d3ff'}" stroke-width="4" stroke-linecap="round"/>` : '';
+      svg.innerHTML = `<path d="${slice}" fill="rgba(41,211,255,0.16)" stroke="rgba(255,255,255,0.8)" stroke-width="2"/>`
+        + `<line x1="${x}" y1="${y}" x2="${(x).toFixed(1)}" y2="${(y - R).toFixed(1)}" stroke="rgba(255,255,255,0.35)" stroke-dasharray="4 5"/>`
+        + `<circle cx="${x}" cy="${y}" r="5" fill="#fff"/>${swipe}`;
+    }
+    // Two-stage putts: the reticle breathing on the basket.
+    const ret = $('putt-reticle');
+    ret.hidden = v?.reticle === undefined;
+    if (v?.reticle !== undefined) {
+      const q = scene.project(above(myPin(), CHAIN_MID));
+      const d = 18 + 90 * v.reticle;
+      Object.assign(ret.style, { left: `${q.x}px`, top: `${q.y}px`, width: `${d}px`, height: `${d}px` });
+      ret.classList.toggle('tight', v.reticle < 0.4);
     }
   }
   window.addEventListener('blur', () => { chargeQueued = false; });
@@ -1550,6 +1578,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     picker.update(disc, forehand, { hyzer, shot: puttStyle() ? 'standard' : shot });
     $('release').textContent = backhandBlocked() ? 'Backhand blocked' : releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
     $('release').classList.toggle('blocked', backhandBlocked());
+    $('nose').hidden = puttStyle();
+    $('nose').textContent = nose === 0 ? 'Nose level' : `Nose ${Math.abs(nose) < 1 ? 'a little ' : ''}${nose > 0 ? 'up' : 'down'}`;
     const c2 = puttStyle() && toBasket() > C1;
     $('shot').textContent = c2 ? (jumping() ? 'Jump putt' : 'Push putt') : SHOT_LABELS[puttStyle() ? 'standard' : shot];
     $('shot').hidden = puttStyle() && !c2;
@@ -1947,6 +1977,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'hyzer': setHyzer(1); break;
       case 'anhyzer': setHyzer(-1); break;
       case 'forehand': if (phase === 'aim') { forehand = !forehand; sfx('select'); recomputeTick(); updateHud(); } break;
+      case 'nose-up': setNose(nose + 0.5); break;
+      case 'nose-down': setNose(nose - 0.5); break;
       case 'shot': cycleShot(); break;
       case 'first-person': toggleFP(); break;
       case 'view': cycleView(); break;
@@ -1981,6 +2013,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     updateHud();
   }
   $('shot').addEventListener('click', cycleShot);
+  function setNose(v: number): void {
+    if (phase !== 'aim' || puttStyle()) return;
+    nose = Math.max(-1, Math.min(1, v));
+    sfx('select');
+    recomputeTick();
+    updateHud();
+  }
+  // The button steps up to fully up, then back round to fully down.
+  $('nose').addEventListener('click', () => setNose(nose >= 1 ? -1 : nose + 0.5));
   $('release').addEventListener('click', () => { if (phase === 'aim') { hyzer = hyzer >= 1 ? -1 : hyzer + 0.25; sfx('select'); recomputeTick(); updateHud(); } });
 
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });

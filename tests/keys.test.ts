@@ -18,17 +18,17 @@ describe('key bindings', () => {
     expect(keyAction(ev('Q'))).toBe('hyzer'); // case doesn't matter
     expect(isKey(ev(' '), 'throw')).toBe(true);
     // A free key: just that action moves.
-    bindKey('hyzer', 'u');
-    expect(keyAction(ev('u'))).toBe('hyzer');
+    bindKey('hyzer', 'k');
+    expect(keyAction(ev('k'))).toBe('hyzer');
     expect(keyAction(ev('q'))).toBeNull();
     // A taken key: the other action gets this one's old key.
     bindKey('hyzer', 'e');
     expect(keyBindings().hyzer).toBe('e');
-    expect(keyBindings().anhyzer).toBe('u');
+    expect(keyBindings().anhyzer).toBe('k');
     // Only what differs from the defaults is saved; binding back to a default drops it.
-    expect(prefs().keys).toEqual({ hyzer: 'e', anhyzer: 'u' });
+    expect(prefs().keys).toEqual({ hyzer: 'e', anhyzer: 'k' });
     bindKey('anhyzer', 'e'); // back to its default; hyzer, which had E, swaps onto U
-    expect(prefs().keys).toEqual({ hyzer: 'u' });
+    expect(prefs().keys).toEqual({ hyzer: 'k' });
     bindKey('hyzer', 'q');
     expect(prefs().keys).toEqual({});
     expect(keyBindings()).toEqual(DEFAULT_KEYS);

@@ -52,6 +52,8 @@ export const FLIGHT = {
    */
   noseBase: 0.03,
   noseFollow: 1,
+  /** Nose up/down control (input.nose = ±1): this much more or less nose angle (rad). */
+  noseRange: 0.09,
   /** Stall: past this angle of attack, lift fades to 0 at 90° and drag rises toward a flat plate. */
   stallAlpha: 0.45,
   flatPlateCd: 1.1,
@@ -234,6 +236,8 @@ export interface ThrowInput {
   stance?: 'standstill';
   /** A jump putt (only outside circle 1): faster and flatter, so less wind but more spit-outs, and less accurate. */
   jump?: boolean;
+  /** Nose angle, −1 (down: far and flat, dives early) … +1 (up: floats and stalls short). Not for putts. */
+  nose?: number;
 }
 
 /**
@@ -365,7 +369,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
 
   const cl0 = FLIGHT.cl0 + FLIGHT.cl0PerGlide * (disc.glide - 5);
   const cd0 = Math.max(FLIGHT.cd0Min, FLIGHT.cd0 + FLIGHT.cd0PerSpeed * disc.speed);
-  const nose = FLIGHT.noseBase + FLIGHT.noseFollow * launch;
+  const nose = FLIGHT.noseBase + FLIGHT.noseFollow * launch + (putt ? 0 : (input.nose ?? 0) * FLIGHT.noseRange);
   // Putts get a fraction of the spin-driven roll: push putts are thrown flat and slow.
   const turnK = putt ? 0.3 : 1;
 

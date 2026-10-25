@@ -88,6 +88,8 @@ export interface Mods {
   bridge: boolean;
   /** Storm Front: each throw a gust joins the wind, mostly toward the basket, shown before you throw. */
   gusts: boolean;
+  /** × the release windows of the Dev throw styles (2-stage window, flick slice, X-step beats, putting reticle). */
+  timing: number;
   // Looks only (the disc's trail and the crowd): Comet Tail, Hype Crowd.
   comet: boolean;
   hype: boolean;
@@ -134,6 +136,8 @@ export interface Mods {
   hexDistance: number;
   /** × opponents' ghost line (0 hides it). */
   hexGhost: number;
+  /** × opponents' release windows (Dev throw styles). */
+  hexTiming: number;
   /** Opponents' baskets drift back and forth this far (m). */
   hexDrift: number;
   /** Opponents see only this far (m; 0 = off). */
@@ -160,10 +164,10 @@ export function neutralMods(): Mods {
     catchBonus: 0, teeCatchBonus: 0, cutToCatch: 0, basketScale: 1, tapIn: 1, gimme: 0, magnet: 0, magnetPull: 1.5,
     branch: 1, branchPass: 0, trunkKeep: 1, phaseTrees: 0, kickToward: false, kickKeep: 1, liveKicks: false,
     skid: 1, roll: 1, overhandDistance: 1, overhandAim: 1, straight: false, metalIn: 0, sticky: false, obInsurance: false, puttRange: 1, homing: 0, windScale: 1, tailwind: false,
-    kite: 0, boomerang: 0, skips: 0, fireball: 0, split: false, spotlight: 0, buddy: 0, trickShot: false, gardener: 0, bridge: false, gusts: false, comet: false, hype: false,
+    kite: 0, boomerang: 0, skips: 0, fireball: 0, split: false, spotlight: 0, buddy: 0, trickShot: false, gardener: 0, bridge: false, gusts: false, timing: 1, comet: false, hype: false,
     meterSpeed: 1, pickupBonus: 0, mulligans: 0, perfectForm: 0, clone: false, treeChopper: false, rerolls: 0, extraCard: 0, bagSlots: 0,
     ghost: 1, ghostCone: false, teeForward: 0, pinCloser: 0, clearCut: 0,
-    hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1, hexWind: 1, hexWobble: 1, hexDistance: 1, hexGhost: 1,
+    hexSapling: 0, hexThicket: 0, hexPond: 0, hexMeter: 1, hexBackTee: 0, hexShrink: 1, hexWind: 1, hexWobble: 1, hexDistance: 1, hexGhost: 1, hexTiming: 1,
     hexDrift: 0, hexFog: 0, hexQuake: false, hexNight: false, hexRain: false,
     drift: 0, fog: 0, quake: false, night: false, rain: false,
   };
@@ -194,6 +198,7 @@ export function effectiveMods(all: Mods[], player: number, teamOf: (p: number) =
     m.puttAimError *= o.hexWobble;
     m.distance *= o.hexDistance;
     m.ghost *= o.hexGhost;
+    m.timing *= o.hexTiming;
   });
   return m;
 }
