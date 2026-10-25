@@ -10,7 +10,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [04-course-model](04-course-model.md) | Surface classes, OSM tag mapping, hole structure, the v1 hole |
 | [05-gameplay](05-gameplay.md) | Clubs, shot model, surfaces, trees, scoring |
 | [06-segmentation](06-segmentation.md) | Three segmentation approaches (future; not needed for v1) |
-| [07-elevation-lidar](07-elevation-lidar.md) | Lidar / DEM terrain (future) |
+| [07-elevation-lidar](07-elevation-lidar.md) | Lidar / DEM terrain (future); evaluation for the real disc golf courses: sources, relief, pipeline, runtime work |
 | [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) | Park-to-course editor, the planned hole editor for sharing holes, disc golf variant (future) |
 | [09-glossary](09-glossary.md) | Terms used across these docs |
 | [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
@@ -21,6 +21,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [15-pirates-cove-and-oak-grove](15-pirates-cove-and-oak-grove.md) | Arcade course Pirate's Cove (islands; the sea as a water hazard) and real course Oak Grove (Stockton, CA; trees from OpenStreetMap) |
 | [16-more-real-courses](16-more-real-courses.md) | Real courses Běchovice, Skatås, Kincaid, Julkujärvi, Blue Lake; hole selection fixes; per-course tree models (birch, spruce, oak; Quaternius, CC0) |
 | [17-graveyard-tutorial-and-meter](17-graveyard-tutorial-and-meter.md) | Arcade course Graveyard Shift (night, Kenney Graveyard Kit), the Training tutorial, +10% throw power, the striped wobble zone, compact course menu |
+| [18-ideas](18-ideas.md) | Possible additions for more depth (shots and rules, courses, progression, opponents, feedback); not planned yet |
 
 ## Decision log
 

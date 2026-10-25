@@ -31,3 +31,53 @@ v1 is flat (`heightAt = 0`, D9). The world model is already 3D ([02-architecture
 - **Physics:** roll gets a gravity term along the slope; landing uses the terrain height instead of z = 0; flight checks for hitting rising ground.
 - **Putting:** curved putts arrive for free once roll uses slope. Add a grid or arrow overlay on the green to show slope, since a top-down photo hides it.
 - **Rendering:** subdivided ground plane displaced by the heightmap; the photo texture stays the same. Enables the perspective chase cam. In top-down view, add hillshade to the class-render view.
+
+## Evaluation for the disc golf courses (2026-10-25)
+
+The sections above are the original golf-era plan. This is what it takes for the nine real disc golf courses today.
+
+### Is there data, and does it matter?
+
+| Course | Source | Resolution | Licence | Relief |
+|---|---|---|---|---|
+| Kincaid Park (AK) | USGS 3DEP: 5 m Alaska DEM; a lidar point cloud also exists | 5 m (≈1 m from the LAZ) | Public domain | **~67 m** (12×12 sample; includes the low ground at the park's edge) |
+| Century Park (Greer SC) | USGS 3DEP 1 m DEM | 1 m | Public domain | **~23 m** |
+| Blue Lake (OR) | USGS 3DEP 1/9 arc-second DEM | ~3 m | Public domain | ~10 m |
+| Oak Grove Gold (CA) | USGS 3DEP 1 m DEM | 1 m | Public domain | ~4 m (flat) |
+| Tali, Julkujärvi (FI) | NLS Finland elevation model 2 m (file download service; free API key) | 2 m | CC BY 4.0 | not sampled; Julkujärvi is in an old sand pit, so likely a lot |
+| Skatås (SE) | Lantmäteriet Markhöjdmodell grid 1+ (ordered through Geotorget, then download) | 1 m | Reported as open/CC0; **confirm on Lantmäteriet's page** | not sampled; hilly woods |
+| DiscGolfPark Běchovice (CZ) | ČÚZK DMR 5G (ATOM download, LAZ / grid) | ~2 m | ČÚZK open data is CC BY 4.0; **confirm DMR 5G is covered** | not sampled |
+| Wiener Prater (AT) | BEV ALS-DGM (Austria-wide, COG tiles, EPSG:3035) | 1 m | CC BY 4.0 | not sampled; the Prater is flat |
+
+US relief comes from 144 `getSamples` points over each course's bounds on the 3DEP ImageServer. Coverage comes from the 3DEP index (1 m layer: Oak Grove and Greer; 1/9″: Blue Lake; 5 m Alaska: Kincaid). Kincaid and Century Park would change the most; Oak Grove and the Prater would barely change.
+
+### Pipeline (offline, no GDAL)
+
+A `npm run course-elevation -- --out <id>` script next to the course builder:
+
+1. **Fetch.** US: one `exportImage` call to the 3DEP ImageServer for the course bounds (F32 GeoTIFF; no auth, no tiles). Europe: download the national tiles covering the bounds (some need a free key or an order, so a cached `--file` input is fine).
+2. **Resample into the course frame.** For each cell of a grid over `course.bounds`, local meters → lat/lon (the course origin) → the source CRS (`proj4`: ETRS-TM35FIN, SWEREF 99 TM, S-JTSK or ETRS89/TM33, EPSG:3035) → bilinear sample. GeoTIFFs read with `geotiff` (pure JS).
+3. **Clean.** Light smoothing (lidar noise reads as bumps); flatten water to its shoreline height; keep tee pads and greens as mapped.
+4. **Write** `public/courses/<id>.height.bin`: Uint16 centimeters above the course minimum (655 m of range), plus `elevation: { cell, cols, rows, min, file }` in the course JSON. A 1 km × 0.7 km course is ~1.4 MB at 1 m, ~350 KB at 2 m (2 m is plenty for fairways; 1 m only near baskets if putting slopes matter).
+
+### Runtime changes
+
+| Area | Change | Size |
+|---|---|---|
+| Terrain | `HeightmapTerrain` (bilinear `heightAt`, `normalAt` from central differences) in the disc worlds instead of `FlatTerrain`; arcade courses stay flat | Small |
+| Flight | Release height, landing and tree bases already use `heightAt`. Add: basket collisions relative to the ground at the basket (they use absolute heights today); a slope term in skid and roll so discs roll away downhill | Small–medium |
+| Aim | The meter tick and ghost line follow automatically (they simulate in the same world). Add elevation change to the stats ("plays 12 ft downhill") | Small |
+| Rendering | The photo, class, water and overlay planes become one subdivided, displaced ground mesh (~2 m segments). Everything placed "on the ground" gets `ground(x, y)`: trees, props, basket, tee pads, discs, spectators, wildlife, effects, bridges, first-person eye height. Seven render/mode files place objects today | **Large**: most of the work |
+| Readability | Hillshade in the top-down and class views; slope arrows around the basket for putts | Medium |
+| Online | Nothing: each client loads the same heightmap, and throws travel as results | — |
+
+### Recommendation
+
+Pilot on **Century Park and Kincaid**: both come from the 3DEP API with no account or reprojection beyond lat/lon, and they have the most relief (23 m and 67 m). The steps:
+
+1. The pipeline script for 3DEP, then `HeightmapTerrain`, then the basket and slope fixes in flight, all testable without rendering.
+2. A displaced ground mesh, and ground-relative placement for everything.
+3. Hillshade, slope arrows and "uphill/downhill" in the stats.
+4. The European sources one at a time (Finland first: open and documented), confirming each licence before shipping.
+
+Sources: [3DEP ImageServer](https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer), [3DEP index](https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer), [NLS elevation model 2 m](https://maanmittauslaitos.fi/en/node/10715) and [NLS terms](https://rsync.nic.funet.fi/index/geodata/mml/NLS_terms_of_use.pdf), [Lantmäteriet grid 1+](https://lantmateriet.se/en/geodata/our-products/product-list/terrain-model-download-grid-1), [ČÚZK data terms](https://cuzk.gov.cz/Predpisy/Podminky-poskytovani-prostor-dat-a-sitovych-sluzeb/Podminky-poskytovani-prostorovych-dat-CUZK.aspx) and [DMR 5G ATOM](https://geoportal.gov.cz/php/micka/record/basic/CZ-CUZK-ATOM-DMR5G-ETRS89?dlang=eng), [BEV ALS-DGM](https://inspire-geoportal.ec.europa.eu/srv/api/records/7beed39a-cd40-4ebc-92c6-4571aa7f1be2).
