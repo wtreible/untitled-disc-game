@@ -221,7 +221,15 @@ export interface ThrowInput {
   buddy?: boolean;
   /** Thrown in an earthquake (an opponent's hex): much more wobble. */
   quake?: boolean;
+  /** How the release went (src/modes/throwStyles.ts); it replaces the overpower wobble. */
+  execution?: Execution;
 }
+
+/**
+ * A release's execution: a pull (+) or push (−) in degrees and extra hyzer (+) or turn (−) in
+ * radians (both mirrored with the throw), and × the random wobble.
+ */
+export interface Execution { yaw: number; bank: number; wobble: number }
 
 export type Shot = 'standard' | 'tomahawk' | 'thumber' | 'roller';
 
@@ -320,22 +328,23 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const overhand = shot === 'tomahawk' || shot === 'thumber';
   // Spotlight: no wobble on putts from close in. An earthquake: a lot more.
   const spot = putt && m.spotlight > 0 && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) <= m.spotlight;
-  const err = (spot ? 0 : putt ? m.puttAimError : m.aimError * (overhand ? m.overhandAim : 1)) * (input.quake ? 2.5 : 1);
+  const ex = opt.ghost || input.perfect ? undefined : input.execution;
+  const err = (spot ? 0 : putt ? m.puttAimError : m.aimError * (overhand ? m.overhandAim : 1)) * (input.quake ? 2.5 : 1) * (ex?.wobble ?? 1);
   const noise = opt.ghost || input.perfect ? () => 0 : () => gaussian(rng) * err;
   /** Overhand: which way it rolls over (tomahawk: to the left of travel). */
   const side = shot === 'thumber' ? -1 : 1;
 
   // Release, with execution error (bigger when muscling past ~90%).
-  const over = m.noOverpowerWobble ? 0 : Math.max(0, input.power - FLIGHT.wobbleFrom) / (1 - FLIGHT.wobbleFrom);
-  const yaw = input.aim + (noise() * (putt ? 0.5 : 1.4 + over * 2) * Math.PI) / 180;
+  const over = m.noOverpowerWobble || ex ? 0 : Math.max(0, input.power - FLIGHT.wobbleFrom) / (1 - FLIGHT.wobbleFrom);
+  const yaw = input.aim + ((noise() * (putt ? 0.5 : 1.4 + over * 2) + mirror * (ex?.yaw ?? 0)) * Math.PI) / 180;
   // Distance bonuses scale the meter, which maps ~linearly to distance; past full power, release
   // speed grows with the measured full-power sensitivity (distance ∝ v^~1.8 there).
   const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange : FLIGHT.throwPower * m.distance * (input.fromTee ? m.teeDistance : 1) * (overhand ? m.overhandDistance : 1));
   const power = (meter <= 1 ? meterToSpeed(meter, input.disc) : meter ** 0.55) * (1 + noise() * (putt ? 0.015 : 0.02));
   const launch = (input.launch ?? (putt ? 0.12 : shotLaunch(shot, input.disc))) + noise() * 0.01;
   let bank = overhand ? side * FLIGHT.overBank + noise() * 0.04
-    : shot === 'roller' ? mirror * (-0.95 + input.hyzer * 0.2 + noise() * 0.04) // a big anhyzer; hyzer softens it
-      : mirror * (input.hyzer * FLIGHT.maxReleaseBank * m.shape + noise() * 0.04);
+    : shot === 'roller' ? mirror * (-0.95 + input.hyzer * 0.2 + noise() * 0.04 + (ex?.bank ?? 0)) // a big anhyzer; hyzer softens it
+      : mirror * (input.hyzer * FLIGHT.maxReleaseBank * m.shape + noise() * 0.04 + (ex?.bank ?? 0));
   const speed0 = disc.v0 * power * (overhand ? FLIGHT.overSpeed : 1);
   let p: Vec3 = [input.start[0], input.start[1], world.terrain.heightAt(input.start[0], input.start[1]) + (input.releaseZ ?? 1.0)];
   let v: Vec3 = [Math.cos(yaw) * Math.cos(launch) * speed0, Math.sin(yaw) * Math.cos(launch) * speed0, Math.sin(launch) * speed0];

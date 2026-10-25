@@ -1,12 +1,13 @@
 // One settings form, rendered into both the main menu and the pause menu, in tabs: Audio, Camera,
-// Gameplay, Graphics, Controls. Every control writes through to prefs/units, and both copies
+// Gameplay, Graphics, Controls, Dev. Every control writes through to prefs/units, and both copies
 // refresh when anything changes.
 import { DEFAULT_KEYS, KEY_GROUPS, UNBINDABLE, bindKey, keyBindings, keyName, resetKeys, type KeyAction } from '../keys';
 import { prefs, setPref, type Graphics, type Prefs } from '../settings';
+import { THROW_STYLES, type ThrowStyle } from '../modes/throwStyles';
 import { getUnits, setUnits } from '../units';
 
-type Tab = 'audio' | 'camera' | 'gameplay' | 'graphics' | 'controls';
-const TABS: [Tab, string][] = [['audio', 'Audio'], ['camera', 'Camera'], ['gameplay', 'Gameplay'], ['graphics', 'Graphics'], ['controls', 'Controls']];
+type Tab = 'audio' | 'camera' | 'gameplay' | 'graphics' | 'controls' | 'dev';
+const TABS: [Tab, string][] = [['audio', 'Audio'], ['camera', 'Camera'], ['gameplay', 'Gameplay'], ['graphics', 'Graphics'], ['controls', 'Controls'], ['dev', 'Dev']];
 type Flag = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs];
 
 const toggle = (k: Flag, title: string, note = '', off = '') => {
@@ -59,6 +60,10 @@ export function mountSettings(el: HTMLElement): void {
           <div class="row key-row"><span>${label}</span><button class="key-btn ${listening === a ? 'listening' : ''} ${keys[a] !== DEFAULT_KEYS[a] ? 'changed' : ''}" data-a="${a}">${listening === a ? 'Press a key…' : keyName(keys[a])}</button></div>`).join('')}</div>`).join('')}
           <div class="key-foot"><small>Click a key, then press the new one (Esc cancels). A key already in use swaps over.</small><button class="reset-keys">Reset to defaults</button></div>`;
       }
+      case 'dev': return `
+        <div class="row"><span>Throw style</span><select data-k="throwStyle">
+          ${THROW_STYLES.map(([v, name]) => `<option value="${v}" ${p.throwStyle === v ? 'selected' : ''}>${name}</option>`).join('')}</select></div>
+        <small class="dim">${THROW_STYLES.find(([v]) => v === p.throwStyle)?.[2] ?? ''}. Experimental: try them out, they may change.</small>`;
     }
   };
 
@@ -91,6 +96,7 @@ export function mountSettings(el: HTMLElement): void {
       render();
     }));
     el.querySelector('.reset-keys')?.addEventListener('click', () => { listening = null; resetKeys(); });
+    el.querySelector<HTMLSelectElement>('select[data-k=throwStyle]')?.addEventListener('change', (e) => setPref('throwStyle', (e.target as HTMLSelectElement).value as ThrowStyle));
   };
 
   // Waiting for a new key: the next press is it (and nothing else in the game sees it).

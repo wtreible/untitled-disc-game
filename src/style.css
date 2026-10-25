@@ -274,6 +274,12 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 /* The wobble zone (FLIGHT.wobbleFrom up): striped, and visible over the fill too. */
 #meter-wobble { position: absolute; top: 0; bottom: 0; right: 0; border-left: 2px solid rgba(255, 96, 80, 0.95);
   background: repeating-linear-gradient(135deg, rgba(255, 96, 80, 0.5) 0 4px, rgba(255, 96, 80, 0.12) 4px 8px); pointer-events: none; }
+#meter-window { position: absolute; top: 0; bottom: 0; background: rgba(255, 255, 255, 0.35); box-shadow: inset 0 0 0 1px #fff; border-radius: 4px; }
+#meter-needle { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: #29d3ff; box-shadow: 0 0 0 1px #000, 0 0 8px #29d3ff; }
+#meter-beats { position: absolute; inset: 0; display: flex; justify-content: space-evenly; align-items: center; }
+#meter-beats i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, calc(0.15 + 0.6 * var(--t))); transform: scale(calc(0.5 + 0.6 * var(--t))); }
+#meter-beats i.good { background: #6fd43f; } #meter-beats i.ok { background: var(--eagle); } #meter-beats i.miss { background: var(--hot); }
+#meter-hint { position: absolute; inset: 0; display: grid; place-items: center; font: 700 10px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
 #meter-target { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px #000; }
 #swing { user-select: none; touch-action: none; }
 .help { color: var(--muted); font-size: 11.5px; }

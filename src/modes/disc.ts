@@ -49,6 +49,7 @@ import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } fro
 import { BASICS, mountTutorial, type StepSetup, type Tutorial, type TutorialThrow } from './tutorial';
 import { CRAZY_TUTORIAL } from './crazyTutorial';
 import { puttingState, renderPutting, stationBasket } from './putting';
+import { ThrowControl, type Release, type ThrowView } from './throwStyles';
 import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, meterAt, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
 
 /** idle: between steps; watching: another player's turn (online). */
@@ -727,6 +728,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     shot = 'standard';
     $('hud').hidden = false;
     power = 0;
+    ctl = null;
     fpOverride = null;
     perfectArmed = false;
     const p = player();
@@ -929,6 +931,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   /** Throw held while the camera was still on its way to the disc: it starts once it's there. */
   let chargeQueued = false;
+  /** The throw being input (Settings → Dev: throw style), while charging. */
+  let ctl: ThrowControl | null = null;
+  /** Where the pointer last was: a flick measures from here. */
+  let pointerAt: [number, number] = [0, 0];
+  /** The throw button went down: a new throw, or the next press of one in progress (a snap, a step). */
+  function throwDown(): void {
+    if (phase === 'charging' && ctl) settle(ctl.press(performance.now()));
+    else startCharge();
+  }
   function startCharge(): void {
     if (phase !== 'aim' || !$('draft').hidden) return; // not behind a draft (Crazy mode's tutorial deals one on the range)
     // Not before the camera is at the disc (it glides there from the last throw).
@@ -936,13 +947,41 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     chargeQueued = false;
     phase = 'charging';
     chargeStart = performance.now();
+    const m = modsFor(game().current);
+    ctl = new ThrowControl({ style: prefs().throwStyle, meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble });
+    ctl.move(pointerAt[0], pointerAt[1], chargeStart);
+    ctl.press(chargeStart);
     // Hype Crowd: the gallery's on its feet for your putt.
     if (puttStyle() && modsFor(game().current).hype) gallery.react('cheer', myPin(), 30);
   }
   /** Let go of the throw: a throw still waiting for the camera is called off. */
   function letGo(): void {
     chargeQueued = false;
-    release();
+    if (phase === 'charging' && ctl) settle(ctl.release(performance.now()));
+  }
+  /** What the throw input came to: a release throws, a cancel goes back to aiming. */
+  function settle(r: Release | 'cancel' | null): void {
+    if (!r || phase !== 'charging') return;
+    ctl = null;
+    if (r === 'cancel') { phase = 'aim'; power = 0; drawMeter(null); updateHud(); return; }
+    release(r);
+  }
+  window.addEventListener('pointermove', (e) => {
+    pointerAt = [e.clientX, e.clientY];
+    if (phase === 'charging' && ctl) settle(ctl.move(e.clientX, e.clientY, performance.now()));
+  });
+  /** The meter's extras for the throw styles: the snap needle and window, the X-step beats, a hint. */
+  function drawMeter(v: ThrowView | null): void {
+    const needle = $('meter-needle'), win = $('meter-window'), beats = $('meter-beats'), hint = $('meter-hint');
+    needle.hidden = v?.needle === undefined;
+    win.hidden = !v?.window;
+    beats.hidden = !v?.beats;
+    hint.textContent = v?.hint ?? '';
+    if (v?.needle !== undefined) needle.style.left = `${Math.max(0, v.needle) * 100}%`;
+    if (v?.window) { win.style.left = `${v.window[0] * 100}%`; win.style.width = `${(v.window[1] - v.window[0]) * 100}%`; }
+    if (v?.beats) {
+      beats.innerHTML = v.beats.map((b) => `<i class="${b.hit === null ? '' : b.hit >= 0.8 ? 'good' : b.hit >= 0.4 ? 'ok' : 'miss'}" style="--t:${b.t}"></i>`).join('');
+    }
   }
   window.addEventListener('blur', () => { chargeQueued = false; });
 
@@ -950,13 +989,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, myPin()) + r.penalty * 30);
 
   /** Simulate the throw here, then show it; its event is applied (and sent) when it lands. */
-  function release(): void {
+  function release(r: Release): void {
     if (phase !== 'charging') return;
+    drawMeter(null);
+    if (r.note) chip(r.note, /Clean|Rhythm (8|9|1)/.test(r.note) ? 'birdie' : 'info', undefined, 1800);
     kept.set(game().current, { aimTarget, yaw, pitch, disc, hyzer, forehand, shot });
     const me = game().current;
     const perfect = perfectArmed;
     perfectArmed = false;
-    const input = { ...throwInput(Math.max(0.01, power)), perfect };
+    const input = { ...throwInput(Math.max(0.01, r.power)), perfect, ...(r.execution ? { execution: r.execution } : {}) };
     if (tutorial) tutorialShot = { power: input.power, hyzer, forehand, shot: input.shot ?? 'standard', putt: input.style === 'putt', perfect };
     let result = simulateThrow(input, world());
     let other: ThrowResult | null = null;
@@ -1812,7 +1853,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
     // The hole flyover: Space or Enter skips it, other keys wait for it.
     if (intro) { if (isKey(e, 'throw') || e.key === 'Enter') { e.preventDefault(); endIntro(); } return; }
-    if (isKey(e, 'throw')) { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) startCharge(); return; }
+    if (isKey(e, 'throw')) { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) throwDown(); return; }
     const fine = e.shiftKey; // Shift: finer aim, bigger target steps
     switch (keyAction(e)) {
       case 'disc-prev': cycleDisc(-1); break;
@@ -1842,7 +1883,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   window.addEventListener('blur', () => { if (heldCard) { heldCard = false; $('results').hidden = true; } });
 
   const swingBtn = $('swing');
-  swingBtn.addEventListener('pointerdown', (e) => { swingBtn.setPointerCapture(e.pointerId); startCharge(); });
+  swingBtn.addEventListener('pointerdown', (e) => { swingBtn.setPointerCapture(e.pointerId); pointerAt = [e.clientX, e.clientY]; throwDown(); });
   swingBtn.addEventListener('pointerup', letGo);
   $('view-toggle').addEventListener('click', cycleView);
   $('fp-toggle').addEventListener('click', toggleFP);
@@ -1953,9 +1994,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
     if (chargeQueued && phase === 'aim' && !scene.gliding) startCharge();
     else if (phase !== 'aim') chargeQueued = false;
-    if (phase === 'charging') {
-      power = meterAt(now - chargeStart, modsFor(game().current).meterSpeed);
+    if (phase === 'charging' && ctl) {
+      const { view, done } = ctl.frame(now);
+      power = view.fill;
       $('meter-fill').style.width = `${power * 100}%`;
+      drawMeter(view);
+      if (done) settle(done);
     }
     const g = game();
     COLORS.forEach((_, i) => {
