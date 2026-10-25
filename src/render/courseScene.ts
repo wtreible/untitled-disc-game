@@ -67,6 +67,8 @@ export class CourseScene {
   private readonly magnetRing: THREE.LineLoop;
   /** Real ground: arrows on the green pointing downhill, longer where it's steeper (null: flat course). */
   private readonly slopeArrows: THREE.InstancedMesh | null = null;
+  /** Circle 1 (10 m) on the ground around the basket: no jump putts inside it. */
+  private readonly circle1: THREE.LineLoop;
   private readonly placePreview = new THREE.Group();
   private readonly spread = new THREE.Group();
   // First-person extras: target ring + ground line, and a top-down minimap inset.
@@ -163,6 +165,11 @@ export class CourseScene {
     this.magnetRing.visible = false;
     this.magnetRing.renderOrder = 3;
     this.scene.add(this.magnetRing);
+    this.circle1 = new THREE.LineLoop(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(CIRCLE_POINTS * 3), 3)),
+      new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.35, depthWrite: false }));
+    this.circle1.renderOrder = 5;
+    this.circle1.frustumCulled = false;
+    this.scene.add(this.circle1);
     if (this.relief) {
       this.slopeArrows = new THREE.InstancedMesh(arrowGeometry(), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.5, depthWrite: false }), SLOPE_GRID.length);
       this.slopeArrows.renderOrder = 5;
@@ -371,6 +378,13 @@ export class CourseScene {
    * the slope is steep (none where it's under 1%). A putt breaks the way they point.
    */
   private placeSlopeArrows(p: Vec2): void {
+    // Circle 1, draped on the ground.
+    const pos = this.circle1.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < CIRCLE_POINTS; i++) {
+      const a = (i / CIRCLE_POINTS) * Math.PI * 2, x = p[0] + Math.cos(a) * CIRCLE1, y = p[1] + Math.sin(a) * CIRCLE1;
+      pos.setXYZ(i, x, y, groundAt(x, y) + 0.05);
+    }
+    pos.needsUpdate = true;
     const im = this.slopeArrows;
     if (!im) return;
     const m = new THREE.Matrix4(), s = new THREE.Vector3(), at = new THREE.Vector3();
@@ -1335,6 +1349,9 @@ function vortexModel(): THREE.Group {
   }
   return g;
 }
+
+/** Circle 1's radius (m) and how many points draw it. */
+const CIRCLE1 = 10, CIRCLE_POINTS = 96;
 
 /** Where the slope arrows go around a basket: a 2 m grid out to 10 m (circle 1), clear of the pole. */
 const SLOPE_GRID: Vec2[] = (() => {

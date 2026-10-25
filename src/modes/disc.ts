@@ -14,7 +14,7 @@ import { playerColors } from '../game/game';
 import { DiscRound, type RoundEvent, type WireResult } from './discRound';
 import { renderCard, renderSummary, type CardView } from './scorecard';
 import { holeRecords } from './roundStats';
-import { RATING_MIN_HOLES, recordRound } from '../game/playerStats';
+import { C1, RATING_MIN_HOLES, recordRound } from '../game/playerStats';
 import { shapeText, shotShape } from '../game/shotStats';
 import { showBagPicker, showDraft } from './picks';
 import { LiveGate, RoundSync, type NetPlay } from './discSync';
@@ -376,6 +376,27 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const autoFP = () => toBasket() <= PUTT_RANGE && player().strokes > 0;
   const isFP = () => fpOverride ?? (preferFP || autoFP());
   const puttStyle = () => isFP() && disc === PUTTER_DISC && toBasket() <= PUTT_RANGE + 5;
+  /** Chose a jump putt this turn (G); it only counts outside circle 1. */
+  let jumpPutt = false;
+  const jumping = () => jumpPutt && puttStyle() && toBasket() > C1;
+  /** Under the trees there's no room for a run-up (putts are standstill anyway). */
+  const standstill = () => !puttStyle() && player().lie === 'trees';
+  /**
+   * A trunk right in front of the lie, within 1.5 m and 30° of the line: no room for a backhand's
+   * reach-back. Its side of the line (+ left), so other throws are released from the other side.
+   */
+  function trunkAhead(): number {
+    const b = player().ball;
+    for (const t of world().trees.near(b[0], b[1])) {
+      const dx = t.x - b[0], dy = t.y - b[1], d = Math.hypot(dx, dy) - t.t;
+      if (d > 1.5) continue;
+      const off = Math.atan2(dy, dx) - yaw, a = Math.atan2(Math.sin(off), Math.cos(off));
+      if (Math.abs(a) < Math.PI / 6) return a >= 0 ? 1 : -1;
+    }
+    return 0;
+  }
+  /** A backhand that the trunk in front won't allow. */
+  const backhandBlocked = () => !puttStyle() && !forehand && shot === 'standard' && trunkAhead() !== 0;
 
   function startHoleInfo(): void {
     const h = hole();
@@ -740,6 +761,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('hud').hidden = false;
     power = 0;
     ctl = null;
+    jumpPutt = false;
     fpOverride = null;
     perfectArmed = false;
     const p = player();
@@ -784,6 +806,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         chip('Earthquake! Your aim is shaking', 'hot');
       }
     }
+    // A trunk right in front: no backhand from here, so start on a forehand.
+    if (phase === 'aim' && backhandBlocked()) { forehand = true; chip('A tree’s right in front: forehand', 'info', 'No room for a backhand reach-back', 2600); }
     if (phase === 'aim') recomputeTick();
     else showWait(`${p.name} is throwing…`);
     updateHud();
@@ -901,8 +925,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
 
   function throwInput(pw: number): ThrowInput {
     const fp = isFP();
+    // Blocked by a trunk: step out to the side of the line away from it to release.
+    const side = puttStyle() ? 0 : trunkAhead(), b = player().ball;
+    const start: Vec2 = side ? [b[0] + Math.sin(yaw) * side * 0.6, b[1] - Math.cos(yaw) * side * 0.6] : b;
     return {
-      start: player().ball, aim: yaw, power: pw, disc, hyzer, mirror: forehand, shot: puttStyle() ? 'standard' : shot,
+      start, aim: yaw, power: pw, disc, hyzer, mirror: forehand, shot: puttStyle() ? 'standard' : shot,
+      ...(standstill() ? { stance: 'standstill' as const } : {}), ...(jumping() ? { jump: true } : {}),
       launch: fp ? pitch + launchOffset(disc, puttStyle(), shot) : undefined,
       style: puttStyle() ? 'putt' : 'drive',
       mods: modsFor(game().current),
@@ -956,10 +984,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Not before the camera is at the disc (it glides there from the last throw).
     if (scene.gliding) { chargeQueued = true; return; }
     chargeQueued = false;
+    if (backhandBlocked()) { chip('A tree’s in the way of your backhand', 'hot', `${keyFor('forehand')} forehand · ${keyFor('shot')} roller or overhand`, 2600); return; }
     phase = 'charging';
     chargeStart = performance.now();
     const m = modsFor(game().current);
-    ctl = new ThrowControl({ style: prefs().throwStyle, meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble });
+    ctl = new ThrowControl({ style: prefs().throwStyle, meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill() });
     ctl.move(pointerAt[0], pointerAt[1], chargeStart);
     ctl.press(chargeStart);
     // Hype Crowd: the gallery's on its feet for your putt.
@@ -1519,9 +1548,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const p = player();
     $('turn').innerHTML = `<span style="color:${p.color}">●</span> ${esc(p.name)}`;
     picker.update(disc, forehand, { hyzer, shot: puttStyle() ? 'standard' : shot });
-    $('release').textContent = releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
-    $('shot').textContent = SHOT_LABELS[puttStyle() ? 'standard' : shot];
-    $('shot').hidden = puttStyle();
+    $('release').textContent = backhandBlocked() ? 'Backhand blocked' : releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
+    $('release').classList.toggle('blocked', backhandBlocked());
+    const c2 = puttStyle() && toBasket() > C1;
+    $('shot').textContent = c2 ? (jumping() ? 'Jump putt' : 'Push putt') : SHOT_LABELS[puttStyle() ? 'standard' : shot];
+    $('shot').hidden = puttStyle() && !c2;
     const me = game().current;
     $('rogue-bar').hidden = !rogue && !crazyTut;
     if (rogue || crazyTut) {
@@ -1539,7 +1570,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       // Real ground: how far up or down the basket is from here (a meter or more).
       const dz = terrain.heightAt(...myPin()) - terrain.heightAt(...p.ball);
       const elev = Math.abs(dz) >= 1 ? ` <span class="dim" title="The basket is ${dz > 0 ? 'above' : 'below'} you">${dz > 0 ? '↑' : '↓'}${fmtLen(Math.abs(dz))}</span>` : '';
-      $('stats').innerHTML = `Basket <b>${fmtLen(toBasket())}</b>${elev} · Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
+      $('stats').innerHTML = `Basket <b>${fmtLen(toBasket())}</b>${elev} · Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b>${standstill() ? ' <span class="dim" title="No room for a run-up under the trees: a standstill throw goes a little shorter and wobbles more">standstill</span>' : ''}${puttStyle() ? ` · <b>${toBasket() <= C1 ? 'C1' : 'C2'}</b>` : ''} · Throw <b>${p.strokes + 1}</b>`;
     }
     $('meter-fill').style.width = `${power * 100}%`;
     $('meter-target').style.left = `${tick * 100}%`;
@@ -1934,7 +1965,16 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   $('view-toggle').addEventListener('click', cycleView);
   $('fp-toggle').addEventListener('click', toggleFP);
   function cycleShot(): void {
-    if (phase !== 'aim' || puttStyle()) return;
+    if (phase !== 'aim') return;
+    if (puttStyle()) {
+      // Putting: outside circle 1 the shot key picks a push putt or a jump putt.
+      if (toBasket() <= C1) { chip('Inside circle 1: no jump putts', 'info', undefined, 1800); return; }
+      jumpPutt = !jumpPutt;
+      sfx('select');
+      recomputeTick();
+      updateHud();
+      return;
+    }
     shot = SHOTS[(SHOTS.indexOf(shot) + 1) % SHOTS.length];
     sfx('select');
     recomputeTick();

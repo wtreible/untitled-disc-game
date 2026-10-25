@@ -31,6 +31,8 @@ export interface ThrowSetup {
   special: boolean;
   /** Muscling past 90% costs nothing (Run-Up, Golden Arm). */
   noOverpower: boolean;
+  /** No room for a run-up (under the trees): X-step throws go the 1-stage way. */
+  standstill?: boolean;
 }
 
 export interface Release {
@@ -100,8 +102,8 @@ export class ThrowControl {
   private pointer: [number, number] = [0, 0];
   constructor(private readonly s: ThrowSetup) {}
 
-  /** Putts don't get a run-up: X-step putts are thrown the classic way. */
-  private get style(): ThrowStyle { return this.s.style === 'xstep' && this.s.putt ? 'classic' : this.s.style; }
+  /** Putts and standstill throws don't get a run-up: X-step goes the classic way. */
+  private get style(): ThrowStyle { return this.s.style === 'xstep' && (this.s.putt || this.s.standstill) ? 'classic' : this.s.style; }
   private get beat(): number { return XSTEP.beat / this.s.meterSpeed; }
   get active(): boolean { return this.stage.k !== 'idle'; }
 

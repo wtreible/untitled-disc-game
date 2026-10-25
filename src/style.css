@@ -622,3 +622,4 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .stats-rounds .under { color: var(--accent); } .stats-rounds .over { color: var(--hot); }
 .stats-clear { align-self: flex-start; }
 .players h3 { display: flex; align-items: center; justify-content: space-between; }
+#release.blocked { color: var(--hot); border-color: var(--hot); }

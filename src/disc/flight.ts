@@ -76,6 +76,13 @@ export const FLIGHT = {
   throwPower: 1.1,
   /** Throws past this much of the meter wobble more (muscling it); the HUD stripes that zone. */
   wobbleFrom: 0.9,
+  /** From under the trees there's no run-up: a standstill throw goes this far, with this much more wobble. */
+  standstill: 0.85,
+  standstillWobble: 1.3,
+  /** Jump putts (outside circle 1): this much more range, a flatter launch, and more wobble. */
+  jumpRange: 1.45,
+  jumpLaunch: -0.03,
+  jumpWobble: 1.7,
   /** Branch hits per meter traveled inside a crown. */
   branchDensity: 0.11,
   /** Skid deceleration after landing, m/s², by surface. */
@@ -223,6 +230,10 @@ export interface ThrowInput {
   quake?: boolean;
   /** How the release went (src/modes/throwStyles.ts); it replaces the overpower wobble. */
   execution?: Execution;
+  /** No room for a run-up (thrown from under the trees): shorter and less steady. Not for putts. */
+  stance?: 'standstill';
+  /** A jump putt (only outside circle 1): faster and flatter, so less wind but more spit-outs, and less accurate. */
+  jump?: boolean;
 }
 
 /**
@@ -329,7 +340,9 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   // Spotlight: no wobble on putts from close in. An earthquake: a lot more.
   const spot = putt && m.spotlight > 0 && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) <= m.spotlight;
   const ex = opt.ghost || input.perfect ? undefined : input.execution;
-  const err = (spot ? 0 : putt ? m.puttAimError : m.aimError * (overhand ? m.overhandAim : 1)) * (input.quake ? 2.5 : 1) * (ex?.wobble ?? 1);
+  const jump = putt && !!input.jump, still = !putt && input.stance === 'standstill';
+  const err = (spot ? 0 : putt ? m.puttAimError : m.aimError * (overhand ? m.overhandAim : 1)) * (input.quake ? 2.5 : 1) * (ex?.wobble ?? 1)
+    * (jump ? FLIGHT.jumpWobble : still ? FLIGHT.standstillWobble : 1);
   const noise = opt.ghost || input.perfect ? () => 0 : () => gaussian(rng) * err;
   /** Overhand: which way it rolls over (tomahawk: to the left of travel). */
   const side = shot === 'thumber' ? -1 : 1;
@@ -339,9 +352,9 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const yaw = input.aim + ((noise() * (putt ? 0.5 : 1.4 + over * 2) + mirror * (ex?.yaw ?? 0)) * Math.PI) / 180;
   // Distance bonuses scale the meter, which maps ~linearly to distance; past full power, release
   // speed grows with the measured full-power sensitivity (distance ∝ v^~1.8 there).
-  const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange : FLIGHT.throwPower * m.distance * (input.fromTee ? m.teeDistance : 1) * (overhand ? m.overhandDistance : 1));
+  const meter = input.power * (putt ? FLIGHT.puttScale * m.puttRange * (jump ? FLIGHT.jumpRange : 1) : FLIGHT.throwPower * m.distance * (input.fromTee ? m.teeDistance : 1) * (overhand ? m.overhandDistance : 1) * (still ? FLIGHT.standstill : 1));
   const power = (meter <= 1 ? meterToSpeed(meter, input.disc) : meter ** 0.55) * (1 + noise() * (putt ? 0.015 : 0.02));
-  const launch = (input.launch ?? (putt ? 0.12 : shotLaunch(shot, input.disc))) + noise() * 0.01;
+  const launch = (input.launch ?? (putt ? 0.12 : shotLaunch(shot, input.disc))) + (jump ? FLIGHT.jumpLaunch : 0) + noise() * 0.01;
   let bank = overhand ? side * FLIGHT.overBank + noise() * 0.04
     : shot === 'roller' ? mirror * (-0.95 + input.hyzer * 0.2 + noise() * 0.04 + (ex?.bank ?? 0)) // a big anhyzer; hyzer softens it
       : mirror * (input.hyzer * FLIGHT.maxReleaseBank * m.shape + noise() * 0.04 + (ex?.bank ?? 0));
