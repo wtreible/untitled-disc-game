@@ -9,14 +9,15 @@ import { asset } from '../assets';
 import type { DiscCourseFile, DiscHole, Tree, TreeMix } from '../course/disc-types';
 import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
-import type { Terrain, Vec3 } from '../game/terrain';
+import { HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { classCanvas, waterCanvas } from './classTexture';
+import { hillshadeBounds, hillshadeCanvas } from './hillshade';
 import { groundAt, setGround } from './ground';
 import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreeSolidity, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
 import { BASKET } from '../disc/flight';
 import type { ViewMode } from './scene';
 import type { Imagery } from './tiles';
-import { treeSymbols, vectorGround } from './vectorCourse';
+import { treeSymbols, vectorCanvas, vectorGround } from './vectorCourse';
 import type { PropsView } from './props';
 import { bladeAngle, hingeAngle, slideOffset, type Collider } from '../disc/props';
 import type { Weather } from './weather';
@@ -124,7 +125,13 @@ export class CourseScene {
 
     this.style = course.style ?? 'photo';
     if (this.style === 'vector') {
-      this.vector = vectorGround(course);
+      if (this.relief) {
+        // On real ground the drawn course is painted into a texture and draped over the hills.
+        const [min, max] = course.bounds, pad = 400;
+        const b: [Vec2, Vec2] = [[min[0] - pad, min[1] - pad], [max[0] + pad, max[1] + pad]];
+        this.vector = new THREE.Group();
+        this.vector.add(this.groundPlane(vectorCanvas(course, b, 2.5), b, 0, 0));
+      } else this.vector = vectorGround(course);
       this.scene.add(this.vector);
       this.symbols = treeSymbols(trees, OVERLAY_Z - 5);
       this.scene.add(this.symbols);
@@ -137,6 +144,8 @@ export class CourseScene {
       this.overlayPlane.visible = false;
       this.waterPlane.visible = false;
     }
+
+    if (terrain instanceof HeightmapTerrain) this.groundPlane(hillshadeCanvas(terrain), hillshadeBounds(terrain), 0.03, 4, true);
 
     // First-person beacon over the current basket, so it can be found from the tee.
     this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 16, 8).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.55, fog: false }));
@@ -1152,7 +1161,8 @@ export class CourseScene {
     this.ortho.updateProjectionMatrix();
   }
 
-  private groundPlane(canvas: HTMLCanvasElement, b: [Vec2, Vec2], z: number, order: number): THREE.Mesh {
+  /** A textured plane over b, draped on real ground. `multiply`: darkens what's under it (hillshade). */
+  private groundPlane(canvas: HTMLCanvasElement, b: [Vec2, Vec2], z: number, order: number, multiply = false): THREE.Mesh {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
@@ -1167,7 +1177,10 @@ export class CourseScene {
       for (let i = 0; i < pos.count; i++) pos.setZ(i, groundAt(cx + pos.getX(i), cy + pos.getY(i)));
       geo.computeBoundingSphere();
     }
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: order > 0, depthWrite: order === 0 }));
+    const mat = multiply
+      ? new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, depthWrite: false })
+      : new THREE.MeshBasicMaterial({ map: tex, transparent: order > 0, depthWrite: order === 0 });
+    const m = new THREE.Mesh(geo, mat);
     m.position.set(cx, cy, z);
     m.renderOrder = order;
     this.scene.add(m);

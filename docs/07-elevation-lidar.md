@@ -89,4 +89,6 @@ Sources: [3DEP ImageServer](https://elevation.nationalmap.gov/arcgis/rest/servic
 - `HeightmapTerrain` in the disc worlds; basket collisions and the tray drop relative to the ground at the basket; a downhill pull in skids and rolls; the putt tick against the chains where the basket stands.
 - Rendering: `src/render/ground.ts` (`groundAt`) is set by the scene; the ground planes are draped (a vertex every ~2.5 m); trees, baskets, tee pads, discs, spectators, wildlife, cloud shadows, effects, bridges, the first-person eye, the chase camera and the flyover sit on it. The HUD shows how far up or down the basket is (↑/↓ next to the distance).
 - Ghost discs on a course with ground are kept apart from the ones saved on the flat version.
-- Not done yet: hillshade in the top-down/class views, slope arrows near the basket, tilting tee pads to the slope.
+- Tali Recreation (vector style) stands on the same ground: its layers are painted into a texture (`vectorCanvas`, 2.5 px/m) and draped like the photo.
+- Hillshade (`src/render/hillshade.ts`): a north-west sun at 45°, one pixel per terrain cell, multiplied over the ground in every view. Slopes facing away darken (to half at most); flat ground and lit slopes are unchanged, so the photo keeps its colors.
+- Not done yet: slope arrows near the basket, tilting tee pads to the slope.

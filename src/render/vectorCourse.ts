@@ -34,6 +34,32 @@ function merged(polys: Rings[]): THREE.BufferGeometry | null {
 }
 
 /**
+ * The same ground layers painted into a canvas over `b` (north up), for a course with real ground:
+ * the scene drapes it over the hills like a photo. About `ppm` pixels a meter.
+ */
+export function vectorCanvas(course: DiscCourseFile, b: [[number, number], [number, number]], ppm: number): HTMLCanvasElement {
+  const colors: Record<string, string> = { ...VECTOR_COLORS, ...(course.palette ?? {}) };
+  const w = b[1][0] - b[0][0], h = b[1][1] - b[0][1];
+  const k = Math.min(ppm, 4096 / w, 4096 / h);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(w * k);
+  canvas.height = Math.round(h * k);
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = colors.outside;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const layers: [string, Rings[]][] = [['rough', course.boundary], ['path', byClass(course, 'path')], ['fairway', byClass(course, 'fairway')], ['water', byClass(course, 'water')], ['ob', course.ob], ['tee', byClass(course, 'tee')]];
+  for (const [name, polys] of layers) {
+    ctx.fillStyle = colors[name];
+    for (const rings of polys) {
+      ctx.beginPath();
+      for (const ring of rings) ring.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo']((x - b[0][0]) * k, (b[1][1] - y) * k));
+      ctx.fill('evenodd');
+    }
+  }
+  return canvas;
+}
+
+/**
  * Ground layers in paint order. They're coplanar, so depth writes are off and renderOrder decides
  * stacking; everything 3D draws over them. Works for both cameras.
  */
