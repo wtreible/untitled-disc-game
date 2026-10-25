@@ -8,6 +8,7 @@ import type { Vec3 } from '../game/terrain';
 import { BASKET } from '../disc/flight';
 import { SKY_LAYER } from './courseScene';
 import type { Weather } from './weather';
+import { groundAt } from './ground';
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -96,12 +97,12 @@ export class Life {
     }
     const tex = softDisc();
     for (let i = 0; i < 6; i++) {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tex, color: '#000000', transparent: true, opacity: 0.28, depthWrite: false }));
-      mesh.scale.set(rnd(50, 90), rnd(35, 60), 1);
-      mesh.rotation.z = rnd(0, Math.PI);
+      // Sized and turned in the geometry, so it can be draped over hills as it drifts.
+      const geo = new THREE.PlaneGeometry(rnd(50, 90), rnd(35, 60), 8, 8).rotateZ(rnd(0, Math.PI));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, color: '#000000', transparent: true, opacity: 0.28, depthWrite: false }));
       mesh.renderOrder = 3;
       const at: Vec2 = [rnd(bounds[0][0], bounds[1][0]), rnd(bounds[0][1], bounds[1][1])];
-      mesh.position.set(at[0], at[1], 0.08);
+      drape(mesh, at);
       this.clouds.push({ mesh, at });
       this.group.add(mesh);
     }
@@ -128,12 +129,12 @@ export class Life {
       f.home = [home[0] + rnd(-6, 6), home[1] + rnd(-6, 6)];
       f.at = [f.home[0], f.home[1], rnd(0.4, 1.4)];
     });
-    this.flag.position.set(h.pin[0], h.pin[1], 0);
+    this.flag.position.set(h.pin[0], h.pin[1], groundAt(h.pin[0], h.pin[1]));
   }
 
   /** The basket moved for this viewer (Crazy mode): the streamer goes with it. */
   setPin(pin: Vec2): void {
-    this.flag.position.set(pin[0], pin[1], 0);
+    this.flag.position.set(pin[0], pin[1], groundAt(pin[0], pin[1]));
   }
 
   update(dt: number, eye: Vec3 | null): void {
@@ -147,13 +148,13 @@ export class Life {
       const a = fa + b.offset[0] * 0.01;
       const x = this.center[0] + Math.cos(a) * this.flockR + b.offset[0];
       const y = this.center[1] + Math.sin(a) * this.flockR + b.offset[1];
-      b.obj.position.set(x, y, 30 + b.offset[2] + Math.sin(t * 0.7 + b.phase) * 1.5);
+      b.obj.position.set(x, y, groundAt(this.center[0], this.center[1]) + 30 + b.offset[2] + Math.sin(t * 0.7 + b.phase) * 1.5);
       b.obj.rotation.z = a + Math.PI; // along the circle (counterclockwise)
       const flap = Math.sin(t * 2 + b.phase) > -0.3 ? Math.sin(t * 9 + b.phase) * 0.6 : 0.1; // bursts of flapping, then a glide
       b.wings[0].rotation.y = -flap;
       b.wings[1].rotation.y = flap;
     }
-    // Butterflies: a wandering flutter near home, pushed a little by the wind.
+    // Butterflies: a wandering flutter near home, pushed a little by the wind (heights above the ground).
     for (const f of this.flies) {
       const pull: Vec3 = [(f.home[0] - f.at[0]) * 0.4, (f.home[1] - f.at[1]) * 0.4, (0.9 - f.at[2]) * 0.8];
       f.vel = [
@@ -162,7 +163,7 @@ export class Life {
         f.vel[2] * 0.9 + (pull[2] + rnd(-2, 2)) * dt,
       ];
       f.at = [f.at[0] + f.vel[0] * dt, f.at[1] + f.vel[1] * dt, Math.max(0.25, f.at[2] + f.vel[2] * dt)];
-      f.obj.position.set(f.at[0], f.at[1], f.at[2]);
+      f.obj.position.set(f.at[0], f.at[1], groundAt(f.at[0], f.at[1]) + f.at[2]);
       f.obj.rotation.z = Math.atan2(f.vel[1], f.vel[0]);
       const flap = Math.sin(t * 22 + f.phase) * 1.1;
       f.wings[0].rotation.y = -flap;
@@ -174,7 +175,7 @@ export class Life {
     for (const c of this.clouds) {
       c.at = [c.at[0] + (wx * 1.5 + 0.8) * dt, c.at[1] + (wy * 1.5 + 0.3) * dt];
       c.at = [((c.at[0] - min[0] + 100) % W + W) % W + min[0] - 100, ((c.at[1] - min[1] + 100) % H + H) % H + min[1] - 100];
-      c.mesh.position.set(c.at[0], c.at[1], 0.08);
+      drape(c.mesh, c.at);
     }
     // Streamer: points downwind, lifting with the wind speed and rippling.
     const arm = this.flag.getObjectByName('arm')!;
@@ -208,7 +209,7 @@ export class Life {
     const rain = this.rain!;
     rain.visible = !!eye && !!this.weather?.rain;
     if (!eye) return;
-    rain.position.set(eye[0], eye[1], 0);
+    rain.position.set(eye[0], eye[1], groundAt(eye[0], eye[1]));
     const pos = rain.geometry.getAttribute('position') as THREE.BufferAttribute;
     const p = pos.array as Float32Array;
     const [wx, wy] = this.wind;
@@ -241,7 +242,7 @@ export class Life {
     const snow = this.snow!;
     snow.visible = !!eye;
     if (!eye) return;
-    snow.position.set(eye[0], eye[1], 0);
+    snow.position.set(eye[0], eye[1], groundAt(eye[0], eye[1]));
     const p = (snow.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     const [wx, wy] = this.wind;
     const t = performance.now() / 1000;
@@ -280,4 +281,12 @@ export class Life {
     this.group.add(line);
     this.star = { line, t: 0, life: 0.9 };
   }
+}
+
+/** Lay a cloud shadow on the ground at `at`: each vertex just above the ground under it. */
+function drape(mesh: THREE.Mesh, at: Vec2): void {
+  mesh.position.set(at[0], at[1], 0);
+  const pos = mesh.geometry.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, groundAt(at[0] + pos.getX(i), at[1] + pos.getY(i)) + 0.08);
+  pos.needsUpdate = true;
 }

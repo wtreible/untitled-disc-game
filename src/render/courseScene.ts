@@ -9,8 +9,9 @@ import { asset } from '../assets';
 import type { DiscCourseFile, DiscHole, Tree, TreeMix } from '../course/disc-types';
 import type { Vec2 } from '../course/geo';
 import type { SurfaceGrid } from '../game/surfaces';
-import type { Vec3 } from '../game/terrain';
+import type { Terrain, Vec3 } from '../game/terrain';
 import { classCanvas, waterCanvas } from './classTexture';
+import { groundAt, setGround } from './ground';
 import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreeSolidity, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
 import { BASKET } from '../disc/flight';
 import type { ViewMode } from './scene';
@@ -103,7 +104,12 @@ export class CourseScene {
   /** When the current basket's chains were last hit (ms), for the shake. */
   private chainHit = -Infinity;
 
-  constructor(private readonly container: HTMLElement, course: DiscCourseFile, grid: SurfaceGrid, trees: Tree[], playerColors: string[]) {
+  /** The course has real ground: the ground planes are draped over it. */
+  private readonly relief: boolean;
+
+  constructor(private readonly container: HTMLElement, course: DiscCourseFile, grid: SurfaceGrid, trees: Tree[], playerColors: string[], terrain: Terrain | null = null) {
+    setGround(terrain);
+    this.relief = !!terrain;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -174,14 +180,14 @@ export class CourseScene {
     this.holes = course.holes;
     for (const h of course.holes) {
       const b = basketModel();
-      b.position.set(h.pin[0], h.pin[1], 0);
+      b.position.set(h.pin[0], h.pin[1], groundAt(h.pin[0], h.pin[1]));
       this.baskets.push(b);
       this.world3d.add(b);
       // Tee pad.
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(3, 1.5), new THREE.MeshLambertMaterial({ color: '#9a9488' }));
       const [a, c] = [h.routing[0], h.routing[1] ?? h.pin];
       pad.rotation.z = Math.atan2(c[1] - a[1], c[0] - a[0]);
-      pad.position.set(h.tee[0], h.tee[1], 0.03);
+      pad.position.set(h.tee[0], h.tee[1], groundAt(h.tee[0], h.tee[1]) + 0.05);
       this.world3d.add(pad);
     }
     this.scene.add(this.world3d);
@@ -301,7 +307,7 @@ export class CourseScene {
     }
     for (const p of pins) {
       const b = basketModel();
-      b.position.set(p[0], p[1], 0);
+      b.position.set(p[0], p[1], groundAt(p[0], p[1]));
       b.visible = this.fp;
       this.rangeBaskets.push(b);
       this.world3d.add(b);
@@ -337,7 +343,7 @@ export class CourseScene {
     this.teeMarker.position.set(h.tee[0], h.tee[1], OVERLAY_Z);
     this.basketMarker.position.set(h.pin[0], h.pin[1], OVERLAY_Z);
     this.beaconAt = h.pin;
-    this.beacon.position.set(h.pin[0], h.pin[1], 1.6 + 8);
+    this.beacon.position.set(h.pin[0], h.pin[1], groundAt(h.pin[0], h.pin[1]) + 1.6 + 8);
     this.updateOrtho();
   }
 
@@ -380,7 +386,7 @@ export class CourseScene {
   /** Place the first-person eye at `at`, looking along yaw (CCW from +x) and pitch (up +). */
   setEye(at: Vec2, yaw: number, pitch: number, glide = false): void {
     const from = { p: this.persp.position.clone(), q: this.persp.quaternion.clone() };
-    this.persp.position.set(at[0] - Math.cos(yaw) * 0.6, at[1] - Math.sin(yaw) * 0.6, EYE);
+    this.persp.position.set(at[0] - Math.cos(yaw) * 0.6, at[1] - Math.sin(yaw) * 0.6, groundAt(at[0], at[1]) + EYE);
     this.beacon.visible = this.fp && Math.hypot(at[0] - this.beaconAt[0], at[1] - this.beaconAt[1]) > 15;
     const d = new THREE.Vector3(Math.cos(yaw) * Math.cos(pitch), Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch));
     this.persp.lookAt(this.persp.position.clone().add(d));
@@ -537,7 +543,7 @@ export class CourseScene {
     for (const c of [...this.ponds.children]) this.ponds.remove(c);
     for (const p of v.ponds) {
       const m = new THREE.Mesh(new THREE.CircleGeometry(p.r, 32), new THREE.MeshBasicMaterial({ color: '#4f8fcf', depthWrite: false }));
-      m.position.set(p.c[0], p.c[1], 0.035);
+      m.position.set(p.c[0], p.c[1], groundAt(p.c[0], p.c[1]) + 0.035);
       m.renderOrder = -9;
       this.ponds.add(m);
     }
@@ -555,12 +561,13 @@ export class CourseScene {
    */
   moveBasket(p: Vec2): void {
     const cur = this.baskets[this.holeIndex];
-    if (cur) cur.position.set(p[0], p[1], 0);
+    const z = groundAt(p[0], p[1]);
+    if (cur) cur.position.set(p[0], p[1], z);
     this.basketMarker.position.set(p[0], p[1], OVERLAY_Z);
     this.beaconAt = p;
-    this.beacon.position.set(p[0], p[1], 1.6 + 8);
-    this.magnetRing.position.set(p[0], p[1], 0.06);
-    this.fxPin.position.set(p[0], p[1], 0);
+    this.beacon.position.set(p[0], p[1], z + 1.6 + 8);
+    this.magnetRing.position.set(p[0], p[1], z + 0.06);
+    this.fxPin.position.set(p[0], p[1], z);
   }
 
   /** Fog of War: see only this far (m); null clears it back to the weather's own fog. */
@@ -588,16 +595,17 @@ export class CourseScene {
       const L = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]), yaw = Math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0]);
       const n = Math.max(1, Math.round(L / 0.6));
       for (let k = 0; k < n; k++) {
-        const f = (k + 0.5) / n;
+        const f = (k + 0.5) / n, x = s.a[0] + (s.b[0] - s.a[0]) * f, y = s.a[1] + (s.b[1] - s.a[1]) * f;
         const plank = new THREE.Mesh(new THREE.BoxGeometry(0.5, s.half * 2, 0.12), BRIDGE_WOOD[k % 2]);
-        plank.position.set(s.a[0] + (s.b[0] - s.a[0]) * f, s.a[1] + (s.b[1] - s.a[1]) * f, 0.18);
+        plank.position.set(x, y, groundAt(x, y) + 0.18);
         plank.rotation.z = yaw;
         this.bridges.add(plank);
       }
       // Rails along both sides.
       for (const side of [-1, 1]) {
         const rail = new THREE.Mesh(new THREE.BoxGeometry(L, 0.12, 0.12), BRIDGE_WOOD[0]);
-        rail.position.set((s.a[0] + s.b[0]) / 2 - Math.sin(yaw) * side * s.half, (s.a[1] + s.b[1]) / 2 + Math.cos(yaw) * side * s.half, 0.9);
+        const mid: Vec2 = [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2];
+        rail.position.set(mid[0] - Math.sin(yaw) * side * s.half, mid[1] + Math.cos(yaw) * side * s.half, groundAt(mid[0], mid[1]) + 0.9);
         rail.rotation.z = yaw;
         this.bridges.add(rail);
       }
@@ -682,7 +690,7 @@ export class CourseScene {
     for (const t of trees) {
       const r = Math.max(0.15, t.t * 1.3);
       const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r, 0.45, 10).rotateX(Math.PI / 2), mat);
-      m.position.set(t.x, t.y, 0.22);
+      m.position.set(t.x, t.y, groundAt(t.x, t.y) + 0.22);
       this.stumps.add(m);
     }
   }
@@ -714,10 +722,12 @@ export class CourseScene {
     this.target3d.visible = from !== null;
     if (!from) return;
     const ring = this.target3d.getObjectByName('ring') as THREE.Mesh;
-    ring.position.set(to[0], to[1], 0.04);
+    ring.position.set(to[0], to[1], groundAt(to[0], to[1]) + 0.04);
     (ring.material as THREE.MeshBasicMaterial).color.set(color);
     this.targetLine.geometry.dispose();
-    this.targetLine.geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(from[0], from[1], 0.05), new THREE.Vector3(to[0], to[1], 0.05)]);
+    // Along the ground: a straight line would cut through the hills between.
+    const pts = Array.from({ length: 33 }, (_, k) => { const x = from[0] + (to[0] - from[0]) * (k / 32), y = from[1] + (to[1] - from[1]) * (k / 32); return new THREE.Vector3(x, y, groundAt(x, y) + 0.05); });
+    this.targetLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
     this.targetLine.computeLineDistances();
     this.targetMat.color.set(color);
   }
@@ -756,7 +766,8 @@ export class CourseScene {
     const { yaw, elev, dist } = this.orbit;
     const h = heading + yaw;
     const flat = dist * Math.cos(elev);
-    const want = new THREE.Vector3(p[0] - Math.cos(h) * flat, p[1] - Math.sin(h) * flat, Math.max(0.5, p[2] + dist * Math.sin(elev)));
+    const wx = p[0] - Math.cos(h) * flat, wy = p[1] - Math.sin(h) * flat;
+    const want = new THREE.Vector3(wx, wy, Math.max(groundAt(wx, wy) + 0.5, p[2] + dist * Math.sin(elev)));
     if (reset) {
       // The replay has its own lens; the player's scroll zoom is restored by endChase().
       this.savedFov = this.persp.fov;
@@ -925,7 +936,7 @@ export class CourseScene {
     body.position.set(0, lift * 0.35 * this.ppm, 0.1);
     body.scale.setScalar(1 + lift / 25);
     shadow.visible = lift > 0.3;
-    d3.position.set(p[0], p[1], Math.max(p[2], 0.012));
+    d3.position.set(p[0], p[1], Math.max(p[2], groundAt(p[0], p[1]) + 0.012));
     // A real 21 cm disc is sub-pixel past ~20 m. Grow it with √distance so it still shrinks on
     // screen as it flies away (~40 px at 5 m, ~20 px at 20 m, ~9 px at 100 m) but stays trackable.
     // (Scaling linearly with distance kept it the same size on screen at any range.)
@@ -1022,7 +1033,7 @@ export class CourseScene {
     (d3.material as THREE.MeshLambertMaterial).color.set(color);
     for (const c of mark.children) ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(c === mark.children[0] ? '#111111' : color);
     mark.position.set(p[0], p[1], OVERLAY_Z + 1.5);
-    d3.position.set(p[0], p[1], Math.max(p[2], 0.012));
+    d3.position.set(p[0], p[1], Math.max(p[2], groundAt(p[0], p[1]) + 0.012));
     d3.scale.setScalar(Math.min(8, Math.max(1, Math.sqrt(this.persp.position.distanceTo(d3.position) / 3))));
     d3.rotation.set(0, 0, heading);
   }
@@ -1147,8 +1158,17 @@ export class CourseScene {
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     const w = b[1][0] - b[0][0];
     const h = b[1][1] - b[0][1];
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: order > 0, depthWrite: order === 0 }));
-    m.position.set(b[0][0] + w / 2, b[0][1] + h / 2, z);
+    // Real ground: a vertex every ~2.5 m, lifted onto the terrain (z then sits just above it).
+    const seg = (n: number) => (this.relief ? Math.min(400, Math.max(1, Math.round(n / 2.5))) : 1);
+    const geo = new THREE.PlaneGeometry(w, h, seg(w), seg(h));
+    const cx = b[0][0] + w / 2, cy = b[0][1] + h / 2;
+    if (this.relief) {
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, groundAt(cx + pos.getX(i), cy + pos.getY(i)));
+      geo.computeBoundingSphere();
+    }
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: order > 0, depthWrite: order === 0 }));
+    m.position.set(cx, cy, z);
     m.renderOrder = order;
     this.scene.add(m);
     return m;

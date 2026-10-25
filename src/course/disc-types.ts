@@ -93,6 +93,8 @@ export interface DiscCourseFile {
   weather?: WeatherId;
   /** The tree models its trees are drawn (and collide) as; default CommonTree and Pine. */
   tree_models?: TreeMix;
+  /** Real ground (scripts/build-elevation.ts): a Uint16 cm grid over the bounds; none = flat. */
+  elevation?: Elevation;
   name: string;
   source: { osm_timestamp: string; course_osm_id: string; attribution: string[] };
   origin: LatLon;
@@ -123,4 +125,16 @@ export function decodeTrees(flat: number[]): Tree[] {
 
 export function encodeTrees(trees: Tree[]): number[] {
   return trees.flatMap((t) => [t.x, t.y, t.h, t.r, t.b, t.t]);
+}
+
+/** Where a course's heightmap is and how it lies: cell (0, 0) is at `min`, rows go north. */
+export interface Elevation {
+  file: string;
+  min: Vec2;
+  cell: number;
+  cols: number;
+  rows: number;
+  /** Meters above sea level of height 0 (the lowest point), for the record. */
+  base: number;
+  source: string;
 }

@@ -4,6 +4,7 @@
 // their own: fire, confetti, glows, a shield, wisps, wood chips, and trails behind the disc.
 import * as THREE from 'three';
 import type { Vec3 } from '../game/terrain';
+import { groundAt } from './ground';
 
 interface Burst {
   obj: THREE.Points | THREE.Mesh;
@@ -77,7 +78,7 @@ export class Effects {
 
   /** Water: droplets thrown up and two ripples spreading out. */
   splash(at: Vec3): void {
-    this.particles([at[0], at[1], 0.05], 28, ['#e8f4ff', '#bcdcf5', '#ffffff'], 0.06, 1.0, () => {
+    this.particles([at[0], at[1], groundAt(at[0], at[1]) + 0.05], 28, ['#e8f4ff', '#bcdcf5', '#ffffff'], 0.06, 1.0, () => {
       const a = Math.random() * Math.PI * 2, r = rnd(0.5, 2.2);
       return [Math.cos(a) * r, Math.sin(a) * r, rnd(2.5, 5)];
     }, 9.8, 0.4);
@@ -113,7 +114,7 @@ export class Effects {
 
   /** OB Insurance: a shield ring flashing where it saved you. */
   shield(at: Vec3): void {
-    this.ripple([at[0], at[1], 0.4], 2.4, 0, '#7ee0ff');
+    this.ripple([at[0], at[1], groundAt(at[0], at[1]) + 0.4], 2.4, 0, '#7ee0ff');
     this.glow(at, ['#7ee0ff', '#ffffff'], 18);
   }
 

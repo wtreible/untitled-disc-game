@@ -7,6 +7,7 @@ import { BASKET } from '../disc/flight';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { asset } from '../assets';
 import { TREE_KIND_NAMES, treeKindInfo, treeShape } from '../disc/treeShapes';
+import { groundAt } from './ground';
 
 export function basketModel(): THREE.Group {
   const g = new THREE.Group();
@@ -88,10 +89,11 @@ export function treeMeshes(trees: Tree[], mix?: TreeMix): THREE.Group {
   const c = new THREE.Color();
   const trunkM: THREE.Matrix4[] = [], crownM: THREE.Matrix4[] = [];
   trees.forEach((t, i) => {
-    trunkM.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, 0), q, new THREE.Vector3(t.t, t.t, t.h * 0.9)));
+    const z = groundAt(t.x, t.y);
+    trunkM.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, z), q, new THREE.Vector3(t.t, t.t, t.h * 0.9)));
     const hz = Math.max(0.3, (t.h - t.b) / 2);
     const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), (t.x * 7.13 + t.y * 3.7) % (Math.PI * 2));
-    crownM.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.b + hz), yaw, new THREE.Vector3(t.r, t.r, hz)));
+    crownM.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, z + t.b + hz), yaw, new THREE.Vector3(t.r, t.r, hz)));
     // Conifers (low crown base) darker, broadleaf lighter; a little per-tree variation.
     const v = ((t.x * 12.9898 + t.y * 78.233) % 1 + 1) % 1;
     const conifer = t.b < t.h * 0.25;
@@ -127,7 +129,7 @@ export function treeMeshes(trees: Tree[], mix?: TreeMix): THREE.Group {
     const matrices = trees.map((t, i) => {
       const sh = placed[i], info = treeKindInfo(sh.kind);
       // Model (Y-up, trunk base at axis) → world: recenter, stand up, scale, turn, place.
-      return new THREE.Matrix4().makeTranslation(t.x, t.y, 0)
+      return new THREE.Matrix4().makeTranslation(t.x, t.y, groundAt(t.x, t.y))
         .multiply(new THREE.Matrix4().makeRotationZ(sh.yaw))
         .multiply(new THREE.Matrix4().makeScale(sh.sxy, sh.sxy, sh.sz))
         .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2))

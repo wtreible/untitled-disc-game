@@ -8,6 +8,7 @@ import type { Vec2 } from '../course/geo';
 import type { Vec3 } from '../game/terrain';
 import { asset } from '../assets';
 import { APART, approachAt, dodge, dodgeDue, gallerySpots, lineOfPlay, separate } from '../game/gallery';
+import { groundAt } from './ground';
 
 const MODELS = ['male-a', 'female-a', 'male-c', 'female-c', 'male-e', 'female-e'];
 type Clip = 'idle' | 'walk' | 'sprint' | 'jump' | 'emote-yes' | 'emote-no';
@@ -78,7 +79,7 @@ export class Gallery {
       model.scale.setScalar(src.scale * (0.92 + rng() * 0.14));
       const root = new THREE.Group();
       root.add(model);
-      root.position.set(s.at[0], s.at[1], 0);
+      root.position.set(s.at[0], s.at[1], groundAt(s.at[0], s.at[1]));
       this.group.add(root);
       const mixer = new THREE.AnimationMixer(inner);
       const actions = new Map<Clip, THREE.AnimationAction>();
@@ -201,7 +202,7 @@ export class Gallery {
   }
 
   private pose(p: Person): void {
-    p.root.position.set(p.at[0], p.at[1], 0);
+    p.root.position.set(p.at[0], p.at[1], groundAt(p.at[0], p.at[1]));
     // The models face their +Z; standing up (+Z → −Y), so heading h needs a yaw of h + π/2.
     p.root.rotation.z = p.face + Math.PI / 2;
   }

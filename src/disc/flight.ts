@@ -361,7 +361,8 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   if (!opt.ghost && !input.resume && putt && Math.hypot(input.start[0] - world.basket[0], input.start[1] - world.basket[1]) < Math.max(TAP_IN, m.tapIn)) {
     // Tap-in: inside a meter you just drop it in.
     const [bx, by] = world.basket;
-    for (let k = 1; k <= 20; k++) samples.push([p[0] + (bx - p[0]) * (k / 20), p[1] + (by - p[1]) * (k / 20), p[2] + (BASKET.trayBottom + 0.05 - p[2]) * (k / 20)]);
+    const tray = world.terrain.heightAt(bx, by) + BASKET.trayBottom + 0.05;
+    for (let k = 1; k <= 20; k++) samples.push([p[0] + (bx - p[0]) * (k / 20), p[1] + (by - p[1]) * (k / 20), p[2] + (tray - p[2]) * (k / 20)]);
     return { samples, banks: samples.map(() => 0), rest: world.basket, restSurface: 'green', holed: true, penalty: 0, events: ['holed'], treesHit: [] };
   }
   const events: ThrowEvent[] = [];
@@ -397,6 +398,12 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
     if (state === 'ground' || state === 'rolling') {
       let sh = Math.hypot(v[0], v[1]);
       if (sh < 0.05) break;
+      // On a slope a moving disc is pulled downhill (none on flat ground): rollers roll away.
+      const nrm = world.terrain.normalAt(p[0], p[1]);
+      if (nrm[2] < 0.9999) {
+        v = [v[0] + G * nrm[0] * nrm[2] * DT, v[1] + G * nrm[1] * nrm[2] * DT, 0];
+        sh = Math.hypot(v[0], v[1]);
+      }
       const surf = surfaceAt(world, p[0], p[1]);
       if (state === 'rolling') {
         // On edge: it rolls far, curling more as it slows and leans, then falls flat.
@@ -497,7 +504,7 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
           if (tag) { state = 'dead'; bank = (rng() - 0.5) * 1.2; if (propHits[propHits.length - 1] !== tag) propHits.push(tag); events.push('prop'); }
         }
         for (let k = 0; k < baskets.length && !holedAt; k++) {
-          const b = basketCollide(prev, p, v, baskets[k], rng, events, inChains[k], bopt);
+          const b = basketCollide(prev, p, v, baskets[k], rng, events, inChains[k], bopt, world.terrain);
           inChains[k] = b.inChains;
           if (b.holed) { holedAt = p; holedIn = baskets[k]; }
           if (b.hit) { state = 'dead'; }
@@ -541,10 +548,10 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   const holedResult = (from: Vec3, ev: ThrowEvent): ThrowResult => {
     // Drop into the tray.
     const [bx, by] = holedIn;
-    const z0 = from[2];
+    const z0 = from[2], tray = world.terrain.heightAt(bx, by) + BASKET.trayBottom + 0.05;
     for (let k = 1; k <= 18; k++) {
       const t = k / 18;
-      samples.push([from[0] + (bx - from[0]) * t * 0.6, from[1] + (by - from[1]) * t * 0.6, z0 + (BASKET.trayBottom + 0.05 - z0) * t]);
+      samples.push([from[0] + (bx - from[0]) * t * 0.6, from[1] + (by - from[1]) * t * 0.6, z0 + (tray - z0) * t]);
       banks.push(0);
     }
     if (ev !== 'holed') events.push(ev);
@@ -757,12 +764,12 @@ function scaledBasket(k: number): typeof BASKET {
 }
 
 /** Basket contact. Returns holed / hit, and whether the disc is inside the chain zone (to detect entry). */
-function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, events: ThrowEvent[], wasInChains: boolean, o: BasketOpts): { holed: boolean; hit: boolean; inChains: boolean } {
+function basketCollide(prev: Vec3, p: Vec3, v: Vec3, basket: Vec2, rng: Rng, events: ThrowEvent[], wasInChains: boolean, o: BasketOpts, terrain: Terrain): { holed: boolean; hit: boolean; inChains: boolean } {
   const dx = p[0] - basket[0], dy = p[1] - basket[1];
   const d = Math.hypot(dx, dy);
   const none = { holed: false, hit: false, inChains: false };
   if (d > 1) return none;
-  const z = p[2];
+  const z = p[2] - terrain.heightAt(basket[0], basket[1]); // above the ground the basket stands on
   const B = o.B;
   /**
    * Bounce off a vertical surface of radius R around the pole: push the disc back outside it and

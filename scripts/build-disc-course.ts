@@ -199,6 +199,8 @@ if (args.broadleaf || args.conifer) {
 
 const outPath = `public/courses/${args.out}.json`;
 mkdirSync('public/courses', { recursive: true });
+// Its heightmap was laid over the old bounds: it has to be built again.
+const hadElevation = existsSync(outPath) && !!JSON.parse(readFileSync(outPath, 'utf8')).elevation;
 // Round local meters to cm, but never the lat/lon origin.
 writeFileSync(outPath, JSON.stringify(course, (k, v) => {
   if (k === 'trees') return (v as number[]).map((n) => Math.round(n * 100) / 100);
@@ -212,3 +214,4 @@ for (const h of course.holes) {
 }
 console.log(`bounds ${course.bounds.map((p) => p.map(Math.round).join(',')).join(' → ')}`);
 console.log(`wrote ${outPath}`);
+if (hadElevation) console.log(`Rebuilt without its ground: run \`npm run elevation -- --out ${args.out}\` again`);

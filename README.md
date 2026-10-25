@@ -95,6 +95,7 @@ The build is a static site with relative asset URLs, so `dist/` also works on Ne
 | `npm run import-trees -- --src <pack folder>` | Import the birches, spruces and oaks from Quaternius' [Textured LowPoly Trees](https://opengameart.org/content/lowpoly-textured-trees) (CC0), then `npm run tree-shapes` |
 | `npm run disc-course -- --course relation/14543666 --out prater --trees osm --broadleaf Oak,CommonTree --conifer Pine --name "Wiener Prater"` | Rebuild Wiener Prater |
 | `npm run silly-course` / `fantasy-course` / `rainbow-course` / `pirate-course` / `graveyard-course` / `winter-course` | Rebuild the themed courses |
+| `npm run elevation -- --out <id>` | Build a real course's ground from national lidar elevation (USGS 3DEP, NLS Finland, ČÚZK, BEV, Lantmäteriet). Run it after rebuilding the course. Skatås needs `LM_USER` / `LM_PASS` (a free Lantmäteriet Geotorget login) |
 | `npm run course-summary` | Refresh the menu's par and length stats after rebuilding a course |
 | `npm run tree-shapes` | Re-measure the tree models' trunks and leaf volumes (collision shapes) |
 | `npm run slim-models` | Strip animations the courses don't use from the character models |

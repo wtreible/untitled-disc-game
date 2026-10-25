@@ -1,6 +1,6 @@
-# Elevation and lidar (future)
+# Elevation and lidar
 
-v1 is flat (`heightAt = 0`, D9). The world model is already 3D ([02-architecture](02-architecture.md)), so terrain is a new `Terrain` implementation, not a rewrite.
+**Status (2026-10-25, D94):** the real disc golf courses stand on real ground, except Skatås (it needs a Lantmäteriet login); see the evaluation at the end. The arcade courses and the range stay flat. The golf mode (v1) is flat (`heightAt = 0`, D9). The world model is already 3D ([02-architecture](02-architecture.md)), so terrain is a new `Terrain` implementation, not a rewrite.
 
 ## Sources
 
@@ -81,3 +81,12 @@ Pilot on **Century Park and Kincaid**: both come from the 3DEP API with no accou
 4. The European sources one at a time (Finland first: open and documented), confirming each licence before shipping.
 
 Sources: [3DEP ImageServer](https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer), [3DEP index](https://index.nationalmap.gov/arcgis/rest/services/3DEPElevationIndex/MapServer), [NLS elevation model 2 m](https://maanmittauslaitos.fi/en/node/10715) and [NLS terms](https://rsync.nic.funet.fi/index/geodata/mml/NLS_terms_of_use.pdf), [Lantmäteriet grid 1+](https://lantmateriet.se/en/geodata/our-products/product-list/terrain-model-download-grid-1), [ČÚZK data terms](https://cuzk.gov.cz/Predpisy/Podminky-poskytovani-prostor-dat-a-sitovych-sluzeb/Podminky-poskytovani-prostorovych-dat-CUZK.aspx) and [DMR 5G ATOM](https://geoportal.gov.cz/php/micka/record/basic/CZ-CUZK-ATOM-DMR5G-ETRS89?dlang=eng), [BEV ALS-DGM](https://inspire-geoportal.ec.europa.eu/srv/api/records/7beed39a-cd40-4ebc-92c6-4571aa7f1be2).
+
+### What was built (D94)
+
+- `npm run elevation -- --out <id>` (`scripts/build-elevation.ts`): picks the source by location, samples a 2 m grid over the course bounds (2×2 under each cell), fills gaps, smooths 3×3, writes `<id>.height.bin` (Uint16 cm above the lowest point) and `elevation` + attribution into the course JSON. Finland reads the funet mirror's tiles (no key); Austria range-reads the 50 km BEV tile; Czechia and the US are one `exportImage` call each. Sweden's COGs need Basic auth (`LM_USER` / `LM_PASS`).
+- Relief as built: Kincaid 69.8 m, Běchovice 27.3 m, Julkujärvi 26.8 m, Century Park 24.6 m, Tali 20.6 m (the course is on Talin huippu), Wiener Prater 12.2 m (an embankment at the edge; the course is flat), Blue Lake 12.0 m, Oak Grove 6.1 m.
+- `HeightmapTerrain` in the disc worlds; basket collisions and the tray drop relative to the ground at the basket; a downhill pull in skids and rolls; the putt tick against the chains where the basket stands.
+- Rendering: `src/render/ground.ts` (`groundAt`) is set by the scene; the ground planes are draped (a vertex every ~2.5 m); trees, baskets, tee pads, discs, spectators, wildlife, cloud shadows, effects, bridges, the first-person eye, the chase camera and the flyover sit on it. The HUD shows how far up or down the basket is (↑/↓ next to the distance).
+- Ghost discs on a course with ground are kept apart from the ones saved on the flat version.
+- Not done yet: hillshade in the top-down/class views, slope arrows near the basket, tilting tee pads to the slope.

@@ -10,7 +10,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | [04-course-model](04-course-model.md) | Surface classes, OSM tag mapping, hole structure, the v1 hole |
 | [05-gameplay](05-gameplay.md) | Clubs, shot model, surfaces, trees, scoring |
 | [06-segmentation](06-segmentation.md) | Three segmentation approaches (future; not needed for v1) |
-| [07-elevation-lidar](07-elevation-lidar.md) | Lidar / DEM terrain (future); evaluation for the real disc golf courses: sources, relief, pipeline, runtime work |
+| [07-elevation-lidar](07-elevation-lidar.md) | Lidar / DEM terrain: built for the real disc golf courses (D94); evaluation for the real disc golf courses: sources, relief, pipeline, runtime work |
 | [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) | Park-to-course editor, the planned hole editor for sharing holes, disc golf variant (future) |
 | [09-glossary](09-glossary.md) | Terms used across these docs |
 | [10-disc-golf](10-disc-golf.md) | Disc golf mode: Tali course, tree data, flight model, collisions, first-person putting |
@@ -121,6 +121,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D91 | The Teams switch moves from Round to the Players card, beside the names it splits. Ghost disc starts off; turn it on in Settings → Gameplay. | 2026-10-24 |
 | D92 | Real courses go by their disc golf names, with the place in the description: Oak Grove Gold, DiscGolfPark Běchovice, Skatås Yellow, Julkujärvi DiscGolfPark, and Century Park (D89's "Greer Disc Golf Course": the course in Greer's Century Park, as PDGA and UDisc name it). Kincaid Park, Blue Lake and Wiener Prater already were. The deploy turns on Esri imagery (`VITE_ESRI_IMAGERY`, D47) while the site isn't public, and OSM water is drawn see-through blue over the photo so ponds read even where the imagery is unclear. | 2026-10-24 |
 | D93 | Throw styles to try (Settings → Dev, `src/modes/throwStyles.ts`): **1 stage** (the base game, default), **2 stage** (hold for power, then snap as a needle sweeps back through a release window: early pulls and hyzers, late pushes and turns over; the window narrows for fast discs and past 90%, replacing the overpower wobble), **flick** (reach back with the pointer and flick up: speed is power, lean is direction), **X-step** (tap on three beats, then hold; rhythm is ±10% distance and steadiness). A release's `execution` (pull/push, bank, × wobble) goes into the flight model; only the result travels, so online play and replays are unchanged. | 2026-10-25 |
+| D94 | Real ground on the real courses (docs/07-elevation-lidar.md): `npm run elevation` builds a 2 m heightmap from each country's lidar model (USGS 3DEP, NLS Finland via the funet mirror, ČÚZK DMR 5G, BEV ALS-DGM, Lantmäteriet), the flight model lands, skids, rolls and catches on it, and the renderer drapes the ground and stands everything on it. Skatås waits for a Lantmäteriet login; arcade courses stay flat. | 2026-10-25 |
 
 ## Open questions
 

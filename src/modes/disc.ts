@@ -19,7 +19,7 @@ import { headingAt, newChase, stepChase, type Chase } from './chaseCam';
 import { isKey, keyAction, keyFor } from '../keys';
 import { guardLeave, reloadPage } from '../ui/leaveGuard';
 import { SurfaceGrid } from '../game/surfaces';
-import { FlatTerrain, type Vec3 } from '../game/terrain';
+import { FlatTerrain, HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
@@ -102,6 +102,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const range = opts.course === 'range';
   const course: DiscCourseFile = opts.course === 'range' ? rangeCourse() : await (await fetch(data(DISC_COURSES[opts.course]))).json();
   const trees = decodeTrees(course.trees);
+  // Real courses stand on their real ground (scripts/build-elevation.ts); the rest are flat.
+  const terrain: Terrain = course.elevation
+    ? HeightmapTerrain.fromCentimeters(await (await fetch(data(`courses/${course.elevation.file}`))).arrayBuffer(), course.elevation)
+    : new FlatTerrain();
+  /** Ghost discs saved on the flat course don't fly over the real ground: a fresh set for it. */
+  const ghostCourse = course.elevation ? `${opts.course}@ground` : opts.course;
+  /** A point `h` m above the ground at p. */
+  const above = (p: Vec2, h: number): Vec3 => [p[0], p[1], terrain.heightAt(p[0], p[1]) + h];
   const frame = new LocalFrame(course.origin);
   const grid = SurfaceGrid.fromHole({
     bounds: course.bounds, boundary: course.boundary, features: course.features, ob: course.ob, sea: course.sea,
@@ -168,7 +176,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const key = `${st.version}|${m.drift}|${m.bridge}|${m.gardener}|${round.index}`;
     if (c && c.k === key && c.w.basket === pin) return c.w;
     const w: DiscWorld = {
-      grid, terrain: new FlatTerrain(), basket: pin, branchDensity: course.branch_density,
+      grid, terrain, basket: pin, branchDensity: course.branch_density,
       trees: new TreeIndex(treesFor(trees, st.removed, st.changes, i, teamOf)), hazards: pondsFor(st.changes, i, teamOf),
       props: propColliders, clock0: gameClock, treeShape: shapeOf,
       ...(m.drift > 0 ? { basketDrift: driftFor(i) } : {}),
@@ -212,7 +220,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (range) {
       const pin = myPin();
       return {
-        grid, terrain: new FlatTerrain(), basket: pin, extraBaskets: R().baskets.filter((b) => b !== pin), branchDensity: course.branch_density,
+        grid, terrain, basket: pin, extraBaskets: R().baskets.filter((b) => b !== pin), branchDensity: course.branch_density,
         trees: rangeTrees, props: [], clock0: gameClock, treeShape: shapeOf, wind: st.wind,
       };
     }
@@ -268,7 +276,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     return [d.id, dist([0, 0], r.rest)];
   }));
 
-  const scene = new CourseScene($('stage'), course, grid, trees, COLORS);
+  const scene = new CourseScene($('stage'), course, grid, trees, COLORS, course.elevation ? terrain : null);
   if (range) { scene.addObject(rangeMarkers()); scene.setBaskets(rs.baskets); }
   music(TRACKS[opts.course]);
   const space = opts.course === 'rainbow';
@@ -643,7 +651,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Gardener: the first look at a hole, leaves falling from the trimmed trees along the line.
     if (m.gardener > 0 && !trimmedFor.has(i)) {
       trimmedFor.add(i);
-      for (const t of trees.filter((q) => distToPolyline([q.x, q.y], hole().routing) < m.gardener).slice(0, 10)) effects.leaves([t.x, t.y, t.h * 0.6], 10);
+      for (const t of trees.filter((q) => distToPolyline([q.x, q.y], hole().routing) < m.gardener).slice(0, 10)) effects.leaves(above([t.x, t.y], t.h * 0.6), 10);
     }
     scene.setStumps([...st.removed]);
     life.setPin(pinOf(i));
@@ -762,7 +770,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         const toPin = Math.atan2(myPin()[1] - p.ball[1], myPin()[0] - p.ball[0]) + (Math.random() - 0.5) * (Math.PI * 2 / 3);
         const sp = 2 + Math.random() * 2;
         gust = [Math.cos(toPin) * sp, Math.sin(toPin) * sp];
-        effects.gust([p.ball[0] - Math.cos(toPin) * 4, p.ball[1] - Math.sin(toPin) * 4, 1.4], [Math.cos(toPin), Math.sin(toPin)]);
+        effects.gust(above([p.ball[0] - Math.cos(toPin) * 4, p.ball[1] - Math.sin(toPin) * 4], 1.4), [Math.cos(toPin), Math.sin(toPin)]);
         chip(`Gust: ${fmtSpeed(sp)}`, 'info', 'Storm Front');
       }
       if (m.quake && !quakeUsed.has(cur) && Math.random() < 0.4) {
@@ -842,8 +850,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const ahead = pointAlong(it.line, Math.min(it.len, Math.max(0, s) + 45));
     const pin = hole().pin;
     const m = Math.max(0, Math.min(1, (k - 0.55) / 0.45));
-    const look: Vec3 = [ahead[0] + (pin[0] - ahead[0]) * m, ahead[1] + (pin[1] - ahead[1]) * m, 1.2 * m];
-    scene.flyCam([at[0], at[1], 24 - 14 * e], look);
+    const look = above([ahead[0] + (pin[0] - ahead[0]) * m, ahead[1] + (pin[1] - ahead[1]) * m], 1.2 * m);
+    scene.flyCam(above(at, 24 - 14 * e), look);
     if (k >= 1) endIntro();
   }
 
@@ -918,7 +926,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const g = ghost(m);
       if (!putting) return dist(p.ball, g.rest) < d;
       const at = g.samples.find((s) => Math.hypot(s[0] - p.ball[0], s[1] - p.ball[1]) >= d);
-      return !at || at[2] < CHAIN_MID;
+      return !at || at[2] < terrain.heightAt(aimTarget[0], aimTarget[1]) + CHAIN_MID;
     };
     if (tooShort(1)) { tick = 1; return; }
     let lo = 0, hi = 1;
@@ -1074,7 +1082,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'burn': effects.fire(at); if (flight) flight.burning = true; break;
       case 'skip': effects.splash(at); break;
       case 'split': effects.glow(at, ['#ffffff', '#9fdcff', '#d9c8ff'], 30); break;
-      case 'buddy': effects.glow([at[0], at[1], 1.2], ['#ffd23f', '#fff3a0'], 26); scene.buddyHop(); break;
+      case 'buddy': effects.glow(above([at[0], at[1]], 1.2), ['#ffd23f', '#fff3a0'], 26); scene.buddyHop(); break;
       case 'boomerang': effects.glow(at, ['#ffd23f', '#ff9a3c'], 20, 0.1); break;
       case 'saved': effects.glow(at, ['#7ee081', '#ffffff'], 22); break;
       case 'insured': effects.shield(at); break;
@@ -1105,7 +1113,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let trailTick = 0;
   /** Trail particles behind the disc at pos (every other frame), while it's in the air. */
   function emitTrail(pos: Vec3): void {
-    if (!flight || pos[2] < 0.15 || (trailTick++ & 1)) return;
+    if (!flight || pos[2] < terrain.heightAt(pos[0], pos[1]) + 0.15 || (trailTick++ & 1)) return;
     for (const style of trailsFor(flight)) effects.trail(pos, style);
   }
 
@@ -1118,7 +1126,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Our tee shot: this browser's best on the hole flies alongside (Settings → Ghost disc).
     if (!remote && ghostsOn() && game().players[e.player].strokes === 0) {
       flight.tee = true;
-      flight.ghost = loadGhost(ghostKey(opts.course, hole().ref));
+      flight.ghost = loadGhost(ghostKey(ghostCourse, hole().ref));
     }
     endIntro();
     gallery.onThrow(e.result.samples);
@@ -1193,7 +1201,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (st.teams && vol && vol.team === st.teamOf(idx) && st.teams[vol.team].length > 1 && !done.holed) chip(`${teamName(idx)} play ${opts.names[vol.best]}’s throw`, 'info');
     // A tee shot against its ghost: how the ghost did, and whether this one takes its place.
     if (tee) {
-      const best = !r.penalty && offerGhost(ghostKey(opts.course, hole().ref), r.samples, r.rest, pinOf(idx), r.holed); // OB or water never counts
+      const best = !r.penalty && offerGhost(ghostKey(ghostCourse, hole().ref), r.samples, r.rest, pinOf(idx), r.holed); // OB or water never counts
       if (ghost) chip(best ? 'New best tee shot' : `Ghost: ${ghost.holed ? 'in the basket' : `${fmtLen(ghost.off)} out`}`, best ? 'birdie' : 'info');
     }
     // Broadcast graphics: a chip per distinct event, a result banner when someone holes out.
@@ -1205,7 +1213,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Trick Shot: in off a tree or a prop, an ace. Aces (and trick shots) get confetti.
     const ball = r.holed ? pinOf(idx) : r.rest;
     if (done.holed && st.trickShot(idx, r)) chip('Trick shot: it counts as an ace!', 'ace');
-    if (done.holed && done.strokes === 1) effects.confetti([ball[0], ball[1], 1.4]);
+    if (done.holed && done.strokes === 1) effects.confetti(above(ball, 1.4));
     // Catching augments: the chains light up when they catch for you.
     if (r.holed && ['chain-magnet', 'chain-monster', 'black-hole', 'rattle-trap', 'hype-crowd', 'ace-hunter'].some((id) => owned[idx].includes(id))) effects.glow([ball[0], ball[1], 1.1], ['#ffd23f', '#fff3a0', '#ffffff'], 26);
     if (done.holed) {
@@ -1494,7 +1502,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const pin = rangePin();
       $('stats').innerHTML = `${pin ? `Basket <b>${fmtLen(dist(p.ball, pin))}</b> · ` : ''}Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Throws <b>${st.rangeThrows}</b>`;
       panel?.lock(mine(game().current) ? null : { name: p.name, color: p.color });
-    } else $('stats').innerHTML = `Basket <b>${fmtLen(toBasket())}</b> · Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
+    } else {
+      // Real ground: how far up or down the basket is from here (a meter or more).
+      const dz = terrain.heightAt(...myPin()) - terrain.heightAt(...p.ball);
+      const elev = Math.abs(dz) >= 1 ? ` <span class="dim" title="The basket is ${dz > 0 ? 'above' : 'below'} you">${dz > 0 ? '↑' : '↓'}${fmtLen(Math.abs(dz))}</span>` : '';
+      $('stats').innerHTML = `Basket <b>${fmtLen(toBasket())}</b>${elev} · Target <b>${fmtLen(dist(p.ball, aimTarget))}</b> · Lie <b>${LIE_LABELS[p.lie] ?? p.lie}</b> · Throw <b>${p.strokes + 1}</b>`;
+    }
     $('meter-fill').style.width = `${power * 100}%`;
     $('meter-target').style.left = `${tick * 100}%`;
     // The wobble zone: throws only (putts don't), and gone with Run-Up or Golden Arm.
@@ -1663,7 +1676,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const q = game().players[p];
     if (!q) return null;
     const at = q.holed ? pinOf(p) : q.ball;
-    return [at[0], at[1], 1.9];
+    return above(at, 1.9);
   }, (q) => scene.project(q));
   const chatSay = (p: number, m: ChatMsg) => {
     bubbles.say(p, opts.names[p], COLORS[p], m);
@@ -2006,7 +2019,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const q = g.players[i];
       // Best shot: a throw waiting on its teammates' sits where it landed.
       const at = st.teams ? st.volley.get(st.teamOf(i))?.find((x) => x.player === i)?.result.rest ?? q?.ball : q?.ball;
-      scene.setDisc(i, q && at && !q.holed && !(flight && i === flight.e.player) ? [at[0], at[1], 0.02] : null, 0, yaw, i === g.current);
+      scene.setDisc(i, q && at && !q.holed && !(flight && i === flight.e.player) ? above(at, 0.02) : null, 0, yaw, i === g.current);
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     // The ghost disc, at the same moment of its own flight (in the replay too).
