@@ -49,6 +49,8 @@ export interface Lobby {
   bag?: boolean;
   /** Best shot: each seat's team (0–5), at least two teams. */
   teams?: number[];
+  /** Tees and pins: long/short, A/B/mixed (with the mixed pins' seed). */
+  layout?: { tees: 'long' | 'short' | 'pro'; pins: 'A' | 'B' | 'mixed'; seed?: number };
   seats: Seat[];
 }
 
@@ -356,5 +358,8 @@ function cleanLobby(l: unknown): Lobby | null {
   }
   // One team per seat, 0–5, and at least two different ones; anything else is dropped.
   const teams = Array.isArray(o.teams) && o.teams.length === seats.length && o.teams.every((t) => Number.isInteger(t) && t >= 0 && t < MAX_SEATS) && new Set(o.teams).size >= 2 ? [...o.teams] : undefined;
-  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, ...(teams ? { teams } : {}), seats };
+  const lay = o.layout;
+  const layout = lay && (lay.tees === 'long' || lay.tees === 'short' || lay.tees === 'pro') && (lay.pins === 'A' || lay.pins === 'B' || lay.pins === 'mixed')
+    ? { tees: lay.tees, pins: lay.pins, ...(Number.isInteger(lay.seed) ? { seed: lay.seed } : {}) } : undefined;
+  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, ...(teams ? { teams } : {}), ...(layout ? { layout } : {}), seats };
 }

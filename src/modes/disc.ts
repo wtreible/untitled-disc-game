@@ -23,6 +23,7 @@ import { isKey, keyAction, keyFor } from '../keys';
 import { guardLeave, reloadPage } from '../ui/leaveGuard';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
+import { applyLayout, isDefault, type Layout } from '../course/layout';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
@@ -81,6 +82,8 @@ export interface DiscOptions {
   crazyTutorial?: boolean;
   /** The putting ladder (src/modes/putting.ts): the range with one basket, moved back station by station. */
   putting?: boolean;
+  /** Tees and pins (src/course/layout.ts); none is the course as mapped. */
+  layout?: Layout;
   /** Best shot: each player's team (src/game/teams.ts). */
   teams?: number[];
 }
@@ -110,7 +113,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     ? HeightmapTerrain.fromCentimeters(await (await fetch(data(`courses/${course.elevation.file}`))).arrayBuffer(), course.elevation)
     : new FlatTerrain();
   /** Ghost discs saved on the flat course don't fly over the real ground: a fresh set for it. */
-  const ghostCourse = course.elevation ? `${opts.course}@ground` : opts.course;
+  const ghostCourse = `${opts.course}${course.elevation ? '@ground' : ''}${isDefault(opts.layout) ? '' : `@${opts.layout!.tees}-${opts.layout!.pins}`}`;
   /** A point `h` m above the ground at p. */
   const above = (p: Vec2, h: number): Vec3 => [p[0], p[1], terrain.heightAt(p[0], p[1]) + h];
   const frame = new LocalFrame(course.origin);
@@ -119,6 +122,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     trees: course.canopy.map((c, i) => ({ osm_id: `canopy/${i}`, rings: c.rings, height_m: c.height_m })),
   }, 0.5);
   const blocked = (q: Vec2) => { const c = grid.classAt(q[0], q[1]); return c === 'oob' || c === 'water'; };
+  // The round's tees and pins: everything from here on (the round, the scene, the stats) plays them.
+  course.holes = applyLayout(course.holes, opts.layout, blocked);
+  const layoutTag = isDefault(opts.layout) ? '' : ` · ${`${opts.layout!.tees} tees`}${opts.layout!.pins === 'A' ? '' : `, ${opts.layout!.pins === 'mixed' ? 'mixed' : 'B'} pins`}`;
   // Everything the players share lives in the round state and changes only through events
   // (src/modes/discRound.ts). This file presents it and turns input into events.
   const rogue = !!opts.rogue && !range;
@@ -379,6 +385,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const puttStyle = () => isFP() && disc === PUTTER_DISC && toBasket() <= PUTT_RANGE + 5;
   /** Chose a jump putt this turn (G); it only counts outside circle 1. */
   let jumpPutt = false;
+  /** Looking ahead (L): out over the landing zone, looking back at the thrower, until L again (or the throw). */
+  let looking: { t0: number; from: Vec3 } | null = null;
   const jumping = () => jumpPutt && puttStyle() && toBasket() > C1;
   /** Under the trees there's no room for a run-up (putts are standstill anyway). */
   const standstill = () => !puttStyle() && player().lie === 'trees';
@@ -902,6 +910,40 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     applyCamera(true, true);
   }
 
+  // ---------- look ahead: L ----------
+  /** Where the camera goes: 12 m past the target, 6 m up, looking back at the lie. */
+  function lookSpot(): { pos: Vec3; at: Vec3 } {
+    const b = player().ball, t = aimTarget;
+    const d = dist(b, t) || 1, ux = (t[0] - b[0]) / d, uy = (t[1] - b[1]) / d;
+    const p: Vec2 = [t[0] + ux * 12, t[1] + uy * 12];
+    return { pos: above(p, 6), at: above([b[0] + ux * d * 0.35, b[1] + uy * d * 0.35], 1) };
+  }
+  function startLook(): void {
+    if (phase !== 'aim' || intro || looking) return;
+    looking = { t0: performance.now(), from: scene.eye() ?? above(player().ball, 30) };
+    scene.setFirstPerson(true);
+    $('minimap').hidden = true;
+    $('reticle').hidden = true;
+    scene.minimapEnabled = false;
+    scene.lockTrees([player().ball, aimTarget, [lookSpot().pos[0], lookSpot().pos[1]]], true);
+    updateHud();
+  }
+  function stopLook(): void {
+    if (!looking) return;
+    looking = null;
+    scene.lockTrees(null);
+    scene.minimapEnabled = true;
+    applyCamera(true, true);
+    updateHud();
+  }
+  function stepLook(now: number): void {
+    if (phase !== 'aim') { stopLook(); return; }
+    const k = Math.min(1, (now - looking!.t0) / (prefs().reduceMotion ? 1 : 900)), e = k * k * (3 - 2 * k);
+    const { pos, at } = lookSpot(), f = looking!.from;
+    scene.flyCam([f[0] + (pos[0] - f[0]) * e, f[1] + (pos[1] - f[1]) * e, f[2] + (pos[2] - f[2]) * e], at);
+  }
+  $('look-ahead').addEventListener('click', () => (looking ? stopLook() : startLook()));
+
   // ---------- fast-forward: hold Shift during a flight or replay ----------
   let ffHeld = false;
   window.addEventListener('keydown', (e) => { if (isKey(e, 'fast-forward')) ffHeld = true; });
@@ -986,6 +1028,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Not before the camera is at the disc (it glides there from the last throw).
     if (scene.gliding) { chargeQueued = true; return; }
     chargeQueued = false;
+    if (looking) { stopLook(); return; }
     if (backhandBlocked()) { chip('A tree’s in the way of your backhand', 'hot', `${keyFor('forehand')} forehand · ${keyFor('shot')} roller or overhand`, 2600); return; }
     phase = 'charging';
     chargeStart = performance.now();
@@ -1394,7 +1437,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const recs = holeRecords(st.log, course.holes, opts.names.length, opts.first, round.scores);
       opts.names.forEach((name, p) => {
         if ((net && !net.mine(p)) || recs[p].length === 0) return; // not players covered for while away
-        const r = recordRound(name, course.name, recs[p]);
+        const r = recordRound(name, course.name + layoutTag, recs[p]);
         recorded!.push({ name, color: game().players[p].color, before: r.before, after: r.after, round: r.round.rating });
       });
     }
@@ -1579,6 +1622,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('release').textContent = backhandBlocked() ? 'Backhand blocked' : releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
     $('release').classList.toggle('blocked', backhandBlocked());
     $('nose').hidden = puttStyle();
+    $('look-ahead').textContent = looking ? 'Back' : 'Look ahead';
+    $('look-ahead').hidden = range || (phase !== 'aim' && !looking);
     $('nose').textContent = nose === 0 ? 'Nose level' : `Nose ${Math.abs(nose) < 1 ? 'a little ' : ''}${nose > 0 ? 'up' : 'down'}`;
     const c2 = puttStyle() && toBasket() > C1;
     $('shot').textContent = c2 ? (jumping() ? 'Jump putt' : 'Push putt') : SHOT_LABELS[puttStyle() ? 'standard' : shot];
@@ -1983,6 +2028,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'first-person': toggleFP(); break;
       case 'view': cycleView(); break;
       case 'reframe': applyCamera(true); break;
+      case 'look-ahead': if (looking) stopLook(); else startLook(); break;
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -2078,6 +2124,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       scene.moveBasket(basketAt({ basket: pinOf(viewer), basketDrift: driftFor(viewer) }, flight && replay ? flight.clock0 + replay.t / 60 : gameClock));
     }
     if (intro) flyIntro(dt);
+    if (looking) stepLook(now);
     // A live flight sends spectators running as it nears them; a replay just has them watch.
     gallery.watch(flight ? sampleAt(flight.result.samples, Math.min(replay ? replay.t : flight.t, flight.result.samples.length - 1)) : null, flight && !replay ? flight.t : undefined, flight ? 60 * flight.speed * ff : 60);
     gallery.update(dt);

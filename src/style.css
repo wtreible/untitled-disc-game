@@ -165,7 +165,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .team-chip:not(:disabled):hover { background: color-mix(in srgb, var(--tc) 40%, transparent); }
 .team-chip:disabled { cursor: default; opacity: 1; }
 .room-members .m .team-chip { margin-left: 8px; }
-#teams-row #teams-note { margin-left: auto; margin-right: 6px; }
+#teams-row #teams-note, #tees-note, #pins-note { margin-left: auto; margin-right: 6px; }
+#tees-row .seg button, #pins-row .seg button { padding: 5px 10px; font-size: 13px; }
 #teams-row .seg button { padding: 5px 10px; font-size: 13px; }
 .color-pop { position: fixed; z-index: 50; display: grid; grid-template-columns: repeat(5, 26px); gap: 8px; padding: 10px; border-radius: 12px; background: var(--navy-1); border: 1px solid var(--navy-3); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
 .color-pop button { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2px solid #0008; }

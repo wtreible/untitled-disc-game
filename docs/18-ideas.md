@@ -16,8 +16,8 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 | Idea | What it is | Builds on |
 |---|---|---|
 | ★ **Real elevation** (**done**, D94–D96) | Bare-earth elevation (lidar DEMs) under the real courses: uphill and downhill holes, rollaways down slopes, raised baskets. Evaluated in [07-elevation-lidar](07-elevation-lidar.md). | `Terrain` interface (D9) |
-| **Layouts and pin positions** | Short/long tees and A/B pins per hole, picked per round (Kincaid already has two baskets per hole). | Course builder, hole model |
-| **Look-ahead camera** | Before throwing, fly out to the landing zone and look back at the tee. Most useful once elevation is in. | Flyover / chase cameras |
+| **Layouts and pin positions** (**done**, D100) | Short/long tees and A/B pins per hole, picked per round (Kincaid already has two baskets per hole). | Course builder, hole model |
+| **Look-ahead camera** (**done**, D100) | Before throwing, fly out to the landing zone and look back at the tee. Most useful once elevation is in. | Flyover / chase cameras |
 
 ## Progression
 
@@ -46,7 +46,7 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 1. Stats, player rating and shot analysis (**done**, D97)
 2. The lie decides the shot; circle 1 / circle 2 putting with jump putts (**done**, D98)
 3. Throwing depth: nose angle, the putting reticle, throw-style hooks for augments; the Dev control schemes reworked (**done**, D99)
-4. Course play: look-ahead camera, layouts and pin positions
+4. Course play: look-ahead camera, layouts and pin positions (**done**, D100)
 5. Mandos and drop zones
 6. Bots
 7. More formats: skins, match play, alternate-shot doubles, Bounty

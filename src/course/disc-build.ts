@@ -2,6 +2,7 @@
 import type { Feature, FeatureCollection, Geometry, Position } from 'geojson';
 import { LocalFrame, dist, distToPolyline, pointInRings, polylineLength, type Vec2 } from './geo';
 import type { DiscCourseFile, DiscHole, Tree } from './disc-types';
+import { parFromLength } from './layout';
 import { encodeTrees } from './disc-types';
 import type { CourseFeature, Rings } from './types';
 
@@ -48,10 +49,8 @@ const ROAD_HALF_WIDTH: Record<string, number> = {
   residential: 4, unclassified: 4, service: 3, living_street: 3,
 };
 
-// Disc golf par estimate when OSM has no par tag (Tali has none). Rough PDGA-style length bands.
-export function parFromLength(m: number): number {
-  return m < 150 ? 3 : m < 240 ? 4 : 5;
-}
+// Disc golf par estimate when OSM has no par tag (Tali has none): src/course/layout.ts.
+export { parFromLength };
 
 function polygonsOf(g: Geometry): Position[][][] {
   if (g.type === 'Polygon') return [g.coordinates];
@@ -319,6 +318,22 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
       par_source: Number.isFinite(parTag) ? 'osm' : 'length',
     };
   });
+
+  // Alternate tees and baskets (other layouts mapped at the same holes): each spare one goes to the
+  // hole whose own tee (basket) it's nearest, within 80 m (60 m), nearest first.
+  const spares = (all: Vec2[], mains: Vec2[], max: number, put: (h: DiscHole, p: Vec2) => void, own: (h: DiscHole) => Vec2) => {
+    for (const p of all) {
+      if (mains.some((q) => dist(p, q) < 1)) continue;
+      const h = holes.reduce<{ h: DiscHole | null; d: number }>((b, x) => (dist(p, own(x)) < b.d ? { h: x, d: dist(p, own(x)) } : b), { h: null, d: Infinity });
+      if (h.h && h.d < max && h.d > 3) put(h.h, p);
+    }
+  };
+  spares(tees, holes.map((h) => h.tee), 80, (h, p) => { (h.alt_tees ??= []).push(p); }, (h) => h.tee);
+  spares(baskets, holes.map((h) => h.pin), 60, (h, p) => { (h.alt_pins ??= []).push(p); }, (h) => h.pin);
+  for (const h of holes) {
+    h.alt_tees?.sort((a, b) => dist(a, h.tee) - dist(b, h.tee));
+    h.alt_pins?.sort((a, b) => dist(a, h.pin) - dist(b, h.pin));
+  }
 
   // Bounds: all hole lines + corridor + margin.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

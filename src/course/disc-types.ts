@@ -17,6 +17,9 @@ export interface DiscHole {
   length_m: number;
   /** Data problems found while building (missing tee/basket node, etc.). */
   warnings: string[];
+  /** Other tees and baskets mapped at this hole (other layouts), nearest first (src/course/layout.ts). */
+  alt_tees?: Vec2[];
+  alt_pins?: Vec2[];
 }
 
 /** One tree, in local meters. Collision model: trunk cylinder + crown ellipsoid (docs/08). */

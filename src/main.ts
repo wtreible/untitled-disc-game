@@ -9,6 +9,7 @@ import { defaultTeams, nextTeam, teamGroups, teamsLabel } from './game/teams';
 import { mountNetStatus } from './ui/netStatus';
 import { IMAGERY, data } from './assets';
 import { fmtLen } from './units';
+import { DEFAULT_LAYOUT, isDefault, type Layout } from './course/layout';
 import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
@@ -137,7 +138,9 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
   },
 ];
 
-const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teamsOn?: boolean; teamPicks?: number[] }>('untitled-disc-game:menu', {});
+const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teamsOn?: boolean; teamPicks?: number[]; layout?: Layout }>('untitled-disc-game:menu', {});
+/** Tees and pins (real courses; the Round card's Tees and Pins rows). */
+let layout: Layout = last.layout ?? { ...DEFAULT_LAYOUT };
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
 let players = Math.min(MAX_PLAYERS, Math.max(1, last.players ?? 2));
 const savedNames = load<string[]>('untitled-disc-game:names', []);
@@ -166,12 +169,13 @@ function renderCourses(): void {
 }
 
 // ---------- course info card: name, description, par and stats for the holes being played ----------
-let summary: Record<string, { pars: number[]; lengths: number[]; refs?: string[] }> | null = null;
-fetch(data('courses/summary.json')).then((r) => r.json()).then((s) => { summary = s; renderHoles(); }).catch(() => { /* stats are optional */ });
+let summary: Record<string, { pars: number[]; lengths: number[]; refs?: string[]; alt?: { shortTees: number; proTees: number; altPins: number } }> | null = null;
+fetch(data('courses/summary.json')).then((r) => r.json()).then((s) => { summary = s; renderHoles(); renderLayout(); }).catch(() => { /* stats are optional */ });
 /** A hole's number as the course has it (Skatås' 14b, Blue Lake's 9 after 7), by position. */
 const holeName = (i: number): string => summary?.[course]?.refs?.[i] ?? String(i + 1);
 
 function renderCourseInfo(): void {
+  renderLayout();
   const c = COURSES.find((x) => x.id === course)!;
   $('ci-name').textContent = c.name;
   $('ci-meta').textContent = c.meta;
@@ -191,6 +195,38 @@ function renderCourseInfo(): void {
   $('ci-stats').innerHTML = stats.join('');
 }
 window.addEventListener('unitschange', renderCourseInfo);
+
+// ---------- layout: tees and pins (real courses) ----------
+/** The Tees and Pins rows: real courses only; Pins only where a second basket is mapped. */
+function renderLayout(): void {
+  const real = COURSES.find((c) => c.id === course)?.group === 'real';
+  const alt = summary?.[course]?.alt;
+  const n = COURSES.find((c) => c.id === course)?.holes ?? 0;
+  $('tees-row').hidden = !real;
+  $('pins-row').hidden = !real || !alt?.altPins;
+  $('tees-note').textContent = layout.tees === 'short' ? (alt?.shortTees ? (alt.shortTees >= n ? 'as mapped' : `${alt.shortTees} mapped, rest moved up`) : 'moved up a quarter')
+    : layout.tees === 'pro' && alt?.proTees ? (alt.proTees >= n ? 'as mapped' : `${alt.proTees} of ${n} holes`) : '';
+  $('pins-note').textContent = alt?.altPins && layout.pins !== 'A' && alt.altPins < n ? `${alt.altPins} of ${n} holes` : '';
+  ($('tees-seg').querySelector('[data-v="pro"]') as HTMLElement).hidden = !alt?.proTees;
+  for (const [seg, v] of [['tees-seg', layout.tees], ['pins-seg', layout.pins]] as const) {
+    $(seg).querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  }
+}
+/** The layout a round on this course plays (default off the real courses, or where it changes nothing). */
+function roundLayout(): Layout | undefined {
+  if (COURSES.find((c) => c.id === course)?.group !== 'real') return undefined;
+  const alt = summary?.[course]?.alt;
+  const l: Layout = { ...layout, ...(alt?.altPins ? {} : { pins: 'A' as const }), ...(layout.tees === 'pro' && !alt?.proTees ? { tees: 'long' as const } : {}) };
+  return isDefault(l) ? undefined : { ...l, ...(l.pins === 'mixed' ? { seed: l.seed ?? Math.floor(Math.random() * 1e9) } : {}) };
+}
+for (const seg of ['tees-seg', 'pins-seg'] as const) {
+  $(seg).querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+    layout = seg === 'tees-seg' ? { ...layout, tees: b.dataset.v as Layout['tees'] } : { ...layout, pins: b.dataset.v as Layout['pins'], seed: Math.floor(Math.random() * 1e9) };
+    save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), layout });
+    renderLayout();
+    pushLobby();
+  }));
+}
 
 // ---------- holes ----------
 /** [first, count] blocks of `size` holes covering the course (the last may be shorter). */
@@ -338,7 +374,7 @@ function renderTeams(n: number): void {
     r.querySelector<HTMLButtonElement>('.team-chip')!.addEventListener('click', () => {
       for (let k = 0; k < n; k++) localTeams[k] = plan[k];
       localTeams[i] = nextTeam(plan[i], n);
-      save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamPicks: localTeams });
+      save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamPicks: localTeams, layout });
       renderTeams(n);
     });
   });
@@ -504,7 +540,7 @@ function pushLobby(): void {
   const training = trainingCourse();
   // The tutorials are played alone: the room sees the driving range.
   const teams = teamsToPlay(roomPlan(seated.map((m) => m.client)));
-  room.setLobby({ course: course === 'tutorial' || course === 'crazy-tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
+  room.setLobby({ course: course === 'tutorial' || course === 'crazy-tutorial' ? 'range' : course, first, count, crazy: crazy.checked && !training, bag: bagMode.checked && !training, ...(teams ? { teams } : {}), ...(roundLayout() ? { layout: roundLayout() } : {}), seats: seated.map((m, i) => ({ name: names[i], client: m.client, color: colors[i] })) });
 }
 
 /** How long a lobby seat waits for a player who dropped. */
@@ -528,6 +564,7 @@ function showLobby(l: Lobby): void {
   if (COURSES.some((c) => c.id === l.course)) course = l.course as CourseId;
   crazy.checked = l.crazy;
   bagMode.checked = !!l.bag;
+  layout = l.layout ?? { ...DEFAULT_LAYOUT };
   teamsOn = !!l.teams;
   renderTeams(l.seats.length);
   renderCourses();
@@ -739,7 +776,7 @@ async function launch(l: Lobby): Promise<void> {
   const r = room;
   const { startDisc } = await import('./modes/disc');
   await startDisc({
-    names: l.seats.map((q) => q.name), colors: l.seats.map((q) => q.color ?? ''), course: id === 'putting' ? 'range' : id, putting: id === 'putting', first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag, teams: l.teams,
+    names: l.seats.map((q) => q.name), colors: l.seats.map((q) => q.color ?? ''), course: id === 'putting' ? 'range' : id, putting: id === 'putting', first: l.first, count: l.count, rogue: l.crazy, bag: !!l.bag, teams: l.teams, layout: l.layout,
     net: { room: r, isHost: me === host, mine: (p) => l.seats[p]?.client === me, log: roomLog, seats: l.seats.map((q) => q.client), present: members.map((m) => m.client) },
     rules, // only the host's are used: they send them as the round's first event
   });
@@ -751,7 +788,7 @@ $('start').addEventListener('click', async () => {
   if (course === 'tutorial' || course === 'crazy-tutorial') {
     // Alone, on this browser (in a room too): the first player's name.
     const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout });
     $('setup').hidden = true;
     showGameButtons();
     $('pause-sub').textContent = course === 'tutorial' ? 'Tutorial' : 'Crazy Mode Tutorial';
@@ -761,7 +798,7 @@ $('start').addEventListener('click', async () => {
   }
   if (room) {
     if (!amHost()) return;
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout });
     pushLobby();
     room.start();
     return;
@@ -770,7 +807,7 @@ $('start').addEventListener('click', async () => {
   const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
   save('untitled-disc-game:names', typed);
-  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams });
+  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout });
   $('setup').hidden = true;
   showGameButtons();
   const n = COURSES.find((c) => c.id === course)!.holes;
@@ -783,5 +820,5 @@ $('start').addEventListener('click', async () => {
   }
   const training = course === 'range'; // no Crazy mode or bags on the range
   const teams = teamsToPlay(localPlan(names.length));
-  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training, teams });
+  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training, teams, layout: roundLayout() });
 });

@@ -199,13 +199,19 @@ if (args.broadleaf || args.conifer) {
 
 const outPath = `public/courses/${args.out}.json`;
 mkdirSync('public/courses', { recursive: true });
-// Its heightmap was laid over the old bounds: it has to be built again.
-const hadElevation = existsSync(outPath) && !!JSON.parse(readFileSync(outPath, 'utf8')).elevation;
+const old = existsSync(outPath) ? JSON.parse(readFileSync(outPath, 'utf8')) : null;
 // Round local meters to cm, but never the lat/lon origin.
-writeFileSync(outPath, JSON.stringify(course, (k, v) => {
+const out = JSON.parse(JSON.stringify(course, (k, v) => {
   if (k === 'trees') return (v as number[]).map((n) => Math.round(n * 100) / 100);
   return typeof v === 'number' && k !== 'lat' && k !== 'lon' ? Math.round(v * 100) / 100 : v;
 }));
+// Its ground (npm run elevation) still fits if the bounds didn't move: keep it; otherwise it's dropped.
+const keepGround = !!old?.elevation && JSON.stringify(old.bounds) === JSON.stringify(out.bounds);
+if (keepGround) {
+  out.elevation = old.elevation;
+  out.source.attribution.push(...old.source.attribution.filter((a: string) => a.startsWith('Elevation:')));
+}
+writeFileSync(outPath, JSON.stringify(out));
 
 const trees = decodeTrees(course.trees);
 console.log(`${course.name}: ${course.holes.length} holes, ${trees.length} trees, ${course.canopy.length} canopy polygons, ${course.features.length} features, ${course.ob.length} OB polygons`);
@@ -214,4 +220,4 @@ for (const h of course.holes) {
 }
 console.log(`bounds ${course.bounds.map((p) => p.map(Math.round).join(',')).join(' → ')}`);
 console.log(`wrote ${outPath}`);
-if (hadElevation) console.log(`Rebuilt without its ground: run \`npm run elevation -- --out ${args.out}\` again`);
+if (old?.elevation && !keepGround) console.log(`The bounds moved, so its ground was dropped: run \`npm run elevation -- --out ${args.out}\` again`);

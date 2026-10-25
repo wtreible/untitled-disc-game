@@ -5,6 +5,7 @@
 //   npm run course-summary
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { DiscCourseFile } from '../src/course/disc-types';
+import { layoutOptions } from '../src/course/layout';
 
 /** Menu course id → file (as in src/modes/disc.ts DISC_COURSES). */
 export const COURSE_FILES: Record<string, string> = {
@@ -15,7 +16,9 @@ export function summarize(c: DiscCourseFile) {
   const refs = c.holes.map((h) => h.ref);
   // Hole numbers only when they aren't simply 1…n (Skatås' 14b, Blue Lake without an 8).
   const plain = refs.every((r, i) => r === String(i + 1));
-  return { pars: c.holes.map((h) => h.par), lengths: c.holes.map((h) => Math.round(h.length_m)), ...(plain ? {} : { refs }) };
+  // Layouts: how many holes have a mapped short tee or a second basket (only when some do).
+  const alt = layoutOptions(c.holes);
+  return { pars: c.holes.map((h) => h.par), lengths: c.holes.map((h) => Math.round(h.length_m)), ...(plain ? {} : { refs }), ...(alt.shortTees || alt.proTees || alt.altPins ? { alt } : {}) };
 }
 
 if (process.argv[1]?.endsWith('course-summary.ts')) {

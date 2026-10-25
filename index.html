@@ -28,6 +28,7 @@
       <div class="hud-row">
         <div class="meter-wrap"><div id="meter-hint"></div><div id="meter"><div id="meter-fill"></div><div id="meter-wobble" title="Muscling it: past here your aim wobbles more"></div><div id="meter-target"></div><div id="meter-window" hidden><span>SNAP</span></div><div id="meter-needle" hidden></div><div id="meter-track" hidden></div></div></div>
         <button id="swing" class="primary">Hold to swing <kbd>Space</kbd></button>
+        <button id="look-ahead" class="chip-btn" title="Look ahead from the landing zone (L)">Look ahead</button>
         <button id="fp-toggle" class="chip-btn" title="First person / top-down (C)" hidden></button>
         <button id="view-toggle" class="chip-btn" title="Toggle view (V)"></button>
       </div>
@@ -181,6 +182,8 @@
           <section class="panel-card round">
             <h3>Round</h3>
             <label class="row" id="holes-row"><span>Holes</span><select id="holes"></select></label>
+            <div class="row" id="tees-row" hidden><span>Tees</span><small id="tees-note" class="dim"></small><div class="seg" id="tees-seg"><button data-v="short">Short</button><button data-v="long">Long</button><button data-v="pro">Pro</button></div></div>
+            <div class="row" id="pins-row" hidden><span>Pins</span><small id="pins-note" class="dim"></small><div class="seg" id="pins-seg"><button data-v="A">A</button><button data-v="B">B</button><button data-v="mixed">Mixed</button></div></div>
             <label class="toggle">
               <input type="checkbox" id="bag-mode" />
               <span class="switch"></span>

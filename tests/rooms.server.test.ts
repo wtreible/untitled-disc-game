@@ -88,6 +88,21 @@ describe.skipIf(!BASE)('room server', () => {
     for (const x of [a, b, c]) x.close();
   });
 
+  it('the lobby carries a layout; a bad one is dropped', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    await a.until('welcome');
+    const b = await connect(code, 'client-bbbb', 'Bo');
+    await b.until('welcome');
+    const seats = [{ name: 'Ann', client: 'client-aaaa' }, { name: 'Bo', client: 'client-bbbb' }];
+    a.send({ type: 'lobby', lobby: { ...lobby(seats), layout: { tees: 'short', pins: 'mixed', seed: 42 } } });
+    expect((await b.until('lobby')).lobby.layout).toEqual({ tees: 'short', pins: 'mixed', seed: 42 });
+    a.send({ type: 'lobby', lobby: { ...lobby(seats), layout: { tees: 'tiny', pins: 'A' } } });
+    expect((await b.until('lobby')).lobby.layout).toBeUndefined();
+    a.close();
+    b.close();
+  });
+
   it('the host ends the game: everyone is back in the same lobby, and the next game starts clean', async () => {
     const code = room();
     const a = await connect(code, 'client-aaaa', 'Ann');

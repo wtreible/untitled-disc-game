@@ -3,6 +3,7 @@
 // everyone else's to the game, in order.
 import type { RoundEvent } from '../modes/discRound';
 import { packEvent, unpackEvent } from './wire';
+import type { Layout } from '../course/layout';
 
 export interface Seat {
   name: string;
@@ -20,6 +21,8 @@ export interface Lobby {
   bag?: boolean;
   /** Best shot: each seat's team (rooms from 2026-10-24 on; older ones drop it). */
   teams?: number[];
+  /** Tees and pins (src/course/layout.ts); none is the course as mapped. */
+  layout?: Layout;
   seats: Seat[];
 }
 

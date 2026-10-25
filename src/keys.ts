@@ -7,7 +7,7 @@ export type KeyAction =
   | 'throw' | 'fast-forward'
   | 'disc-prev' | 'disc-next' | 'aim-left' | 'aim-right' | 'look-up' | 'look-down'
   | 'target-farther' | 'target-closer' | 'hyzer' | 'anhyzer' | 'nose-up' | 'nose-down' | 'forehand' | 'shot'
-  | 'mulligan' | 'perfect' | 'first-person' | 'view' | 'reframe' | 'replay-reset'
+  | 'mulligan' | 'perfect' | 'first-person' | 'view' | 'reframe' | 'look-ahead' | 'replay-reset'
   | 'chat' | 'mute' | 'help' | 'scorecard';
 
 export const DEFAULT_KEYS: Record<KeyAction, string> = {
@@ -17,7 +17,7 @@ export const DEFAULT_KEYS: Record<KeyAction, string> = {
   'target-farther': 'w', 'target-closer': 's',
   hyzer: 'q', anhyzer: 'e', 'nose-up': 'u', 'nose-down': 'j', forehand: 't', shot: 'g',
   mulligan: 'm', perfect: 'p',
-  'first-person': 'c', view: 'v', reframe: 'f', 'replay-reset': 'r',
+  'first-person': 'c', view: 'v', reframe: 'f', 'look-ahead': 'l', 'replay-reset': 'r',
   chat: 'z', mute: 'n', help: '?', scorecard: 'tab',
 };
 
@@ -25,7 +25,7 @@ export const DEFAULT_KEYS: Record<KeyAction, string> = {
 export const KEY_GROUPS: { name: string; actions: [KeyAction, string][] }[] = [
   { name: 'Throw', actions: [['throw', 'Throw (hold, let go) · skip a replay or flyover'], ['disc-prev', 'Previous disc'], ['disc-next', 'Next disc'], ['hyzer', 'Hyzer'], ['anhyzer', 'Anhyzer'], ['nose-up', 'Nose up (floats, stalls short)'], ['nose-down', 'Nose down (far and flat, dives early)'], ['forehand', 'Backhand / forehand'], ['shot', 'Shot: normal, tomahawk, thumber, roller'], ['mulligan', 'Crazy mode: mulligan'], ['perfect', 'Crazy mode: Perfect Form']] },
   { name: 'Aim', actions: [['aim-left', 'Turn left'], ['aim-right', 'Turn right'], ['look-up', 'Launch angle up (first person)'], ['look-down', 'Launch angle down (first person)'], ['target-farther', 'Target farther'], ['target-closer', 'Target closer']] },
-  { name: 'View', actions: [['first-person', 'First person / top-down'], ['view', 'Map style'], ['reframe', 'Re-frame (top-down)'], ['fast-forward', 'Fast-forward a flight (hold)'], ['replay-reset', 'Replay: reset the camera']] },
+  { name: 'View', actions: [['first-person', 'First person / top-down'], ['view', 'Map style'], ['reframe', 'Re-frame (top-down)'], ['look-ahead', 'Look ahead: from the landing zone back at you (again to come back)'], ['fast-forward', 'Fast-forward a flight (hold)'], ['replay-reset', 'Replay: reset the camera']] },
   { name: 'Other', actions: [['chat', 'Chat and emoji wheel (hold; at the pointer)'], ['mute', 'Sound on / off'], ['help', 'Controls list'], ['scorecard', 'Scorecard (hold)']] },
 ];
 
