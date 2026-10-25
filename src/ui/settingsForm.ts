@@ -45,6 +45,7 @@ export function mountSettings(el: HTMLElement): void {
           <button data-v="imperial" class="${getUnits() === 'imperial' ? 'on' : ''}">Feet</button>
           <button data-v="metric" class="${getUnits() === 'metric' ? 'on' : ''}">Meters</button></div></div>
         ${toggle('ghosts', 'Ghost disc', 'Your best tee shot on each hole flies alongside the next one (not in Crazy mode)')}
+        ${toggle('shotInfo', 'Shot analysis', 'After each of your throws: carry, peak height, which way it moved, release speed')}
         ${toggle('quickSolo', 'Quick turns when playing alone', 'No replay, and your next throw is ready as soon as the disc stops')}
         ${toggle('confirmLeave', 'Ask before leaving a round', 'The browser checks before you close or reload mid-round')}
         ${toggle('help', 'Show control hints')}`;

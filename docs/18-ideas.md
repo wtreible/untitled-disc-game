@@ -1,6 +1,6 @@
 # Ideas for more depth (possibilities)
 
-A list of possible additions, collected 2026-10-25. Nothing here is planned yet. ★ marks the picks that looked best for the effort. **Courses** is the area being looked at first; real elevation is evaluated in [07-elevation-lidar](07-elevation-lidar.md).
+A list of possible additions, collected 2026-10-25, now being built in steps (below). **Done** marks what's in. ★ marks the picks that looked best for the effort. **Courses** is the area being looked at first; real elevation is evaluated in [07-elevation-lidar](07-elevation-lidar.md).
 
 ## Shots and rules
 
@@ -15,7 +15,7 @@ A list of possible additions, collected 2026-10-25. Nothing here is planned yet.
 
 | Idea | What it is | Builds on |
 |---|---|---|
-| ★ **Real elevation** | Bare-earth elevation (lidar DEMs) under the real courses: uphill and downhill holes, rollaways down slopes, raised baskets. Evaluated in [07-elevation-lidar](07-elevation-lidar.md). | `Terrain` interface (D9) |
+| ★ **Real elevation** (**done**, D94–D96) | Bare-earth elevation (lidar DEMs) under the real courses: uphill and downhill holes, rollaways down slopes, raised baskets. Evaluated in [07-elevation-lidar](07-elevation-lidar.md). | `Terrain` interface (D9) |
 | **Layouts and pin positions** | Short/long tees and A/B pins per hole, picked per round (Kincaid already has two baskets per hole). | Course builder, hole model |
 | **Look-ahead camera** | Before throwing, fly out to the landing zone and look back at the tee. Most useful once elevation is in. | Flyover / chase cameras |
 
@@ -23,7 +23,7 @@ A list of possible additions, collected 2026-10-25. Nothing here is planned yet.
 
 | Idea | What it is | Builds on |
 |---|---|---|
-| ★ **Stats and a player rating** | Circle 1/2 putting %, fairway hits, parked, scrambles, OB rate; a PDGA-style rating from recent rounds. Kept per browser. | Round event log |
+| ★ **Stats and a player rating** (**done**, D97) | Circle 1/2 putting %, fairway hits, parked, scrambles, OB rate; a PDGA-style rating from recent rounds. Kept per browser. | Round event log |
 | **Tour mode** | A season of events across the real courses with entry rules (X-step only, a hex every hole…). Winnings buy discs and plastics (grippy for wet days, beat-in discs that turn more). The natural home for disc wear (deferred). | Bag building, Crazy mode rules |
 | **Daily challenge** | One seeded hole or round a day for everyone, with a leaderboard through the room server. | Seeded rounds, room server |
 
@@ -39,8 +39,17 @@ A list of possible additions, collected 2026-10-25. Nothing here is planned yet.
 
 | Idea | What it is | Builds on |
 |---|---|---|
-| **Shot analysis** | After a throw: carry, peak height, how far it turned and faded, release speed, next to what the disc's flight numbers predicted. | Throw samples, disc charts |
+| **Shot analysis** (**done**, D97; the comparison with the disc's flight numbers is not) | After a throw: carry, peak height, how far it turned and faded, release speed, next to what the disc's flight numbers predicted. | Throw samples, disc charts |
 
-## Suggested order (when picked up)
+## Steps (2026-10-25)
 
-Stats and rating → lie and putting rules → bots → elevation. The first three are mostly logic on existing systems; elevation needs a data pipeline per real course.
+1. Stats, player rating and shot analysis (**done**, D97)
+2. The lie decides the shot; circle 1 / circle 2 putting with jump putts
+3. Throwing depth: nose angle, the putting reticle, throw-style hooks for augments
+4. Course play: look-ahead camera, layouts and pin positions
+5. Mandos and drop zones
+6. Bots
+7. More formats: skins, match play, alternate-shot doubles, Bounty
+8. Daily challenge
+9. Tour mode
+10. Course editor

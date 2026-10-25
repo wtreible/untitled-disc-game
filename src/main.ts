@@ -13,6 +13,7 @@ import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames,
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
 import { closeAugmentBrowser, openAugmentBrowser } from './ui/augments';
+import { closeStats, openStats } from './ui/statsView';
 import { initSound, music, sfx } from './audio/sound';
 import { prefs, setPref } from './settings';
 
@@ -390,6 +391,9 @@ for (const t of ['common', 'epic', 'legendary'] as const) {
 $('browse-augments').addEventListener('click', () => openAugmentBrowser());
 $('aug-close').addEventListener('click', closeAugmentBrowser);
 $('aug-browser').addEventListener('click', (e) => { if (e.target === $('aug-browser')) closeAugmentBrowser(); });
+$('open-stats').addEventListener('click', () => openStats(document.querySelector<HTMLInputElement>('#player-names input')?.value.trim()));
+$('stats-close').addEventListener('click', closeStats);
+$('player-stats').addEventListener('click', (e) => { if (e.target === $('player-stats')) closeStats(); });
 renderRules();
 crazy.addEventListener('change', () => {
   syncCrazy(); pushLobby(); renderCourseInfo();
@@ -454,6 +458,7 @@ window.addEventListener('keydown', (e) => {
   if (!typing && isKey(e, 'help') && $('setup').hidden) { openKeys($('keys').hidden === true); return; }
   if (e.key === 'Escape' && $('keys').hidden === false) { openKeys(false); return; }
   if (e.key === 'Escape' && $('aug-browser').hidden === false) { closeAugmentBrowser(); return; }
+  if (e.key === 'Escape' && $('player-stats').hidden === false) { closeStats(); return; }
   if (e.key === 'Escape' && $('name-ask').hidden === false) { $('name-cancel').click(); return; }
   if (e.key === 'Escape' && $('setup').hidden === true) openPause($('settings').hidden === true);
 });

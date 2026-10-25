@@ -13,6 +13,9 @@ import { openAugmentBrowser, renderSidePanel } from '../ui/augments';
 import { playerColors } from '../game/game';
 import { DiscRound, type RoundEvent, type WireResult } from './discRound';
 import { renderCard, renderSummary, type CardView } from './scorecard';
+import { holeRecords } from './roundStats';
+import { RATING_MIN_HOLES, recordRound } from '../game/playerStats';
+import { shapeText, shotShape } from '../game/shotStats';
 import { showBagPicker, showDraft } from './picks';
 import { LiveGate, RoundSync, type NetPlay } from './discSync';
 import { headingAt, newChase, stepChase, type Chase } from './chaseCam';
@@ -1241,6 +1244,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       par: hole().par, events: r.events, props: r.propHits?.length ?? 0, putt: before <= PUTT_RANGE,
     });
     if (line) say(line);
+    // Shot analysis (Settings → Gameplay): your own throws, not putts.
+    if (prefs().shotInfo && mine(idx) && before > PUTT_RANGE && r.penalty === 0) {
+      const sh = shotShape(r.samples, r.rest, (x, y) => terrain.heightAt(x, y));
+      chip(`Carry ${fmtLen(sh.carry)} · peak ${fmtLen(sh.peak)}`, 'info', `${shapeText(sh, (m) => fmtLen(m))} · ${fmtSpeed(sh.speed)}`, 3400);
+    }
     if (done.holed) gallery.react(['ace', 'eagle', 'birdie'].includes(scoreTone(done.strokes, hole().par)) ? 'cheer' : 'yes', pinOf(idx));
     else if (r.events.some((x) => x === 'spit' || x === 'cut' || x === 'band' || x === 'tray' || x === 'pole')) gallery.react('no', pinOf(idx));
     // Mulligan window: a few seconds to take the throw back (not after holing out). Everyone
@@ -1317,11 +1325,36 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     holes: course.holes, round, names: opts.names, colors: COLORS, toPar: liveToPar, augments: rogue ? owned : null,
     teams: st.teams ? { rows: rows(), name: teamName, color: rowColor } : undefined,
   });
+  /**
+   * The round's over: each of this browser's players gets it in their stats (not Crazy mode, teams
+   * or the range, where par doesn't mean the same), once, and the final card shows their rating.
+   */
+  let recorded: { name: string; color: string; before: number | null; after: number | null; round: number }[] | null = null;
+  function recordStats(): void {
+    if (!recorded) {
+      recorded = [];
+      if (rogue || range || st.teams) return;
+      const recs = holeRecords(st.log, course.holes, opts.names.length, opts.first, round.scores);
+      opts.names.forEach((name, p) => {
+        if ((net && !net.mine(p)) || recs[p].length === 0) return; // not players covered for while away
+        const r = recordRound(name, course.name, recs[p]);
+        recorded!.push({ name, color: game().players[p].color, before: r.before, after: r.after, round: r.round.rating });
+      });
+    }
+    const box = $('results-summary');
+    for (const r of recorded) {
+      const delta = r.before === null || r.after === null ? '' : ` (${r.after - r.before >= 0 ? '+' : ''}${r.after - r.before})`;
+      // A rating needs rounds of RATING_MIN_HOLES or more; a shorter one shows only its own number.
+      const big = r.after === null ? '–' : `${r.after}${delta}`, note = r.after === null ? `needs ${RATING_MIN_HOLES}+ holes · this round ${r.round}` : `this round ${r.round}`;
+      box.insertAdjacentHTML('beforeend', `<div class="hl"><small>Rating</small><b>${big}</b><span><i style="background:${r.color}"></i>${esc(r.name)} · ${note}</span></div>`);
+    }
+  }
   /** Hole card, or (readOnly, from the pause menu) a mid-round look with just a Close button. */
   function showCard(readOnly = false): void {
     const last = round.isLastHole;
     renderCard(cardView());
     renderSummary(last && game().finished, st.log, cardView(), watchShot);
+    if (last && game().finished) recordStats();
     $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
     // Online, only the host moves everyone on to the next hole.
     // Online, the final card's way on is the host's: everyone back to the room's lobby together.

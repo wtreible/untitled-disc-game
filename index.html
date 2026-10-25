@@ -210,7 +210,7 @@
           </div>
           <div class="col">
           <section class="panel-card players">
-            <h3>Players</h3>
+            <h3>Players <button id="open-stats" class="chip-btn" title="Your rating, putting and driving stats">Stats</button></h3>
             <div class="seg" id="player-seg"></div>
             <select id="player-count" hidden><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
             <div id="player-names"></div>
@@ -262,6 +262,15 @@
         <div class="sheet-head"><h2>Augments</h2><span class="dim aug-count"></span><button id="aug-close" class="icon" title="Close">✕</button></div>
         <div class="seg aug-tiers"></div>
         <div class="aug-body"></div>
+      </div>
+    </div>
+
+    <!-- Your stats: rating, putting, driving, recent rounds (per name in this browser) -->
+    <div id="player-stats" class="modal" hidden>
+      <div class="sheet stats-sheet">
+        <div class="sheet-head"><h2>Stats</h2><button id="stats-close" class="icon" title="Close">✕</button></div>
+        <div class="seg stats-names"></div>
+        <div class="stats-body"></div>
       </div>
     </div>
 

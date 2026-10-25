@@ -124,6 +124,7 @@ A browser golf game played on real courses: course geometry from OpenStreetMap, 
 | D94 | Real ground on the real courses (docs/07-elevation-lidar.md): `npm run elevation` builds a 2 m heightmap from each country's lidar model (USGS 3DEP, NLS Finland via the funet mirror, ČÚZK DMR 5G, BEV ALS-DGM, Lantmäteriet), the flight model lands, skids, rolls and catches on it, and the renderer drapes the ground and stands everything on it. Skatås waits for a Lantmäteriet login; arcade courses stay flat. | 2026-10-25 |
 | D95 | Tali Recreation gets the real ground too (its drawn layers painted into a draped texture), and every course with ground gets a multiplied hillshade (north-west sun) so slopes read from above and at eye level. | 2026-10-25 |
 | D96 | Slope arrows around the basket on real ground (downhill, longer where steeper, out to circle 1) in both views, and tee pads tilted to the slope. | 2026-10-25 |
+| D97 | Stats per player name in this browser (`src/game/playerStats.ts`): every finished round outside Crazy mode, teams and the range is recorded throw by throw from the event log; the menu's Stats screen shows C1X/C2 putting, fairway hits, parked, C1 in regulation, scrambling, OB rate and recent rounds. A par-based rating (1000 = par, 10 points a stroke over 18 holes; the average of the last 10 rounds of 6+ holes) shows on the final card. Shot analysis after each of your throws (carry, peak, which way it moved, release speed; Settings → Gameplay). | 2026-10-25 |
 
 ## Open questions
 

@@ -1,5 +1,8 @@
 // End-of-round highlights from the round's event log (src/modes/discRound.ts): the longest throw,
-// the longest make, who hit the most trees. Mulligans take their throw back out.
+// the longest make, who hit the most trees; and each player's holes for their stats. Mulligans take
+// their throw back out.
+import type { Vec2 } from '../course/geo';
+import type { HoleRec, ThrowRec } from '../game/playerStats';
 import type { RoundEvent } from './discRound';
 
 /** One kept throw: who, on which hole (course index), where in the log, and how far it went. */
@@ -66,4 +69,31 @@ export function roundStats(log: RoundEvent[], players: number, first: number): R
   }
   const ref = (k: ShotRef | null): ShotRef | null => (k ? { player: k.player, hole: k.hole, at: k.at, dist: k.dist } : null);
   return { longest: ref(longest), bestMake: ref(bestMake), players: stats, shots: kept.map(ref) as ShotRef[] };
+}
+
+/**
+ * Each player's round, hole by hole and throw by throw, for their stats (src/game/playerStats.ts).
+ * `holes`: the course's holes (their pins and pars); `scores[p][hole]` the round's own strokes.
+ */
+export function holeRecords(log: RoundEvent[], holes: { pin: Vec2; par: number }[], players: number, first: number, scores: (number | undefined)[][]): HoleRec[][] {
+  const out: HoleRec[][] = Array.from({ length: players }, () => []);
+  let hole = first - 1;
+  let cur: ThrowRec[][] = [];
+  const close = () => {
+    if (hole < first) return;
+    for (let p = 0; p < players; p++) {
+      const strokes = scores[p]?.[hole];
+      if (strokes !== undefined) out[p].push({ par: holes[hole].par, strokes, throws: cur[p] });
+    }
+  };
+  for (const e of log) {
+    if (e.t === 'hole-start') { close(); hole++; cur = Array.from({ length: players }, () => []); continue; }
+    if (e.t === 'mulligan') { cur[e.player]?.pop(); continue; }
+    if (e.t !== 'throw' || e.player >= players || hole < first) continue;
+    const pin = holes[hole].pin, r = e.result, s = r.samples[0];
+    const off = (q: ArrayLike<number>) => Math.hypot(q[0] - pin[0], q[1] - pin[1]);
+    cur[e.player].push({ d: s ? off(s) : 0, rest: r.holed ? 0 : off(r.rest), holed: r.holed, penalty: r.penalty, tee: cur[e.player].length === 0, lie: r.restSurface });
+  }
+  close();
+  return out;
 }
