@@ -605,8 +605,8 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       const d0 = Math.hypot(rest[0] - pin[0], rest[1] - pin[1]) || 1;
       const ux = (pin[0] - rest[0]) / d0, uy = (pin[1] - rest[1]) / d0;
       for (let k = 1; k <= 30; k++) {
-        const t = (k / 30) * by;
-        samples.push([rest[0] + ux * t, rest[1] + uy * t, p[2]]);
+        const t = (k / 30) * by, x = rest[0] + ux * t, y = rest[1] + uy * t;
+        samples.push([x, y, world.terrain.heightAt(x, y)]); // along the ground, up or down a slope
         banks.push(0);
       }
       rest = [rest[0] + ux * by, rest[1] + uy * by];

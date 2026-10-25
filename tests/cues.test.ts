@@ -10,7 +10,7 @@ import { simulateThrow, type DiscWorld } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
 import { mulberry32 } from '../src/game/physics';
 import { SurfaceGrid } from '../src/game/surfaces';
-import { FlatTerrain } from '../src/game/terrain';
+import { FlatTerrain, HeightmapTerrain } from '../src/game/terrain';
 
 const NORTH = Math.PI / 2;
 const DD = DISCS.find((d) => d.id === 'DD')!;
@@ -86,5 +86,23 @@ describe('effect loudness', () => {
     expect(normGain(clip(0.001))).toBe(4);
     const g = normGain({ ...clip(0.05), getChannelData: () => Float32Array.from({ length: 4000 }, (_, i) => (i === 10 ? 0.9 : 0.05 * Math.sin(i * 0.3))) });
     expect(0.9 * g).toBeLessThanOrEqual(2 + 1e-6); // the peak is stored as float32
+  });
+
+  it('on raised ground (a real course) it still lands, and the chains still ring', () => {
+    // Flat ground 40 m up: the same throws as at sea level.
+    const n = 11, up = new HeightmapTerrain(new Float32Array(n * n).fill(40), n, n, [-200, -200], 40);
+    const w: DiscWorld = { ...world(), terrain: up };
+    const ground = (x: number, y: number) => up.heightAt(x, y);
+    const drive = simulateThrow({ start: [0, -140], aim: NORTH, power: 1, disc: DD, hyzer: 0 }, w, () => 0.25, { ghost: true });
+    expect(throwCues(drive, w.basket, (x, y) => w.grid.classAt(x, y), ground).map((c) => c.sound)).toEqual(['land']);
+    // Read as if at sea level (the old bug): no landing, and the touchdown sounds like a branch.
+    expect(throwCues(drive, w.basket, (x, y) => w.grid.classAt(x, y)).map((c) => c.sound)).toEqual(['branch']);
+    const pw: DiscWorld = { ...world([], [0, 6]), terrain: up };
+    let rang = 0;
+    for (let s = 1; s <= 10; s++) {
+      const r = simulateThrow({ start: [0, 0], aim: NORTH, power: 0.5, disc: PUTTER_DISC, hyzer: 0, style: 'putt', launch: 0.12 }, pw, mulberry32(s));
+      if (r.holed && throwCues(r, pw.basket, (x, y) => pw.grid.classAt(x, y), ground).some((c) => c.sound === 'chains')) rang++;
+    }
+    expect(rang).toBeGreaterThan(2);
   });
 });

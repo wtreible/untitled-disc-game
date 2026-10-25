@@ -962,7 +962,7 @@ export class CourseScene {
     if (!p) return;
     g.position.set(p[0], p[1], OVERLAY_Z + (active ? 2 : 1));
     const { body, shadow } = g.userData as { body: THREE.Object3D; shadow: THREE.Object3D };
-    const lift = Math.max(0, p[2] - 0.05);
+    const lift = Math.max(0, p[2] - groundAt(p[0], p[1]) - 0.05); // above the ground, for the top-down marker
     body.position.set(0, lift * 0.35 * this.ppm, 0.1);
     body.scale.setScalar(1 + lift / 25);
     shadow.visible = lift > 0.3;

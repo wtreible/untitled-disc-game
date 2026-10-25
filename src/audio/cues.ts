@@ -42,8 +42,11 @@ const ON_GROUND = 0.13;
 /** Quiet time after a hit, in samples, so one crown full of branches isn't a drum roll. */
 const DEBOUNCE = 8;
 
-export function throwCues(r: Throw, pin: Vec2, surfaceAt: (x: number, y: number) => SurfaceClass): Cue[] {
+/** `ground`: the ground height (real courses); heights are read above it. */
+export function throwCues(r: Throw, pin: Vec2, surfaceAt: (x: number, y: number) => SurfaceClass, ground: (x: number, y: number) => number = () => 0): Cue[] {
   const s = r.samples;
+  const up = (p: Vec3) => p[2] - ground(p[0], p[1]);
+  const pinZ = ground(pin[0], pin[1]);
   const cues: Cue[] = [];
   const nearPin = (p: Vec3) => Math.hypot(p[0] - pin[0], p[1] - pin[1]) < BASKET_R;
   const caught = r.holed || r.events.some((e) => e === 'chains' || e === 'spit' || e === 'cut');
@@ -54,13 +57,13 @@ export function throwCues(r: Throw, pin: Vec2, surfaceAt: (x: number, y: number)
     const a = s[Math.max(0, k - 2)], b = s[k - 1];
     const dv = k < 2 ? 0 : 60 * Math.hypot(p[0] - 2 * b[0] + a[0], p[1] - 2 * b[1] + a[1], p[2] - 2 * b[2] + a[2]);
     // Into the chains (or a tap-in), or off the band, tray or pole.
-    if (!basket && nearPin(p) && p[2] > ON_GROUND && p[2] < 1.7 && (caught || dv >= HIT_DV)) {
+    if (!basket && nearPin(p) && p[2] - pinZ > ON_GROUND && p[2] - pinZ < 1.7 && (caught || dv >= HIT_DV)) {
       basket = true;
       cues.push({ k, sound: caught ? 'chains' : 'clank', at: p });
       quietUntil = k + DEBOUNCE * 2;
       continue;
     }
-    if (!landed && p[2] < ON_GROUND && b[2] >= ON_GROUND) {
+    if (!landed && up(p) < ON_GROUND && up(b) >= ON_GROUND) {
       landed = true;
       const surface = surfaceAt(p[0], p[1]);
       cues.push({ k, sound: surface === 'water' ? 'splash' : 'land', at: p, surface });

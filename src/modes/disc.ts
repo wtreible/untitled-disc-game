@@ -1146,7 +1146,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const cuesFor = (e: Extract<RoundEvent, { t: 'throw' }>): Cue[] => {
     const s = e.result.samples;
     const marks = (e.result.marks ?? []).map(([k, mark]): Cue => ({ k, sound: 'mark', mark, at: s[Math.min(k, s.length - 1)] }));
-    return [...throwCues(e.result, range ? nearestBasket(e.result.rest) : pinOf(e.player), (x, y) => grid.classAt(x, y)), ...marks].sort((a, b) => a.k - b.k);
+    return [...throwCues(e.result, range ? nearestBasket(e.result.rest) : pinOf(e.player), (x, y) => grid.classAt(x, y), (x, y) => terrain.heightAt(x, y)), ...marks].sort((a, b) => a.k - b.k);
   };
   const nearestBasket = (p: Vec2): Vec2 => R().baskets.reduce<Vec2>((a, b) => (dist(b, p) < dist(a, p) ? b : a), NO_BASKET);
   /**
