@@ -8,6 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { asset } from '../assets';
 import { TREE_KIND_NAMES, treeKindInfo, treeShape } from '../disc/treeShapes';
 import { groundAt } from './ground';
+import { designMaterials } from './discDesigns';
 
 export function basketModel(): THREE.Group {
   const g = new THREE.Group();
@@ -446,11 +447,11 @@ function loadTreeModel(kind: number): Promise<ModelPart[]> {
   return p;
 }
 
-export function discMesh(color: string): THREE.Mesh {
-  // Flattened, slightly domed disc.
+export function discMesh(color: string, design?: string): THREE.Mesh {
+  // Flattened, slightly domed disc; the design (src/render/discDesigns.ts) on top.
   const geo = new THREE.CylinderGeometry(DISC_RADIUS * 0.92, DISC_RADIUS, 0.022, 28);
   geo.rotateX(Math.PI / 2);
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color }));
+  return new THREE.Mesh(geo, designMaterials(design, color));
 }
 
 /**

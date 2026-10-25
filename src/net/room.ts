@@ -4,12 +4,15 @@
 import type { RoundEvent } from '../modes/discRound';
 import { packEvent, unpackEvent } from './wire';
 import type { Layout } from '../course/layout';
+import type { Format, TeamPlay } from '../game/formats';
 
 export interface Seat {
   name: string;
   client: string;
   /** Picked color (older rooms don't have it: defaults by seat). */
   color?: string;
+  /** The disc's design (src/render/discDesigns.ts; older rooms don't have it: solid). */
+  design?: string;
 }
 
 export interface Lobby {
@@ -23,6 +26,9 @@ export interface Lobby {
   teams?: number[];
   /** Tees and pins (src/course/layout.ts); none is the course as mapped. */
   layout?: Layout;
+  /** How the round is won, and how teams play (src/game/formats.ts); stroke play and best shot when absent. */
+  format?: Format;
+  teamPlay?: TeamPlay;
   seats: Seat[];
 }
 
@@ -30,6 +36,8 @@ export interface Member {
   client: string;
   name: string;
   color?: string;
+  /** The disc's design (src/render/discDesigns.ts). */
+  design?: string;
   /** Ready for the host to start (rooms from protocol 2). */
   ready?: boolean;
 }
@@ -146,7 +154,7 @@ export class RoomClient {
   /** The last heartbeat's round trip, ms (null before the first). */
   lastPing: number | null = null;
 
-  constructor(readonly code: string, private name: string, private color: string | null = null, private readonly url = ROOMS_URL!) {}
+  constructor(readonly code: string, private name: string, private color: string | null = null, private readonly url = ROOMS_URL!, private design: string | null = null) {}
 
   on(h: RoomHandlers): void {
     this.handlers = { ...this.handlers, ...h };
@@ -156,7 +164,7 @@ export class RoomClient {
     this.closedByUs = false;
     this.handlers.status?.('connecting');
     const resume = this.game ? `&game=${this.game}&since=${this.have}` : '';
-    const ws = new WebSocket(`${this.url}/room/${this.code}?client=${this.id}&name=${encodeURIComponent(this.name)}${this.color ? `&color=${encodeURIComponent(this.color)}` : ''}${resume}`);
+    const ws = new WebSocket(`${this.url}/room/${this.code}?client=${this.id}&name=${encodeURIComponent(this.name)}${this.color ? `&color=${encodeURIComponent(this.color)}` : ''}${this.design ? `&design=${encodeURIComponent(this.design)}` : ''}${resume}`);
     this.ws = ws;
     ws.addEventListener('open', () => { this.retry = 0; this.handlers.status?.('open'); });
     ws.addEventListener('message', (ev) => {
@@ -245,6 +253,12 @@ export class RoomClient {
   recolor(color: string): void {
     this.color = color;
     this.send({ type: 'color', color });
+  }
+
+  /** A new disc design for us: the room tells everyone, and the host's lobby takes it. */
+  redesign(design: string): void {
+    this.design = design;
+    this.send({ type: 'design', design });
   }
 
   private send(m: unknown): void {

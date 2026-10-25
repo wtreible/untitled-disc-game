@@ -25,6 +25,7 @@ import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { applyLayout, isDefault, type Layout } from '../course/layout';
 import { botOfClient, botRelease, planInput, planThrow, type BotLevel, type BotSituation } from '../game/bot';
+import { BOUNTY, BOUNTY_HEXES, bountyLeader, matchOf, matchText, skinsOf, type Format, type TeamPlay } from '../game/formats';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
@@ -87,6 +88,12 @@ export interface DiscOptions {
   layout?: Layout;
   /** Hot seat: which players are bots, and how good (online, bot seats say so in their client id). */
   bots?: (BotLevel | null)[];
+  /** How the round is won (src/game/formats.ts); stroke play when absent. */
+  format?: Format;
+  /** Team play: best shot (default) or alternate shot. */
+  teamPlay?: TeamPlay;
+  /** Each player's disc design (src/render/discDesigns.ts); solid when absent. */
+  designs?: (string | undefined)[];
   /** Best shot: each player's team (src/game/teams.ts). */
   teams?: number[];
 }
@@ -133,11 +140,61 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const rogue = !!opts.rogue && !range;
   /** Each player's color, as picked on the menu (or the defaults). */
   const COLORS = playerColors(opts.names.map((_, i) => opts.colors?.[i]));
-  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range, colors: COLORS, teams: opts.teams }, blocked);
+  const st = new DiscRound(course.holes, trees, { names: opts.names, first: opts.first, count: opts.count, rogue, bag: !!opts.bag && !range, range, colors: COLORS, teams: opts.teams, teamPlay: opts.teamPlay }, blocked);
   /** Best shot: a team's name ("Ann & Bo"), or the player's own. */
   const teamName = (p: number) => (st.teams ? st.teams[st.teamOf(p)].map((q) => opts.names[q]).join(' & ') : opts.names[p]);
   /** The rows of the leaderboard and card: one per team, or per player. Each row's first member stands for it. */
   const rows = () => (st.teams ?? opts.names.map((_, p) => [p])).map((r) => [...r]); // a copy: callers sort it
+  // ---------- format (src/game/formats.ts) ----------
+  /** How the round is won. Match play needs exactly two sides; otherwise it's stroke play. */
+  const fmt: Format = range || !opts.format ? 'stroke' : opts.format === 'match' && rows().length !== 2 ? 'stroke' : opts.format;
+  /** The holes this round plays, in order (course indices). */
+  const roundHoles = Array.from({ length: opts.count }, (_, k) => opts.first + k);
+  /** Each side's card: its first member's scores (teammates share them). */
+  const cards = () => rows().map((r) => round.scores[r[0]]);
+  const skins = () => skinsOf(cards(), roundHoles);
+  const match = () => matchOf(cards()[0], cards()[1], roundHoles);
+  const matchNames = (): [string, string] => [teamName(rows()[0][0]), teamName(rows()[1][0])];
+  /** The leaderboard's line for the format (none in stroke play). */
+  function formatLine(): string {
+    if (fmt === 'skins') { const s = skins(); return `Skins · ${s.carry + 1} on this hole`; }
+    if (fmt === 'match') return `Match · ${matchText(match(), matchNames())}`;
+    if (fmt === 'bounty') return st.bounty ? `Bounty · ${teamName(st.bounty.players[0])}: ${BOUNTY[st.bounty.hex].name}` : 'Bounty · no outright leader';
+    return '';
+  }
+  /** A row's badge on the leaderboard: its skins, its match lead, the bounty. */
+  function formatBadge(row: number[], k: number): string {
+    if (fmt === 'skins') { const n = skins().won[k]; return n ? `${n} skin${n === 1 ? '' : 's'}` : ''; }
+    if (fmt === 'match') { const u = match().up * (k === 0 ? 1 : -1); return u > 0 ? `${u} up` : ''; }
+    if (fmt === 'bounty') return st.bounty?.players.includes(row[0]) ? '🎯 bounty' : '';
+    return '';
+  }
+  /** Holes whose skins or match result has been announced. */
+  const announced = new Set<number>();
+  /** When a hole's done: who took the skins, or the hole, and how the match stands. */
+  function announceHole(): void {
+    const h = round.index;
+    if (announced.has(h) || cards().some((c) => c[h] === undefined)) return;
+    announced.add(h);
+    if (fmt === 'skins') {
+      const r = skins().holes.find((x) => x.hole === h);
+      if (r) chip(r.winner === null ? `Tied: ${r.worth} skin${r.worth === 1 ? '' : 's'} carry over` : `${teamName(rows()[r.winner][0])} takes ${r.worth} skin${r.worth === 1 ? '' : 's'}`, r.winner === null ? 'info' : 'birdie', undefined, 3200);
+    }
+    if (fmt === 'match') {
+      const m = match(), w = m.holes[m.holes.length - 1];
+      chip(w === null ? 'Hole halved' : `${matchNames()[w]} wins the hole`, w === null ? 'info' : 'birdie', matchText(m, matchNames()), 3200);
+    }
+  }
+  /** The final card's tile for the format. */
+  function formatTile(): string {
+    const tile = (label: string, big: string, line: string) => `<div class="hl"><small>${label}</small><b>${esc(big)}</b><span>${esc(line)}</span></div>`;
+    if (fmt === 'skins') {
+      const s = skins(), best = Math.max(...s.won), top = rows().filter((_, k) => s.won[k] === best);
+      return tile('Skins', top.map((r) => teamName(r[0])).join(' & '), `${best} skin${best === 1 ? '' : 's'}${s.carry ? ` · ${s.carry} left in the pot` : ''}`);
+    }
+    if (fmt === 'match') return tile('Match play', matchText(match(), matchNames()), `${match().holes.filter((x) => x === 0).length}–${match().holes.filter((x) => x === 1).length} in holes won`);
+    return '';
+  }
   /** A row's color: the player's, or the team's members' side by side. */
   const rowColor = (row: number[]) => (row.length === 1 ? COLORS[row[0]] : `linear-gradient(${row.map((p, k) => `${COLORS[p]} ${(k / row.length) * 100}% ${((k + 1) / row.length) * 100}%`).join(', ')})`);
   const { round, mods, owned, mulligansLeft, perfectLeft } = st;
@@ -265,7 +322,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Players on one side: by team in best shot, else everyone alone (hexes spare their own side). */
   const teamOf = (p: number) => st.teamOf(p);
   /** Mods acting on player i's throws: their own plus opponents' hexes. */
-  const modsFor = (i: number) => effectiveMods(mods, i, teamOf);
+  /** A player's modifiers: their augments, opponents' hexes, and the Bounty handicap if they carry it. */
+  const modsFor = (i: number) => {
+    const m = effectiveMods(mods, i, teamOf);
+    if (st.bounty?.players.includes(i)) BOUNTY[st.bounty.hex].apply(m);
+    return m;
+  };
   const hole = () => st.hole;
 
   // ---------- driving range: baskets and trees placed at will, wind and weather picked ----------
@@ -291,7 +353,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     return [d.id, dist([0, 0], r.rest)];
   }));
 
-  const scene = new CourseScene($('stage'), course, grid, trees, COLORS, course.elevation ? terrain : null);
+  const scene = new CourseScene($('stage'), course, grid, trees, COLORS, course.elevation ? terrain : null, opts.designs ?? []);
   if (range) { scene.addObject(rangeMarkers()); scene.setBaskets(rs.baskets); }
   music(TRACKS[opts.course]);
   const space = opts.course === 'rainbow';
@@ -629,7 +691,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function startHole(): void {
     // The range: the host's saved setup is everyone's to start with.
     if (range) dispatchQuiet({ t: 'range', setup: rangeConditions(rs) });
-    dispatch({ t: 'hole-start', wind: range ? rangeWind(rs) : drawWind() });
+    // Bounty: after the first hole, whoever leads outright plays this one handicapped.
+    const lead = fmt === 'bounty' && st.holeStarted ? bountyLeader(rows().map((r) => round.toPar(r[0]))) : null;
+    const bounty = lead === null ? undefined : { players: rows()[lead], hex: BOUNTY_HEXES[Math.floor(Math.random() * BOUNTY_HEXES.length)] };
+    dispatch({ t: 'hole-start', wind: range ? rangeWind(rs) : drawWind(), ...(bounty ? { bounty } : {}) });
   }
 
   /** A hole has started (ours or the host's event): set the scene for it. */
@@ -644,6 +709,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     applyWeather();
     if (range) presentRange();
     const h = hole();
+    if (st.bounty) chip(`Bounty: ${teamName(st.bounty.players[0])} leads`, 'hot', `${BOUNTY[st.bounty.hex].name} this hole: ${BOUNTY[st.bounty.hex].text}`, 4200);
     setTreeWind(st.wind);
     life.setHole(h, st.wind);
     // Spectators by the basket, out of the way of throws coming in along the hole line.
@@ -1345,7 +1411,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const done = game().players[idx];
     // Best shot: the team's volley is done; whose throw it plays from now (if there was a choice).
     const vol = st.resolved;
-    if (st.teams && vol && vol.team === st.teamOf(idx) && st.teams[vol.team].length > 1 && !done.holed) chip(`${teamName(idx)} play ${opts.names[vol.best]}’s throw`, 'info');
+    if (st.teams && opts.teamPlay !== 'alternate' && vol && vol.team === st.teamOf(idx) && st.teams[vol.team].length > 1 && !done.holed) chip(`${teamName(idx)} play ${opts.names[vol.best]}’s throw`, 'info');
     // A tee shot against its ghost: how the ghost did, and whether this one takes its place.
     if (tee && !botOf(idx)) {
       const best = !r.penalty && offerGhost(ghostKey(ghostCourse, hole().ref), r.samples, r.rest, pinOf(idx), r.holed); // OB or water never counts
@@ -1499,6 +1565,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     renderCard(cardView());
     renderSummary(last && game().finished, st.log, cardView(), watchShot);
     if (last && game().finished) recordStats();
+    if (!readOnly) announceHole();
+    if (last && game().finished && formatTile()) $('results-summary').insertAdjacentHTML('afterbegin', formatTile());
     $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
     // Online, only the host moves everyone on to the next hole.
     // Online, the final card's way on is the host's: everyone back to the room's lobby together.
@@ -1713,13 +1781,17 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       : `Click to aim · ${two('aim-left', 'aim-right')} fine aim · ${common} · ${k('first-person')} 1st person · right-drag pan · scroll zoom${view} · ${k('reframe')} re-frame`;
     if (range) { rangeBoard(); return; }
     // One row a player, or a team in best shot (its members are always on the same spot and score).
-    const lbOrder = rows().sort((a, b) => liveToPar(a[0]) - liveToPar(b[0]));
-    $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + lbOrder.map((row) => {
+    const all = rows();
+    const won = fmt === 'skins' ? skins().won : null;
+    const lbOrder = [...all].sort((a, b) => (won ? won[all.indexOf(b)] - won[all.indexOf(a)] : 0) || liveToPar(a[0]) - liveToPar(b[0]));
+    const line = formatLine();
+    $('scoreboard').innerHTML = `<div class="lb-head"><span>LEADERBOARD</span><span>HOLE ${esc(hole().ref)}</span></div>` + (line ? `<div class="lb-format">${esc(line)}</div>` : '') + lbOrder.map((row) => {
+      const badge = formatBadge(row, all.findIndex((r) => r[0] === row[0]));
       const i = row[0];
       const q = game().players[i];
       const tp = liveToPar(i);
       const state = q.holed ? `${scoreWord(q.strokes, hole().par)}` : q.pickedUp ? 'picked up' : `${fmtLen(dist(q.ball, pinOf(i)))} · ${LIE_LABELS[q.lie] ?? q.lie}`;
-      return `<div class="row ${row.includes(game().current) && !game().finished ? 'active' : ''}"><span class="bar" style="background:${rowColor(row)}"></span><span><div class="name">${esc(teamName(i))}</div><div class="state">${state}</div></span><span class="strokes">${q.strokes}</span><span class="topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</span></div>`;
+      return `<div class="row ${row.includes(game().current) && !game().finished ? 'active' : ''}"><span class="bar" style="background:${rowColor(row)}"></span><span><div class="name">${esc(teamName(i))}${badge ? ` <small class="fmt-badge">${esc(badge)}</small>` : ''}</div><div class="state">${state}</div></span><span class="strokes">${q.strokes}</span><span class="topar ${tp < 0 ? 'under' : tp > 0 ? 'over' : 'even'}">${fmtPar(tp)}</span></div>`;
     }).join('') + upNext();
   }
 
@@ -2228,7 +2300,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const q = g.players[i];
       // Best shot: a throw waiting on its teammates' sits where it landed.
       const at = st.teams ? st.volley.get(st.teamOf(i))?.find((x) => x.player === i)?.result.rest ?? q?.ball : q?.ball;
-      scene.setDisc(i, q && at && !q.holed && !(flight && i === flight.e.player) ? above(at, 0.02) : null, 0, yaw, i === g.current);
+      scene.setDisc(i, q && at && !q.holed && !(flight && i === flight.e.player) ? above(at, 0.07) : null, 0, yaw, i === g.current); // above a tee pad (5 cm)
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     // The ghost disc, at the same moment of its own flight (in the replay too).

@@ -168,6 +168,24 @@ describe.skipIf(!BASE)('room server', () => {
     ws.close(); a.close();
   });
 
+  it('members carry a disc design: from the link, then a design message; seats keep good ones', async () => {
+    const code = room();
+    const a = await connect(code, 'client-aaaa', 'Ann');
+    await a.until('welcome');
+    const ws = new WebSocket(`${BASE}/room/${code}?client=client-cccc&name=Cy&design=galaxy`);
+    await new Promise<void>((res) => ws.addEventListener('open', () => res()));
+    expect((await a.until('members')).members.find((m: Msg) => m.client === 'client-cccc').design).toBe('galaxy');
+    a.send({ type: 'design', design: 'flame' });
+    expect((await a.until('members')).members.find((m: Msg) => m.client === 'client-aaaa').design).toBe('flame');
+    a.send({ type: 'design', design: '<img>' });
+    expect((await a.until('error')).reason).toMatch(/bad design/);
+    a.send({ type: 'lobby', lobby: lobby([{ name: 'Ann', client: 'client-aaaa', design: 'flame' } as never, { name: 'Cy', client: 'client-cccc', design: 'x y' } as never]) });
+    const l = (await a.until('lobby')).lobby;
+    expect(l.seats[0].design).toBe('flame');
+    expect(l.seats[1].design).toBeUndefined();
+    ws.close(); a.close();
+  });
+
   it('the room survives everyone leaving: rejoining gets the same log', async () => {
     const code = room();
     const a = await connect(code, 'client-dddd', 'Di');

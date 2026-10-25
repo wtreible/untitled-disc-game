@@ -32,7 +32,7 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 | Idea | What it is | Builds on |
 |---|---|---|
 | ★ **Bots** (**done**, D104) | Computer players at a few skill levels: aim with the ghost line, tuned execution error. Rivals in solo play; fill empty seats online, so teams and Crazy mode get full cards. | Ghost flights, `execution` (D93) |
-| **More formats** | Skins (carry-overs), match play, alternate-shot doubles, Bounty (the leader wears a hex). | Round log, teams, hexes |
+| **More formats** (**done**, D105) | Skins (carry-overs), match play, alternate-shot doubles, Bounty (the leader wears a hex). | Round log, teams, hexes |
 | **Course editor** | Place tees, baskets, trees and OB on a blank or real map; share as a code. Endless content, but the biggest build. | [08-level-editor-and-disc-golf](08-level-editor-and-disc-golf.md) |
 
 ## Feedback
@@ -49,7 +49,7 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 4. Course play: look-ahead camera, layouts and pin positions (**done**, D100)
 5. Mandos and drop zones (**done**, D103)
 6. Bots (**done**, D104)
-7. More formats: skins, match play, alternate-shot doubles, Bounty
+7. More formats: skins, match play, alternate-shot doubles, Bounty; disc designs (**done**, D105)
 8. Daily challenge
 9. Tour mode
 10. Course editor

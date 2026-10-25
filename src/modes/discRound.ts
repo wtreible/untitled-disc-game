@@ -17,6 +17,7 @@ import type { Vec3 } from '../game/terrain';
 import { emptyChanges, pinFor, placementQueue, teeFor, type HoleChanges, type PlaceKind } from '../rogue/course';
 import { byId, type Tier } from '../rogue/powerups';
 import { cleanRules, DEFAULT_RULES, draftAfter, draftQueue, type CrazyRules } from '../rogue/rules';
+import type { BountyHex, TeamPlay } from '../game/formats';
 
 /** A tree: a course tree by index, or a tree placed this hole (Sapling, Thicket) by index. */
 export type TreeRef = number | { placed: number };
@@ -38,9 +39,12 @@ export interface WireResult {
   marks?: [number, Mark][];
 }
 
+/** Bounty: who leads into this hole, and the handicap they play it with. */
+export interface Bounty { players: number[]; hex: BountyHex }
+
 export type RoundEvent =
   /** Start the next hole (the first one, the first time) with its wind (m/s, blowing toward). */
-  | { t: 'hole-start'; wind: Vec2 }
+  | { t: 'hole-start'; wind: Vec2; bounty?: Bounty }
   /**
    * A throw landed. `perfect`: a Perfect Form charge was used on it. `twin`: Clone Disc's other
    * throw, the one not kept (every other sample, for show only). `clock`: the thrower's game clock
@@ -116,6 +120,8 @@ export interface RoundOptions {
    * alone. With Crazy mode, hexes spare the owner's teammates.
    */
   teams?: number[];
+  /** Team play: best shot (everyone throws, the team plays the best) or alternate shot (teammates take turns). */
+  teamPlay?: TeamPlay;
 }
 
 /** The best throw of a volley: holed, then fewer penalty strokes, then nearest the basket; ties to the first thrown. */
@@ -176,6 +182,8 @@ export class DiscRound {
   readonly volley = new Map<number, { player: number; result: WireResult }[]>();
   /** Best shot: the last volley played, and whose throw the team took. */
   resolved: { team: number; best: number } | null = null;
+  /** Bounty: who carries it this hole (from the hole-start event). */
+  bounty: Bounty | null = null;
   /** Every event applied so far, in order. */
   readonly log: RoundEvent[] = [];
   private started = false;
@@ -259,6 +267,8 @@ export class DiscRound {
         this.started = true;
         this.mods.forEach((m, i) => { this.mulligansLeft[i] = m.mulligans; this.perfectLeft[i] = m.perfectForm; this.buddyLeft[i] = m.buddy; this.round.capBonus[i] = m.pickupBonus; });
         this.round.restartHole(); // this hole's per-player tees/baskets (nobody has thrown yet)
+        this.bounty = e.bounty ?? null;
+        this.passAlternate();
         this.changes = emptyChanges(this.opts.names.length);
         this.version++;
         this.wind = [e.wind[0], e.wind[1]];
@@ -349,6 +359,7 @@ export class DiscRound {
         if (u.burned.length) this.version++;
         this.game.current = u.idx;
         this.mulligansLeft[u.idx]--;
+        this.passAlternate();
         return;
       }
       case 'offer':
@@ -407,7 +418,8 @@ export class DiscRound {
     v.push({ player: idx, result });
     this.volley.set(team, v);
     this.resolved = null;
-    const left = this.teams![team].filter((p) => !v.some((x) => x.player === p));
+    // Alternate shot: every throw is the team's stroke. Best shot: wait for the whole team.
+    const left = this.opts.teamPlay === 'alternate' ? [] : this.teams![team].filter((p) => !v.some((x) => x.player === p));
     if (left.length && !result.holed) { g.current = left[0]; return; }
     const k = bestThrow(v, g.pins[idx]);
     const best = v[k].result;
@@ -419,7 +431,19 @@ export class DiscRound {
     }
     this.resolved = { team, best: v[k].player };
     g.advance();
+    this.passAlternate();
     if (g.finished) this.round.recordCurrent();
+  }
+
+  /**
+   * Alternate shot: the team that's up throws with whoever's turn it is. Tee shots go round the team
+   * hole by hole; after that, teammates take turns.
+   */
+  private passAlternate(): void {
+    if (!this.teams || this.opts.teamPlay !== 'alternate' || this.game.finished) return;
+    const team = this.teams[this.teamOf(this.game.current)];
+    const strokes = this.game.players[team[0]].strokes;
+    this.game.current = team[(this.round.index + strokes) % team.length];
   }
 
   /** Trick Shot: holed off a tree or a prop counts as an ace. */

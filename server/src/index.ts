@@ -18,6 +18,7 @@
 //   { type: 'live', s }             passing state (the thrower's aim, power): relayed, not stored
 //   { type: 'name', name }          change our name (the host's lobby picks it up before the start)
 //   { type: 'color', color }        change our color (#rrggbb), likewise
+//   { type: 'design', design }      change our disc's design (a short id), likewise
 //   { type: 'ready', ready }        ready (or not) for the host to start; cleared by start and end
 // Room → client:
 //   { type: 'welcome', protocol, you, host, lobby, started, game, count, since, log, members }
@@ -39,6 +40,8 @@ export interface Seat {
   name: string;
   client: string;
   color?: string;
+  /** The disc's design (src/render/discDesigns.ts). */
+  design?: string;
 }
 
 export interface Lobby {
@@ -51,6 +54,9 @@ export interface Lobby {
   teams?: number[];
   /** Tees and pins: long/short, A/B/mixed (with the mixed pins' seed). */
   layout?: { tees: 'long' | 'short' | 'pro'; pins: 'A' | 'B' | 'mixed'; seed?: number };
+  /** How the round is won, and how teams play. */
+  format?: 'skins' | 'match' | 'bounty';
+  teamPlay?: 'alternate';
   seats: Seat[];
 }
 
@@ -58,6 +64,7 @@ interface Attachment {
   client: string;
   name: string;
   color?: string;
+  design?: string;
   ready?: boolean;
 }
 
@@ -81,6 +88,7 @@ const HOST_GRACE_MS = 10_000;
 const CODE = /^[A-Z0-9]{4,8}$/;
 const ID = /^[A-Za-z0-9_-]{6,40}$/;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
+const DESIGN = /^[a-z]{1,16}$/;
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -117,11 +125,12 @@ export class Room extends DurableObject<Env> {
     const name = (url.searchParams.get('name') ?? '').trim().slice(0, 16) || 'Player';
     if (!ID.test(client)) return new Response('bad client id', { status: 400 });
     const color = url.searchParams.get('color') ?? '';
+    const design = url.searchParams.get('design') ?? '';
     const pair = new WebSocketPair();
     const [browser, server] = [pair[0], pair[1]];
     // Hibernation API: the room isn't billed for duration while everyone is just connected.
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ client, name, ...(COLOR.test(color) ? { color } : {}) } satisfies Attachment);
+    server.serializeAttachment({ client, name, ...(COLOR.test(color) ? { color } : {}), ...(DESIGN.test(design) ? { design } : {}) } satisfies Attachment);
     if (!this.get('host')) this.set('host', client); // whoever opens the room hosts it
     if (this.get('host') === client && this.get('hostGone')) { this.del('hostGone'); void this.schedule(); }
     this.touch();
@@ -203,6 +212,12 @@ export class Room extends DurableObject<Env> {
         const color = typeof msg.color === 'string' && COLOR.test(msg.color) ? msg.color : '';
         if (!color) return this.fail(ws, 'bad color');
         this.update(me.client, { color });
+        return;
+      }
+      case 'design': {
+        const design = typeof (msg as { design?: unknown }).design === 'string' && DESIGN.test((msg as { design: string }).design) ? (msg as { design: string }).design : '';
+        if (!design) return this.fail(ws, 'bad design');
+        this.update(me.client, { design });
         return;
       }
       case 'ready': {
@@ -354,12 +369,14 @@ function cleanLobby(l: unknown): Lobby | null {
   const seats: Seat[] = [];
   for (const s of o.seats) {
     if (!s || typeof s.name !== 'string' || typeof s.client !== 'string' || !ID.test(s.client)) return null;
-    seats.push({ name: s.name.trim().slice(0, 16) || 'Player', client: s.client, ...(typeof s.color === 'string' && COLOR.test(s.color) ? { color: s.color } : {}) });
+    seats.push({ name: s.name.trim().slice(0, 16) || 'Player', client: s.client, ...(typeof s.color === 'string' && COLOR.test(s.color) ? { color: s.color } : {}), ...(typeof s.design === 'string' && DESIGN.test(s.design) ? { design: s.design } : {}) });
   }
   // One team per seat, 0–5, and at least two different ones; anything else is dropped.
   const teams = Array.isArray(o.teams) && o.teams.length === seats.length && o.teams.every((t) => Number.isInteger(t) && t >= 0 && t < MAX_SEATS) && new Set(o.teams).size >= 2 ? [...o.teams] : undefined;
   const lay = o.layout;
   const layout = lay && (lay.tees === 'long' || lay.tees === 'short' || lay.tees === 'pro') && (lay.pins === 'A' || lay.pins === 'B' || lay.pins === 'mixed')
     ? { tees: lay.tees, pins: lay.pins, ...(Number.isInteger(lay.seed) ? { seed: lay.seed } : {}) } : undefined;
-  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, ...(teams ? { teams } : {}), ...(layout ? { layout } : {}), seats };
+  const format = o.format === 'skins' || o.format === 'match' || o.format === 'bounty' ? o.format : undefined;
+  const teamPlay = teams && o.teamPlay === 'alternate' ? o.teamPlay : undefined;
+  return { course: o.course, first: o.first!, count: o.count!, crazy: !!o.crazy, bag: !!o.bag, ...(teams ? { teams } : {}), ...(layout ? { layout } : {}), ...(format ? { format } : {}), ...(teamPlay ? { teamPlay } : {}), seats };
 }

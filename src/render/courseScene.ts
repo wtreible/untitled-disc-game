@@ -111,7 +111,7 @@ export class CourseScene {
   /** The course has real ground: the ground planes are draped over it. */
   private readonly relief: boolean;
 
-  constructor(private readonly container: HTMLElement, course: DiscCourseFile, grid: SurfaceGrid, trees: Tree[], playerColors: string[], terrain: Terrain | null = null) {
+  constructor(private readonly container: HTMLElement, course: DiscCourseFile, grid: SurfaceGrid, trees: Tree[], playerColors: string[], terrain: Terrain | null = null, playerDesigns: (string | undefined)[] = []) {
     setGround(terrain);
     this.relief = !!terrain;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -219,7 +219,7 @@ export class CourseScene {
     this.basketMarker.add(disc2d(9, '#222222'), disc2d(7, '#f2c230'), disc2d(3, '#9aa1a8'));
     for (const m of [this.teeMarker, this.basketMarker]) { this.pixelScaled.push(m); this.overlays.add(m); }
 
-    for (const color of playerColors) {
+    playerColors.forEach((color, pi) => {
       const g = new THREE.Group();
       const shadow = disc2d(5, '#000000', 0.4);
       const body = new THREE.Group();
@@ -230,11 +230,11 @@ export class CourseScene {
       this.discMarkers.push(g);
       this.pixelScaled.push(g);
       this.overlays.add(g);
-      const d3 = discMesh(color);
+      const d3 = discMesh(color, playerDesigns[pi]);
       d3.visible = false;
       this.discs3d.push(d3);
       this.scene.add(d3);
-    }
+    });
 
     this.aimMat = new THREE.LineDashedMaterial({ color: '#ffffff', dashSize: 4, gapSize: 3, transparent: true, opacity: 0.6, depthTest: false });
     this.aimLine = new THREE.Line(new THREE.BufferGeometry(), this.aimMat);
@@ -732,11 +732,14 @@ export class CourseScene {
   setDiscGold(i: number, on: boolean): void {
     if (on === this.golden.has(i)) return;
     if (on) this.golden.add(i); else this.golden.delete(i);
-    const m = this.discs3d[i]?.material as THREE.MeshLambertMaterial | undefined;
-    if (!m) return;
-    if (!m.userData.base) m.userData.base = m.color.clone();
-    m.color.copy(on ? new THREE.Color('#ffc83d') : (m.userData.base as THREE.Color));
-    m.emissive.set(on ? '#7a5200' : '#000000');
+    const mat = this.discs3d[i]?.material as THREE.MeshLambertMaterial | THREE.MeshLambertMaterial[] | undefined;
+    if (!mat) return;
+    // A design's top is a texture: gold tints it (×), the rim and underside turn gold.
+    for (const m of Array.isArray(mat) ? mat : [mat]) {
+      if (!m.userData.base) m.userData.base = m.color.clone();
+      m.color.copy(on ? new THREE.Color('#ffc83d') : (m.userData.base as THREE.Color));
+      m.emissive.set(on ? '#7a5200' : '#000000');
+    }
   }
 
   /** Placement mode: rings for what's been placed so far (top-down), or null to clear. */
