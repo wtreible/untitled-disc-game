@@ -3,7 +3,7 @@
 // refresh when anything changes.
 import { DEFAULT_KEYS, KEY_GROUPS, UNBINDABLE, bindKey, keyBindings, keyName, resetKeys, type KeyAction } from '../keys';
 import { prefs, setPref, type Graphics, type Prefs } from '../settings';
-import { THROW_STYLES, type ThrowStyle } from '../modes/throwStyles';
+import { ENABLED_STYLES, THROW_STYLES, usableStyle, type ThrowStyle } from '../modes/throwStyles';
 import { getUnits, setUnits } from '../units';
 
 type Tab = 'audio' | 'camera' | 'gameplay' | 'graphics' | 'controls' | 'dev';
@@ -63,8 +63,8 @@ export function mountSettings(el: HTMLElement): void {
       }
       case 'dev': return `
         <div class="row"><span>Throw style</span><select data-k="throwStyle">
-          ${THROW_STYLES.map(([v, name]) => `<option value="${v}" ${p.throwStyle === v ? 'selected' : ''}>${name}</option>`).join('')}</select></div>
-        <small class="dim">${THROW_STYLES.find(([v]) => v === p.throwStyle)?.[2] ?? ''}. Experimental: try them out, they may change.</small>`;
+          ${THROW_STYLES.map(([v, name]) => { const on = ENABLED_STYLES.includes(v); return `<option value="${v}" ${usableStyle(p.throwStyle) === v ? 'selected' : ''} ${on ? '' : 'disabled'}>${name}${on ? '' : ' (not yet)'}</option>`; }).join('')}</select></div>
+        <small class="dim">${THROW_STYLES.find(([v]) => v === usableStyle(p.throwStyle))?.[2] ?? ''}. The other styles are greyed out until they play right.</small>`;
     }
   };
 

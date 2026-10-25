@@ -91,5 +91,5 @@ Sources: [3DEP ImageServer](https://elevation.nationalmap.gov/arcgis/rest/servic
 - Ghost discs on a course with ground are kept apart from the ones saved on the flat version.
 - Tali Recreation (vector style) stands on the same ground: its layers are painted into a texture (`vectorCanvas`, 2.5 px/m) and draped like the photo.
 - Hillshade (`src/render/hillshade.ts`): a north-west sun at 45°, one pixel per terrain cell, multiplied over the ground in every view. Slopes facing away darken (to half at most); flat ground and lit slopes are unchanged, so the photo keeps its colors.
-- Slope arrows: a 2 m grid out to 10 m around the viewer's basket (an instanced mesh), lying on the ground and pointing downhill; none under 1%, full length from ~6%. They follow a Moving Basket.
+- Slope arrows around the basket were tried (D96) and taken out again (D101).
 - Tee pads are turned down the hole and tilted onto the slope.

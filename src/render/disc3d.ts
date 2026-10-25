@@ -84,7 +84,12 @@ export function treeMeshes(trees: Tree[], mix?: TreeMix): THREE.Group {
   const trunks = new THREE.InstancedMesh(trunkGeo, dithered(new THREE.MeshLambertMaterial({ color: '#5b4632' })), n);
   const crownGeo = new THREE.IcosahedronGeometry(1, 1);
   crownGeo.setAttribute('dither', blobDither);
-  const crowns = new THREE.InstancedMesh(crownGeo, dithered(new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true })), n);
+  // A crown's instance sits at its middle, not the tree's foot: how high that is, for the sway.
+  const crownBase = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
+  crownGeo.setAttribute('crownBase', crownBase);
+  const crownMat = dithered(new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }));
+  crownMat.defines = { CROWN_BASE: '' };
+  const crowns = new THREE.InstancedMesh(crownGeo, crownMat, n);
   const q = new THREE.Quaternion();
   const c = new THREE.Color();
   const trunkM: THREE.Matrix4[] = [], crownM: THREE.Matrix4[] = [];
@@ -94,6 +99,7 @@ export function treeMeshes(trees: Tree[], mix?: TreeMix): THREE.Group {
     const hz = Math.max(0.3, (t.h - t.b) / 2);
     const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), (t.x * 7.13 + t.y * 3.7) % (Math.PI * 2));
     crownM.push(new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, z + t.b + hz), yaw, new THREE.Vector3(t.r, t.r, hz)));
+    crownBase.array[i] = t.b + hz;
     // Conifers (low crown base) darker, broadleaf lighter; a little per-tree variation.
     const v = ((t.x * 12.9898 + t.y * 78.233) % 1 + 1) % 1;
     const conifer = t.b < t.h * 0.25;
@@ -255,15 +261,20 @@ function dithered<M extends THREE.Material>(m: M): M {
     sh.uniforms.uTreeWind = TREE_WIND;
     sh.uniforms.uTreeTime = TREE_TIME;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float dither;\nvarying float vDither;\nvarying float vCamDist;\nuniform vec2 uTreeWind;\nuniform float uTreeTime;')
+      .replace('#include <common>', '#include <common>\nattribute float dither;\nvarying float vDither;\nvarying float vCamDist;\nuniform vec2 uTreeWind;\nuniform float uTreeTime;\n#ifdef CROWN_BASE\nattribute float crownBase;\n#endif')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDither = dither;')
-      // Sway: lean downwind, more the higher up (∝ height²), gusting, out of step from tree to tree.
+      // Sway: lean downwind, more the higher up the tree (∝ height above its foot, squared: the
+      // instance origin, which on real ground isn't z = 0), gusting, out of step from tree to tree.
       .replace('#include <project_vertex>', `#include <project_vertex>
 #ifdef USE_INSTANCING
 {
   vec4 wp = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
   vec2 base = instanceMatrix[3].xy;
-  float h = max(wp.z, 0.0);
+  float foot = instanceMatrix[3].z;
+#ifdef CROWN_BASE
+  foot -= crownBase;
+#endif
+  float h = max(wp.z - foot, 0.0);
   float gust = 0.55 + 0.45 * sin(uTreeTime * 1.7 + base.x * 0.31 + base.y * 0.23);
   vec2 sway = (uTreeWind * gust + 0.6 * vec2(sin(uTreeTime * 1.1 + base.y), cos(uTreeTime * 0.9 + base.x))) * h * h * 0.0004;
   mvPosition.xyz += (viewMatrix * vec4(sway, 0.0, 0.0)).xyz;

@@ -53,7 +53,7 @@ import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } fro
 import { BASICS, mountTutorial, type StepSetup, type Tutorial, type TutorialThrow } from './tutorial';
 import { CRAZY_TUTORIAL } from './crazyTutorial';
 import { puttingState, renderPutting, stationBasket } from './putting';
-import { ThrowControl, type Release, type ThrowView } from './throwStyles';
+import { ThrowControl, usableStyle, type Release, type ThrowView } from './throwStyles';
 import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, meterAt, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
 
 /** idle: between steps; watching: another player's turn (online). */
@@ -1033,7 +1033,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     phase = 'charging';
     chargeStart = performance.now();
     const m = modsFor(game().current);
-    ctl = new ThrowControl({ style: prefs().throwStyle, meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill(), timing: m.timing, mirror: forehand });
+    ctl = new ThrowControl({ style: usableStyle(prefs().throwStyle), meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill(), timing: m.timing, mirror: forehand });
     ctl.move(pointerAt[0], pointerAt[1], chargeStart);
     ctl.press(chargeStart);
     // Hype Crowd: the gallery's on its feet for your putt.

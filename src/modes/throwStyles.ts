@@ -22,6 +22,11 @@ export const THROW_STYLES: [ThrowStyle, string, string][] = [
   ['xstep', 'X-step', 'Press to start, then press as the cursor crosses each beat: tap, tap, hold, and let go to throw'],
 ];
 
+/** The styles that can be picked for now; the others are greyed out in Settings → Dev until they're right. */
+export const ENABLED_STYLES: ThrowStyle[] = ['classic'];
+/** The style a throw uses: the chosen one if it's enabled, else 1 stage. */
+export const usableStyle = (s: ThrowStyle): ThrowStyle => (ENABLED_STYLES.includes(s) ? s : 'classic');
+
 export interface ThrowSetup {
   style: ThrowStyle;
   /** × meter speed (augments, hexes): the needle, the beat, the reticle and the flick all speed up. */

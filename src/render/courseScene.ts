@@ -65,8 +65,6 @@ export class CourseScene {
   private extraSymbols = new THREE.Group();
   private readonly ponds = new THREE.Group();
   private readonly magnetRing: THREE.LineLoop;
-  /** Real ground: arrows on the green pointing downhill, longer where it's steeper (null: flat course). */
-  private readonly slopeArrows: THREE.InstancedMesh | null = null;
   /** Circle 1 (10 m) on the ground around the basket: no jump putts inside it. */
   private readonly circle1: THREE.LineLoop;
   private readonly placePreview = new THREE.Group();
@@ -170,12 +168,6 @@ export class CourseScene {
     this.circle1.renderOrder = 5;
     this.circle1.frustumCulled = false;
     this.scene.add(this.circle1);
-    if (this.relief) {
-      this.slopeArrows = new THREE.InstancedMesh(arrowGeometry(), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.5, depthWrite: false }), SLOPE_GRID.length);
-      this.slopeArrows.renderOrder = 5;
-      this.slopeArrows.frustumCulled = false;
-      this.scene.add(this.slopeArrows);
-    }
     this.placePreview.renderOrder = 12;
     this.scene.add(this.placePreview, this.spread);
 
@@ -369,45 +361,20 @@ export class CourseScene {
     this.basketMarker.position.set(h.pin[0], h.pin[1], OVERLAY_Z);
     this.beaconAt = h.pin;
     this.beacon.position.set(h.pin[0], h.pin[1], groundAt(h.pin[0], h.pin[1]) + 1.6 + 8);
-    this.placeSlopeArrows(h.pin);
+    this.placeCircle(h.pin);
     this.updateOrtho();
   }
 
-  /**
-   * Lay the slope arrows out around the basket at p: on the ground, pointing downhill, as long as
-   * the slope is steep (none where it's under 1%). A putt breaks the way they point.
-   */
-  private placeSlopeArrows(p: Vec2): void {
-    // Circle 1, draped on the ground.
+  /** Circle 1 around the basket at p, draped on the ground. */
+  private placeCircle(p: Vec2): void {
     const pos = this.circle1.geometry.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < CIRCLE_POINTS; i++) {
       const a = (i / CIRCLE_POINTS) * Math.PI * 2, x = p[0] + Math.cos(a) * CIRCLE1, y = p[1] + Math.sin(a) * CIRCLE1;
       pos.setXYZ(i, x, y, groundAt(x, y) + 0.05);
     }
     pos.needsUpdate = true;
-    const im = this.slopeArrows;
-    if (!im) return;
-    const m = new THREE.Matrix4(), s = new THREE.Vector3(), at = new THREE.Vector3();
-    SLOPE_GRID.forEach(([dx, dy], i) => {
-      const x = p[0] + dx, y = p[1] + dy;
-      const n = this.terrainNormal(x, y);
-      const grade = Math.hypot(n[0], n[1]) / n[2];
-      const k = grade < 0.01 ? 0 : Math.min(1, 0.45 + grade * 9);
-      at.set(x, y, groundAt(x, y) + 0.06);
-      s.set(k, k, 1);
-      m.compose(at, onSlope([x, y], Math.atan2(n[1], n[0]), null, n), s);
-      im.setMatrixAt(i, m);
-    });
-    im.instanceMatrix.needsUpdate = true;
   }
 
-  /** The ground's normal at x, y (from neighbouring heights; up on a flat course). */
-  private terrainNormal(x: number, y: number): Vec3 {
-    const d = 1;
-    const gx = (groundAt(x + d, y) - groundAt(x - d, y)) / (2 * d), gy = (groundAt(x, y + d) - groundAt(x, y - d)) / (2 * d);
-    const l = Math.hypot(gx, gy, 1);
-    return [-gx / l, -gy / l, 1 / l];
-  }
 
   /** Show what one camera should see: first person (fp = true) or a top-down view. */
   private applyVisibility(fp = this.fp): void {
@@ -630,7 +597,7 @@ export class CourseScene {
     this.beacon.position.set(p[0], p[1], z + 1.6 + 8);
     this.magnetRing.position.set(p[0], p[1], z + 0.06);
     this.fxPin.position.set(p[0], p[1], z);
-    this.placeSlopeArrows(p);
+    this.placeCircle(p);
   }
 
   /** Fog of War: see only this far (m); null clears it back to the weather's own fog. */
@@ -1353,23 +1320,9 @@ function vortexModel(): THREE.Group {
 /** Circle 1's radius (m) and how many points draw it. */
 const CIRCLE1 = 10, CIRCLE_POINTS = 96;
 
-/** Where the slope arrows go around a basket: a 2 m grid out to 10 m (circle 1), clear of the pole. */
-const SLOPE_GRID: Vec2[] = (() => {
-  const out: Vec2[] = [];
-  for (let x = -10; x <= 10; x += 2) for (let y = -10; y <= 10; y += 2) if (Math.hypot(x, y) <= 10.5 && Math.hypot(x, y) > 1.5) out.push([x, y]);
-  return out;
-})();
-
-/** A flat arrow 1 m long pointing along +x, a little off the ground. */
-function arrowGeometry(): THREE.BufferGeometry {
-  const s = new THREE.Shape();
-  s.moveTo(-0.45, -0.05); s.lineTo(0.15, -0.05); s.lineTo(0.15, -0.16); s.lineTo(0.45, 0); s.lineTo(0.15, 0.16); s.lineTo(0.15, 0.05); s.lineTo(-0.45, 0.05); s.closePath();
-  return new THREE.ShapeGeometry(s);
-}
-
-/** Turned to `yaw` about the vertical, then tilted onto the ground at p (its normal, or the terrain's). */
-function onSlope(p: Vec2, yaw: number, terrain: Terrain | null, normal?: Vec3): THREE.Quaternion {
-  const n = normal ?? terrain?.normalAt(p[0], p[1]) ?? [0, 0, 1];
+/** Turned to `yaw` about the vertical, then tilted onto the ground at p. */
+function onSlope(p: Vec2, yaw: number, terrain: Terrain | null): THREE.Quaternion {
+  const n = terrain?.normalAt(p[0], p[1]) ?? [0, 0, 1];
   const tilt = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(n[0], n[1], n[2]));
   return tilt.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), yaw));
 }
