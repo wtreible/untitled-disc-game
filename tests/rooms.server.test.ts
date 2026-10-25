@@ -97,6 +97,9 @@ describe.skipIf(!BASE)('room server', () => {
     const seats = [{ name: 'Ann', client: 'client-aaaa' }, { name: 'Bo', client: 'client-bbbb' }];
     a.send({ type: 'lobby', lobby: { ...lobby(seats), layout: { tees: 'short', pins: 'mixed', seed: 42 } } });
     expect((await b.until('lobby')).lobby.layout).toEqual({ tees: 'short', pins: 'mixed', seed: 42 });
+    // A bot's seat (bot-<level>-<n>) is kept like anyone's.
+    a.send({ type: 'lobby', lobby: lobby([...seats, { name: 'Bot 1 (Pro)', client: 'bot-pro-1' }]) });
+    expect((await b.until('lobby')).lobby.seats.map((q: Msg) => q.client)).toContain('bot-pro-1');
     a.send({ type: 'lobby', lobby: { ...lobby(seats), layout: { tees: 'tiny', pins: 'A' } } });
     expect((await b.until('lobby')).lobby.layout).toBeUndefined();
     a.close();

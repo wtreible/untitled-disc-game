@@ -24,6 +24,7 @@ import { guardLeave, reloadPage } from '../ui/leaveGuard';
 import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { applyLayout, isDefault, type Layout } from '../course/layout';
+import { botOfClient, botRelease, planInput, planThrow, type BotLevel, type BotSituation } from '../game/bot';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
@@ -84,6 +85,8 @@ export interface DiscOptions {
   putting?: boolean;
   /** Tees and pins (src/course/layout.ts); none is the course as mapped. */
   layout?: Layout;
+  /** Hot seat: which players are bots, and how good (online, bot seats say so in their client id). */
+  bots?: (BotLevel | null)[];
   /** Best shot: each player's team (src/game/teams.ts). */
   teams?: number[];
 }
@@ -142,7 +145,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** Away players the host is playing for until they reconnect (online). */
   const covering = new Set<number>();
   /** Players this browser controls (all of them in hot seat, and anyone the host covers). */
-  const mine = (p: number) => !net || net.mine(p) || covering.has(p);
+  /** A bot player, and its level (null: a person). The host's client plays the bots. */
+  const botOf = (p: number): BotLevel | null => (range ? null : opts.bots?.[p] ?? botOfClient(net?.seats[p]) ?? null); // not on the range: no basket to play to
+  const mine = (p: number) => !net || net.mine(p) || covering.has(p) || (isHost && !!botOf(p));
   /** Online, the host can change mid-game (the room hands it on when the host leaves). */
   let isHost = !net || net.isHost;
   /** Our events out to the room, theirs in, in order (src/modes/discSync.ts). */
@@ -547,7 +552,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   // If whoever the round is waiting on drops out, the host can play for them (throws, picks,
   // placements). They get their seat back as soon as they reconnect.
   const present = new Set(net?.present ?? []);
-  const here = (p: number) => !net || present.has(net.seats[p] ?? '');
+  const here = (p: number) => !net || !!botOf(p) || present.has(net.seats[p] ?? '');
   /** How long someone must be gone before the host is offered their turn (a refresh is quicker). */
   const AWAY_MS = 4000;
   let awayFrom: { p: number; at: number } | null = null;
@@ -704,6 +709,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     refreshViewer(step.player);
     scene.frame([hole().tee, hole().pin, ...hole().routing], 90, 12);
     showPlacementPreview(step.player);
+    // A bot doesn't place hexes or clear trees: it passes.
+    if (mine(step.player) && botOf(step.player)) { dispatch({ t: 'place-skip', player: step.player }); return; }
     if (!mine(step.player)) {
       $('place-bar').hidden = true;
       showWait(`${opts.names[step.player]} is placing a ${step.kind === 'clear-cut' ? 'Clear-Cut' : 'hex'}`);
@@ -825,6 +832,37 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (phase === 'aim') recomputeTick();
     else showWait(`${p.name} is throwing…`);
     updateHud();
+    if (phase === 'aim' && botOf(game().current)) void botTurn();
+  }
+
+  // ---------- bots (src/game/bot.ts) ----------
+  /** Bumped every bot turn: a turn that moved on (undo, a reload) stops its bot. */
+  let botToken = 0;
+  const pauseFor = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  /** A bot's turn: think, show the disc and the aim it chose, then throw it with its errors. */
+  async function botTurn(): Promise<void> {
+    const me = game().current, level = botOf(me)!, token = ++botToken;
+    const t0 = performance.now();
+    const alive = () => token === botToken && phase === 'aim' && game().current === me;
+    showWait(`${opts.names[me]} is lining up…`);
+    const sit: BotSituation = { start: player().ball, pin: myPin(), routing: hole().routing, discs: bagOf(me), world: world(), mods: modsFor(me), fromTee: player().strokes === 0 };
+    const plan = await planThrow(sit, level, Math.random);
+    const quick = quickSolo() || prefs().reduceMotion;
+    await pauseFor(Math.max(0, (quick ? 150 : 700) - (performance.now() - t0)));
+    if (!alive()) return;
+    // Show what it chose: the disc, the release, the aim.
+    disc = plan.putt ? PUTTER_DISC : plan.disc;
+    hyzer = plan.hyzer; forehand = false; shot = 'standard'; nose = 0;
+    setAimTarget(plan.target);
+    yaw = plan.yaw;
+    if (isFP()) scene.setEye(player().ball, yaw, pitch);
+    updateHud();
+    await pauseFor(quick ? 100 : 650);
+    if (!alive()) return;
+    hideWait();
+    const r = botRelease(plan, level, Math.random);
+    phase = 'charging';
+    release(r, planInput(plan, sit));
   }
 
   /** `glide`: ease from the current view instead of cutting (same view mode only). */
@@ -1028,7 +1066,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else startCharge();
   }
   function startCharge(): void {
-    if (phase !== 'aim' || !$('draft').hidden) return; // not behind a draft (Crazy mode's tutorial deals one on the range)
+    if (phase !== 'aim' || !$('draft').hidden || botOf(game().current)) return; // a bot throws for itself // not behind a draft (Crazy mode's tutorial deals one on the range)
     // Not before the camera is at the disc (it glides there from the last throw).
     if (scene.gliding) { chargeQueued = true; return; }
     chargeQueued = false;
@@ -1104,7 +1142,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, myPin()) + r.penalty * 30);
 
   /** Simulate the throw here, then show it; its event is applied (and sent) when it lands. */
-  function release(r: Release): void {
+  /** `as`: the whole throw, when a bot planned it (its putt is a putt whatever the view). */
+  function release(r: Release, as?: ThrowInput): void {
     if (phase !== 'charging') return;
     drawMeter(null);
     if (r.note) chip(r.note, /Clean|Rhythm (8|9|1)/.test(r.note) ? 'birdie' : 'info', undefined, 1800);
@@ -1112,7 +1151,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const me = game().current;
     const perfect = perfectArmed;
     perfectArmed = false;
-    const input = { ...throwInput(Math.max(0.01, r.power)), perfect, ...(r.execution ? { execution: r.execution } : {}) };
+    const input = { ...(as ?? throwInput(Math.max(0.01, r.power))), power: Math.max(0.01, r.power), perfect, ...(r.execution ? { execution: r.execution } : {}) };
     if (tutorial) tutorialShot = { power: input.power, hyzer, forehand, shot: input.shot ?? 'standard', putt: input.style === 'putt', perfect };
     let result = simulateThrow(input, world());
     let other: ThrowResult | null = null;
@@ -1232,7 +1271,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (remote && e.clock !== undefined) gameClock = e.clock;
     flight = { e, result: e.result, t: 0, speed, clock0: gameClock, remote, sentEarly: false, cues: cuesFor(e), cue: 0 };
     // Our tee shot: this browser's best on the hole flies alongside (Settings → Ghost disc).
-    if (!remote && ghostsOn() && game().players[e.player].strokes === 0) {
+    if (!remote && ghostsOn() && !botOf(e.player) && game().players[e.player].strokes === 0) {
       flight.tee = true;
       flight.ghost = loadGhost(ghostKey(ghostCourse, hole().ref));
     }
@@ -1308,7 +1347,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const vol = st.resolved;
     if (st.teams && vol && vol.team === st.teamOf(idx) && st.teams[vol.team].length > 1 && !done.holed) chip(`${teamName(idx)} play ${opts.names[vol.best]}’s throw`, 'info');
     // A tee shot against its ghost: how the ghost did, and whether this one takes its place.
-    if (tee) {
+    if (tee && !botOf(idx)) {
       const best = !r.penalty && offerGhost(ghostKey(ghostCourse, hole().ref), r.samples, r.rest, pinOf(idx), r.holed); // OB or water never counts
       if (ghost) chip(best ? 'New best tee shot' : `Ghost: ${ghost.holed ? 'in the basket' : `${fmtLen(ghost.off)} out`}`, best ? 'birdie' : 'info');
     }
@@ -1350,7 +1389,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     });
     if (line) say(line);
     // Shot analysis (Settings → Gameplay): your own throws, not putts.
-    if (prefs().shotInfo && mine(idx) && before > PUTT_RANGE && r.penalty === 0) {
+    if (prefs().shotInfo && mine(idx) && !botOf(idx) && before > PUTT_RANGE && r.penalty === 0) {
       const sh = shotShape(r.samples, r.rest, (x, y) => terrain.heightAt(x, y));
       chip(`Carry ${fmtLen(sh.carry)} · peak ${fmtLen(sh.peak)}`, 'info', `${shapeText(sh, (m) => fmtLen(m))} · ${fmtSpeed(sh.speed)}`, 3400);
     }
@@ -1358,7 +1397,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else if (r.events.some((x) => x === 'spit' || x === 'cut' || x === 'band' || x === 'tray' || x === 'pole')) gallery.react('no', pinOf(idx));
     // Mulligan window: a few seconds to take the throw back (not after holing out). Everyone
     // waits the same time, so nobody moves on while the thrower can still take it back.
-    const canMull = rogue && !done.holed && mulligansLeft[idx] > 0;
+    const canMull = rogue && !done.holed && mulligansLeft[idx] > 0 && !botOf(idx);
     if (canMull && mine(idx)) chip('Press M for a mulligan', 'info', `${mulligansLeft[idx]} left`, 2600);
     mulliganOpen = canMull && mine(idx);
     phase = 'between';
@@ -1441,7 +1480,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       if (rogue || range || st.teams) return;
       const recs = holeRecords(st.log, course.holes, opts.names.length, opts.first, round.scores);
       opts.names.forEach((name, p) => {
-        if ((net && !net.mine(p)) || recs[p].length === 0) return; // not players covered for while away
+        if ((net && !net.mine(p)) || botOf(p) || recs[p].length === 0) return; // not bots, nor players covered for while away
         const r = recordRound(name, course.name + layoutTag, recs[p]);
         recorded!.push({ name, color: game().players[p].color, before: r.before, after: r.after, round: r.round.rating });
       });
@@ -1515,6 +1554,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('results').hidden = true;
     const need = st.needBag;
     const pi = need.find((p) => mine(p));
+    // A bot carries the everyday discs.
+    if (pi !== undefined && botOf(pi)) { dispatch({ t: 'bag', player: pi, discs: DISCS.filter((d) => d.suggest).map((d) => d.id).slice(0, st.bagSize(pi)) }); return; }
     if (pi === undefined) {
       $('bag').hidden = true;
       showWait(`Waiting for ${need.map((p) => opts.names[p]).join(', ')} to pick ${need.length === 1 ? 'a bag' : 'their bags'}`);
@@ -1548,6 +1589,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       return;
     }
     if (!st.offer || st.offer.player !== pi) deal(pi);
+    // A bot takes a card at random.
+    if (botOf(pi) && st.offer) { dispatch({ t: 'pick', player: pi, id: st.offer.cards[Math.floor(Math.random() * st.offer.cards.length)] }); return; }
     renderDraft(pi);
   }
 

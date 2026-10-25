@@ -10,6 +10,7 @@ import { mountNetStatus } from './ui/netStatus';
 import { IMAGERY, data } from './assets';
 import { fmtLen } from './units';
 import { DEFAULT_LAYOUT, isDefault, type Layout } from './course/layout';
+import { BOT_LEVELS, botClient, botOfClient, type BotLevel } from './game/bot';
 import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
@@ -138,7 +139,11 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
   },
 ];
 
-const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teamsOn?: boolean; teamPicks?: number[]; layout?: Layout }>('untitled-disc-game:menu', {});
+const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teamsOn?: boolean; teamPicks?: number[]; layout?: Layout; bots?: (BotLevel | null)[] }>('untitled-disc-game:menu', {});
+/** Hot seat: which rows are bots, and how good (null: a person). */
+const localBots: (BotLevel | null)[] = [...(last.bots ?? [])];
+/** Online (host): the bots seated after the people. */
+const roomBots: BotLevel[] = [];
 /** Tees and pins (real courses; the Round card's Tees and Pins rows). */
 let layout: Layout = last.layout ?? { ...DEFAULT_LAYOUT };
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
@@ -308,8 +313,20 @@ function renderPlayers(): void {
   for (let i = 0; i < players; i++) {
     const row = document.createElement('div');
     row.className = 'pname';
-    row.innerHTML = `<button class="swatch" style="background:${cols[i]}" title="Pick a color"></button><input value="" maxlength="16" />`;
+    const lv = localBots[i] ?? null;
+    row.innerHTML = `<button class="swatch" style="background:${cols[i]}" title="Pick a color"></button><input value="" maxlength="16" /><button class="bot-btn chip-btn ${lv ? 'on' : ''}" title="A person, or a computer player (Easy, Medium, Pro)">${lv ? `Bot · ${BOT_LEVELS.find(([v]) => v === lv)![1]}` : 'Person'}</button>`;
     row.querySelector('input')!.value = current[i] ?? savedNames[i] ?? `Player ${i + 1}`;
+    // Person → Easy → Medium → Pro → person. A bot row gets a bot's name until it's renamed.
+    row.querySelector<HTMLButtonElement>('.bot-btn')!.addEventListener('click', () => {
+      const order: (BotLevel | null)[] = [null, ...BOT_LEVELS.map(([v]) => v)];
+      const next = order[(order.indexOf(localBots[i] ?? null) + 1) % order.length];
+      const input = row.querySelector('input')!;
+      const auto = /^(Player \d+|Bot \(.*\))$/.test(input.value);
+      localBots[i] = next;
+      if (auto) input.value = next ? `Bot (${BOT_LEVELS.find(([v]) => v === next)![1]})` : `Player ${i + 1}`;
+      save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), bots: localBots });
+      renderPlayers();
+    });
     const sw = row.querySelector<HTMLButtonElement>('.swatch')!;
     sw.addEventListener('click', () => (colorPop.hidden ? openColors(i, sw) : (colorPop.hidden = true)));
     box.appendChild(row);
@@ -374,7 +391,7 @@ function renderTeams(n: number): void {
     r.querySelector<HTMLButtonElement>('.team-chip')!.addEventListener('click', () => {
       for (let k = 0; k < n; k++) localTeams[k] = plan[k];
       localTeams[i] = nextTeam(plan[i], n);
-      save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamPicks: localTeams, layout });
+      save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamPicks: localTeams, layout, bots: localBots });
       renderTeams(n);
     });
   });
@@ -532,9 +549,11 @@ function pushLobby(): void {
   };
   // A seat whose player dropped is kept for SEAT_GRACE_MS, so a refresh or a wobbly connection
   // doesn't lose it.
-  const kept = (lobby?.seats ?? []).filter((q) => !members.some((m) => m.client === q.client) && Date.now() - (awaySince.get(q.client) ?? 0) < SEAT_GRACE_MS);
+  const kept = (lobby?.seats ?? []).filter((q) => !botOfClient(q.client) && !members.some((m) => m.client === q.client) && Date.now() - (awaySince.get(q.client) ?? 0) < SEAT_GRACE_MS);
   const order = [...members, ...kept].sort((a, b) => seatOf(a) - seatOf(b)); // stable: newcomers keep arrival order
-  const seated = order.slice(0, MAX_PLAYERS);
+  // Bots sit after the people (as many as there's room for).
+  const bots = roomBots.map((lv, i) => ({ client: botClient(lv, i), name: `Bot ${i + 1} (${BOT_LEVELS.find(([v]) => v === lv)![1]})`, color: undefined as string | undefined }));
+  const seated = [...order, ...bots].slice(0, MAX_PLAYERS);
   const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
   const colors = playerColors(seated.map((m) => m.color));
   const training = trainingCourse();
@@ -596,8 +615,8 @@ function renderRoom(): void {
   $('room-members').innerHTML = [
     ...seats.map((q, i) => `<div class="m"><i style="background:${('color' in q && q.color) || PLAYER_COLORS[i]}"></i><span>${escapeHtml(q.name)}</span><small>${[
       q.client === me ? 'you' : '', q.client === host ? 'host' : '',
-      members.some((m) => m.client === q.client) ? '' : 'away, seat kept 1 min',
-    ].filter(Boolean).join(' · ')}</small>${q.client !== host && ready(q.client) ? '<b class="ready">✓ Ready</b>' : ''}${teamCell(q.client, i)}</div>`),
+      botOfClient(q.client) ? `bot · ${BOT_LEVELS.find(([v]) => v === botOfClient(q.client))![1]}` : members.some((m) => m.client === q.client) ? '' : 'away, seat kept 1 min',
+    ].filter(Boolean).join(' · ')}</small>${botOfClient(q.client) && amHost() ? `<button class="chip-btn bot-x" data-client="${q.client}" title="Take the bot's seat away">✕</button>` : ''}${q.client !== host && ready(q.client) ? '<b class="ready">✓ Ready</b>' : ''}${teamCell(q.client, i)}</div>`),
     ...watching.map((m) => `<div class="m"><i style="background:#555"></i><span>${escapeHtml(m.name)}</span><small>watching</small></div>`),
   ].join('');
   // Ready (rooms from protocol 2): everyone but the host says when they're set; the host sees how
@@ -612,6 +631,13 @@ function renderRoom(): void {
   const myColor = lobby?.seats.find((q) => q.client === me)?.color;
   const sw = $('player-names').querySelector<HTMLElement>('.swatch');
   if (sw && myColor) sw.style.background = myColor;
+  $('add-bot-box').hidden = !amHost() || seats.length >= MAX_PLAYERS;
+  if (amHost()) $('room-members').querySelectorAll<HTMLButtonElement>('.bot-x').forEach((b) => b.addEventListener('click', () => {
+    const k = parseInt(b.dataset.client!.split('-')[2], 10) - 1;
+    roomBots.splice(k, 1);
+    pushLobby();
+    renderRoom();
+  }));
   if (amHost()) $('room-members').querySelectorAll<HTMLButtonElement>('.team-chip[data-client]').forEach((b) => b.addEventListener('click', () => {
     const c = b.dataset.client!;
     roomTeams.set(c, nextTeam(roomTeams.get(c) ?? 0, seats.length));
@@ -724,6 +750,12 @@ $('player-names').addEventListener('change', (e) => {
 });
 $('player-names').addEventListener('keydown', (e) => { if (e.key === 'Enter' && room) (e.target as HTMLInputElement).blur(); });
 $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join-room').click(); });
+$('add-bot').addEventListener('click', () => {
+  if (!room || !amHost()) return;
+  roomBots.push($<HTMLSelectElement>('add-bot-level').value as BotLevel);
+  pushLobby();
+  renderRoom();
+});
 $('copy-link').addEventListener('click', async () => {
   if (!room) return;
   try { await navigator.clipboard.writeText(roomLink(room.code)); $('copy-link').textContent = 'Copied!'; } catch { $('copy-link').textContent = room.code; }
@@ -788,7 +820,7 @@ $('start').addEventListener('click', async () => {
   if (course === 'tutorial' || course === 'crazy-tutorial') {
     // Alone, on this browser (in a room too): the first player's name.
     const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout, bots: localBots });
     $('setup').hidden = true;
     showGameButtons();
     $('pause-sub').textContent = course === 'tutorial' ? 'Tutorial' : 'Crazy Mode Tutorial';
@@ -798,7 +830,7 @@ $('start').addEventListener('click', async () => {
   }
   if (room) {
     if (!amHost()) return;
-    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout });
+    save('untitled-disc-game:menu', { course, holes: $<HTMLSelectElement>('holes').value, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout, bots: localBots });
     pushLobby();
     room.start();
     return;
@@ -807,7 +839,7 @@ $('start').addEventListener('click', async () => {
   const names = uniqueNames(typed);
   const holesV = $<HTMLSelectElement>('holes').value;
   save('untitled-disc-game:names', typed);
-  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout });
+  save('untitled-disc-game:menu', { course, holes: holesV, players, crazy: crazy.checked, bag: bagMode.checked, teamsOn, teamPicks: localTeams, layout, bots: localBots });
   $('setup').hidden = true;
   showGameButtons();
   const n = COURSES.find((c) => c.id === course)!.holes;
@@ -820,5 +852,5 @@ $('start').addEventListener('click', async () => {
   }
   const training = course === 'range'; // no Crazy mode or bags on the range
   const teams = teamsToPlay(localPlan(names.length));
-  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training, teams, layout: roundLayout() });
+  await startDisc({ names, colors: rowColors().slice(0, names.length), course, first, count: Math.min(count, n - first), rogue: crazy.checked && !training, rules, bag: bagMode.checked && !training, teams, layout: roundLayout(), bots: localBots.slice(0, names.length).map((b) => b ?? null) });
 });
