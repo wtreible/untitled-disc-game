@@ -109,6 +109,7 @@ export const EVENT_TOASTS: Partial<Record<ThrowEvent, string>> = {
   tray: 'Off the cage', pole: 'Pole hit', water: 'Splash! +1', oob: 'OB! +1',
   phased: 'Phased through a tree', saved: 'Saved by Sticky Plastic', magnet: 'Magnet pull',
   skip: 'Skipped across the water!', burned: 'Fireball!', boomerang: 'Boomerang!', buddy: 'Nudged in by your basket buddy!', insured: 'Insured: no penalty',
+  mando: 'Missed the mando! +1', island: 'Off the island! +1',
 };
 
 /** Position at fractional sample index t (60 Hz samples), linearly interpolated. */

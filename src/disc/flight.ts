@@ -9,8 +9,8 @@
 // Collisions: tree trunks (cylinders), crowns (ellipsoids, probabilistic branch hits), and the
 // basket (pole, tray, chains, top band). The whole throw is simulated up front; renderers play
 // back `samples` at 60 Hz.
-import type { Tree } from '../course/disc-types';
-import { distToPolyline, type Vec2 } from '../course/geo';
+import type { Mando, Tree } from '../course/disc-types';
+import { distToPolyline, pointInRings, type Vec2 } from '../course/geo';
 import type { SurfaceClass } from '../course/types';
 import type { Rng } from '../game/physics';
 import type { SurfaceGrid } from '../game/surfaces';
@@ -168,6 +168,8 @@ export interface DiscWorld {
   bridges?: { a: Vec2; b: Vec2; half: number }[];
   /** The hole line (Gardener trims branches near it). */
   line?: Vec2[];
+  /** The hole's mandos, drop zone and island green (src/course/disc-types.ts DiscHole). */
+  rules?: { mandos?: Mando[]; drop?: Vec2; island?: Vec2[] };
 }
 
 /** Where the basket is at absolute time `t` (it drifts with Moving Basket). */
@@ -254,13 +256,13 @@ export function shotLaunch(shot: Shot | undefined, disc: Disc): number {
 }
 
 export type ThrowEvent = 'trunk' | 'branch' | 'chains' | 'spit' | 'cut' | 'band' | 'tray' | 'pole' | 'water' | 'oob' | 'holed' | 'phased' | 'saved' | 'gimme' | 'magnet' | 'prop'
-  | 'skip' | 'burned' | 'boomerang' | 'buddy' | 'insured';
+  | 'skip' | 'burned' | 'boomerang' | 'buddy' | 'insured' | 'mando' | 'island';
 
 /**
  * Something to show at a moment of the flight (an augment at work): at sample k, what happened.
  * Played as the disc gets there, live and in the replay (src/modes/disc.ts).
  */
-export type Mark = 'phase' | 'burn' | 'skip' | 'split' | 'buddy' | 'boomerang' | 'saved' | 'insured' | 'kick' | 'chop' | 'magnet' | 'gimme';
+export type Mark = 'phase' | 'burn' | 'skip' | 'split' | 'buddy' | 'boomerang' | 'saved' | 'insured' | 'kick' | 'chop' | 'magnet' | 'gimme' | 'mando';
 
 export interface ThrowResult {
   samples: Vec3[];
@@ -582,18 +584,20 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
   let rest: Vec2 = [p[0], p[1]];
   const surf = surfaceAt(world, rest[0], rest[1]);
   if (surf === 'water' || surf === 'oob') {
-    // Play from where it last crossed into OB (casual, D19): last in-bounds point on the path.
-    let drop: Vec2 = input.start;
+    // Play from where it last crossed into OB (casual, D19): last in-bounds point on the path. A
+    // hole with a drop zone plays from there instead.
+    let lastIn: Vec2 = input.start;
     for (let i = samples.length - 1; i >= 0; i--) {
       const c = surfaceAt(world, samples[i][0], samples[i][1]);
-      if (c !== 'water' && c !== 'oob') { drop = [samples[i][0], samples[i][1]]; break; }
+      if (c !== 'water' && c !== 'oob') { lastIn = [samples[i][0], samples[i][1]]; break; }
     }
     // Sticky Plastic: a near miss (within 2 m of the edge) is saved, no penalty.
-    if (m.sticky && Math.hypot(drop[0] - rest[0], drop[1] - rest[1]) <= 2) {
+    if (m.sticky && Math.hypot(lastIn[0] - rest[0], lastIn[1] - rest[1]) <= 2) {
       events.push('saved');
       mark('saved', samples.length - 1);
-      return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: 0, events, treesHit, propHits, ...extra() };
+      return { samples, banks, rest: lastIn, restSurface: surfaceAt(world, lastIn[0], lastIn[1]), holed: false, penalty: 0, events, treesHit, propHits, ...extra() };
     }
+    const drop = world.rules?.drop ?? lastIn;
     events.push(surf);
     if (m.obInsurance) { events.push('insured'); mark('insured', samples.length - 1); }
     return { samples, banks, rest: drop, restSurface: surfaceAt(world, drop[0], drop[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit, propHits, ...extra() };
@@ -635,7 +639,47 @@ export function simulateThrow(input: ThrowInput, world: DiscWorld, rng: Rng = Ma
       return holedResult([rest[0], rest[1], Math.max(p[2], 0.3)], 'buddy');
     }
   }
+  // The hole's own rules: a missed mando, or finishing off the island green, is +1 from the drop
+  // zone (or where it was thrown from, if there's none).
+  if (!opt.ghost && world.rules) {
+    const back = world.rules.drop ?? input.start;
+    const missed = missedMando(samples, input.start, world.rules.mandos ?? []);
+    if (missed >= 0) {
+      events.push('mando');
+      mark('mando', missed);
+      return { samples, banks, rest: back, restSurface: surfaceAt(world, back[0], back[1]), holed: false, penalty: 1, events, treesHit, propHits, ...extra() };
+    }
+    const isl = world.rules.island;
+    if (isl && !pointInRings(rest, [isl])) {
+      events.push('island');
+      if (m.obInsurance) { events.push('insured'); mark('insured', samples.length - 1); }
+      return { samples, banks, rest: back, restSurface: surfaceAt(world, back[0], back[1]), holed: false, penalty: m.obInsurance ? 0 : 1, events, treesHit, propHits, ...extra() };
+    }
+  }
   return { samples, banks, rest, restSurface: surfaceAt(world, rest[0], rest[1]), holed: false, penalty: 0, events, treesHit, propHits, ...extra() };
+}
+
+/** How far out the wrong side of a mando reaches (m): crossing it there is a miss. */
+const MANDO_REACH = 80;
+
+/**
+ * The sample where the flight went past a mando on the wrong side (−1: it didn't). Mandos already
+ * behind where it was thrown from don't count.
+ */
+export function missedMando(samples: Vec3[], start: Vec2, mandos: Mando[]): number {
+  for (const md of mandos) {
+    if ((start[0] - md.at[0]) * md.dir[0] + (start[1] - md.at[1]) * md.dir[1] > 0) continue;
+    const far: Vec2 = [md.at[0] + md.away[0] * MANDO_REACH, md.at[1] + md.away[1] * MANDO_REACH];
+    for (let k = 1; k < samples.length; k++) {
+      if (segmentsCross(samples[k - 1], samples[k], md.at, far)) return k;
+    }
+  }
+  return -1;
+}
+
+function segmentsCross(a: ArrayLike<number>, b: ArrayLike<number>, c: Vec2, d: Vec2): boolean {
+  const o = (p: ArrayLike<number>, q: ArrayLike<number>, r: ArrayLike<number>) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
 }
 
 interface TreeCtx {

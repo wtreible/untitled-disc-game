@@ -1,6 +1,6 @@
 // OSM + HSY canopy GeoJSON → DiscCourseFile. Pure (no I/O). See docs/08-level-editor-and-disc-golf.md.
 import type { Feature, FeatureCollection, Geometry, Position } from 'geojson';
-import { LocalFrame, dist, distToPolyline, pointInRings, polylineLength, type Vec2 } from './geo';
+import { LocalFrame, dist, distToPolyline, distToSegment, pointInRings, polylineLength, type Vec2 } from './geo';
 import type { DiscCourseFile, DiscHole, Tree } from './disc-types';
 import { parFromLength } from './layout';
 import { encodeTrees } from './disc-types';
@@ -333,6 +333,43 @@ export function buildDiscCourse(osm: FeatureCollection, canopyLayers: CanopyLaye
   for (const h of holes) {
     h.alt_tees?.sort((a, b) => dist(a, h.tee) - dist(b, h.tee));
     h.alt_pins?.sort((a, b) => dist(a, h.pin) - dist(b, h.pin));
+  }
+
+  // Mandos, drop zones and island greens. A ref names the hole ("A15" and "B15" are hole 15's for
+  // two layouts) if it's near that hole (some refs number the zones, not the holes: the Prater's
+  // drop zone "1" is nowhere near hole 1); otherwise the nearest hole line takes it. OSM has no side for a mando: the hole's
+  // line marks the side to pass on (one right on the line can't say, so it's left out).
+  const tagged = (kind: string) => feats.filter((f) => f.properties.disc_golf === kind).map((f) => {
+    const g = f.geometry;
+    const pts = g.type === 'Point' ? [P(g.coordinates)] : g.type === 'LineString' ? g.coordinates.map(P) : (polygonsOf(g)[0]?.[0] ?? []).map(P);
+    const c: Vec2 = [pts.reduce((s, q) => s + q[0], 0) / pts.length, pts.reduce((s, q) => s + q[1], 0) / pts.length];
+    return { c, pts, ref: f.properties.ref?.replace(/^[A-Za-z]+/, '') };
+  });
+  const holeFor = (x: { c: Vec2; ref?: string }, max: number) => holes.find((h) => x.ref && h.ref === x.ref && distToPolyline(x.c, h.routing) < max)
+    ?? holes.reduce<{ h: DiscHole | null; d: number }>((b, h) => (distToPolyline(x.c, h.routing) < b.d ? { h, d: distToPolyline(x.c, h.routing) } : b), { h: null, d: max }).h;
+  for (const m of tagged('mando')) {
+    const h = holeFor(m, 20);
+    if (!h) continue;
+    // The closest point on the hole's line, and the way the line runs there.
+    let best = { d: Infinity, c: m.c, dir: [0, 1] as Vec2 };
+    for (let i = 1; i < h.routing.length; i++) {
+      const a = h.routing[i - 1], b = h.routing[i], L = dist(a, b) || 1;
+      const d = distToSegment(m.c, a, b);
+      if (d < best.d) {
+        const t = Math.max(0, Math.min(1, ((m.c[0] - a[0]) * (b[0] - a[0]) + (m.c[1] - a[1]) * (b[1] - a[1])) / (L * L)));
+        best = { d, c: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], dir: [(b[0] - a[0]) / L, (b[1] - a[1]) / L] };
+      }
+    }
+    if (best.d < 0.75) { h.warnings.push('mando on the hole line: no side to pass on; left out'); continue; }
+    (h.mandos ??= []).push({ at: m.c, away: [(m.c[0] - best.c[0]) / best.d, (m.c[1] - best.c[1]) / best.d], dir: best.dir });
+  }
+  for (const z of tagged('drop_zone')) {
+    const h = holeFor(z, 50);
+    if (h && !h.drop) h.drop = z.c;
+  }
+  for (const i of tagged('island')) {
+    const h = holes.find((x) => i.pts.length >= 3 && pointInRings(x.pin, [i.pts]));
+    if (h) h.island = i.pts;
   }
 
   // Bounds: all hole lines + corridor + margin.

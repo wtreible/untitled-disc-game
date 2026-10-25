@@ -12,6 +12,7 @@ import type { SurfaceGrid } from '../game/surfaces';
 import { HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { classCanvas, waterCanvas } from './classTexture';
 import { hillshadeBounds, hillshadeCanvas } from './hillshade';
+import { holeRuleMarkers } from './holeRules';
 import { groundAt, setGround } from './ground';
 import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreeSolidity, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
 import { BASKET } from '../disc/flight';
@@ -208,6 +209,8 @@ export class CourseScene {
       this.world3d.add(pad);
     }
     this.scene.add(this.world3d);
+    // Mandos, drop zones and island greens: seen from first person and on the map.
+    this.scene.add(holeRuleMarkers(course.holes));
 
     // Top-down markers, in pixel units.
     this.teeMarker = new THREE.Group();

@@ -22,15 +22,17 @@
         <button id="release" class="chip-btn" data-sound="off" title="Release angle (Q / E)"></button>
         <button id="nose" class="chip-btn" data-sound="off" title="Nose angle (U / J): up floats and stalls short, down flies far and flat but dives early"></button>
         <button id="shot" class="chip-btn" data-sound="off" title="Shot: backhand / forehand, tomahawk, thumber, roller (G)"></button>
-        <div id="stats"></div>
+        <span class="view-btns">
+          <button id="look-ahead" class="chip-btn" title="Look ahead from the landing zone (L)">Look ahead</button>
+          <button id="fp-toggle" class="chip-btn" title="First person / top-down (C)" hidden></button>
+          <button id="view-toggle" class="chip-btn" title="Toggle view (V)"></button>
+        </span>
       </div>
+      <div class="hud-row stats-row"><div id="stats"></div></div>
       <div class="hud-row" id="rogue-bar" hidden></div>
       <div class="hud-row">
         <div class="meter-wrap"><div id="meter-hint"></div><div id="meter"><div id="meter-fill"></div><div id="meter-wobble" title="Muscling it: past here your aim wobbles more"></div><div id="meter-target"></div><div id="meter-window" hidden><span>SNAP</span></div><div id="meter-needle" hidden></div><div id="meter-track" hidden></div></div></div>
         <button id="swing" class="primary">Hold to swing <kbd>Space</kbd></button>
-        <button id="look-ahead" class="chip-btn" title="Look ahead from the landing zone (L)">Look ahead</button>
-        <button id="fp-toggle" class="chip-btn" title="First person / top-down (C)" hidden></button>
-        <button id="view-toggle" class="chip-btn" title="Toggle view (V)"></button>
       </div>
       <div class="help" id="help">Click to aim · ←/→ fine aim · [ / ] disc · right-drag pan · scroll zoom · F re-frame · V view</div>
       <div class="disc-picker" id="disc-picker" title="Pick a disc ( [ / ] )"></div>

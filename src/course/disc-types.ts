@@ -20,7 +20,18 @@ export interface DiscHole {
   /** Other tees and baskets mapped at this hole (other layouts), nearest first (src/course/layout.ts). */
   alt_tees?: Vec2[];
   alt_pins?: Vec2[];
+  /**
+   * Mandatories (disc_golf=mando): pass each with the hole's line on your side. `away` points from
+   * the mando to the wrong side, `dir` the way the hole plays there. Missed: +1, from the drop zone.
+   */
+  mandos?: Mando[];
+  /** Drop zone (disc_golf=drop_zone): where a missed mando, OB or water is played from. */
+  drop?: Vec2;
+  /** Island green (disc_golf=island): the basket's on it, and finishing off it counts as OB. */
+  island?: Vec2[];
 }
+
+export interface Mando { at: Vec2; away: Vec2; dir: Vec2 }
 
 /** One tree, in local meters. Collision model: trunk cylinder + crown ellipsoid (docs/08). */
 export interface Tree {

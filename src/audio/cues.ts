@@ -74,6 +74,6 @@ export function throwCues(r: Throw, pin: Vec2, surfaceAt: (x: number, y: number)
     quietUntil = k + DEBOUNCE;
   }
   // OB: the buzzer goes when it comes to rest (water has splashed already).
-  if (r.events.includes('oob')) cues.push({ k: s.length - 1, sound: 'ob', at: s[s.length - 1] });
+  if (r.events.some((e) => e === 'oob' || e === 'mando' || e === 'island')) cues.push({ k: s.length - 1, sound: 'ob', at: s[s.length - 1] });
   return cues;
 }

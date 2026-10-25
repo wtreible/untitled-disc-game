@@ -191,6 +191,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       ...(m.drift > 0 ? { basketDrift: driftFor(i) } : {}),
       ...(m.bridge ? { bridges: bridgesFor() } : {}),
       ...(m.gardener > 0 ? { line: hole().routing } : {}),
+      ...(hole().mandos || hole().drop || hole().island ? { rules: { mandos: hole().mandos, drop: hole().drop, island: hole().island } } : {}),
     };
     worldCache.set(i, { k: key, w });
     return w;
@@ -816,6 +817,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
         chip('Earthquake! Your aim is shaking', 'hot');
       }
     }
+    // A mando still ahead on this hole: say so (the arrows show the side).
+    const md = hole().mandos?.find((q) => (p.ball[0] - q.at[0]) * q.dir[0] + (p.ball[1] - q.at[1]) * q.dir[1] < 0);
+    if (phase === 'aim' && md) chip('Mando ahead', 'info', `Pass it on the ${md.away[0] * md.dir[1] - md.away[1] * md.dir[0] > 0 ? 'left' : 'right'}: the red arrow shows the way`, 3000);
     // A trunk right in front: no backhand from here, so start on a forehand.
     if (phase === 'aim' && backhandBlocked()) { forehand = true; chip('A tree’s right in front: forehand', 'info', 'No room for a backhand reach-back', 2600); }
     if (phase === 'aim') recomputeTick();
@@ -1193,6 +1197,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       case 'chop': effects.chips(at); break;
       case 'magnet': effects.glow(at, ['#ff5c5c', '#9fdcff'], 18, 0.09); break;
       case 'gimme': effects.glow(at, ['#ffd23f'], 20); break;
+      case 'mando': effects.glow(at, ['#ff4d4d', '#ffffff'], 18, 0.09); break;
     }
   }
 

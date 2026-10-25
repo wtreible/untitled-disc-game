@@ -8,7 +8,7 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 |---|---|---|
 | ★ **The lie decides the shot** (**done**, D98) | Deep rough or under trees: standstill only (no X-step, less power, wider wobble). A trunk right in front forces a forehand, roller or overhand. | Lies (`p.lie`), shots, throw styles (D93) |
 | **Circle 1 / circle 2 putting** (**done**, D98) | Inside 10 m a normal putt. 10–20 m: an optional jump putt, more range but worse accuracy. | Putt style, `puttRange` |
-| **Mandos and drop zones** | Mandatories (pass a tree or pole on the marked side) and drop zones for water/OB islands. Some are mapped in OSM. | Course model, OB rules |
+| **Mandos and drop zones** (**done**, D103) | Mandatories (pass a tree or pole on the marked side) and drop zones for water/OB islands. Some are mapped in OSM. | Course model, OB rules |
 | **Nose angle** (**done**, D99) | Nose up stalls and floats short; nose down goes far but drops early. Pairs with first-person launch angle and 2-stage throws. | Flight model `launch`, `nose` |
 
 ## Courses
@@ -47,7 +47,7 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 2. The lie decides the shot; circle 1 / circle 2 putting with jump putts (**done**, D98)
 3. Throwing depth: nose angle, the putting reticle, throw-style hooks for augments; the Dev control schemes reworked (**done**, D99)
 4. Course play: look-ahead camera, layouts and pin positions (**done**, D100)
-5. Mandos and drop zones
+5. Mandos and drop zones (**done**, D103)
 6. Bots
 7. More formats: skins, match play, alternate-shot doubles, Bounty
 8. Daily challenge
