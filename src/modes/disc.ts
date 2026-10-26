@@ -945,6 +945,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const plan = await planThrow(sit, level, Math.random);
     const quick = quickSolo() || prefs().reduceMotion;
     await pauseFor(Math.max(0, (quick ? 150 : 700) - (performance.now() - t0)));
+    // Let the camera get to the bot's disc first (it glides over from the last throw), up to 4 s.
+    for (let waited = 0; scene.gliding && waited < 4000; waited += 50) await pauseFor(50);
     if (!alive()) return;
     // Show what it chose: the disc, the release, the aim.
     disc = plan.putt ? PUTTER_DISC : plan.disc;
@@ -953,7 +955,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     yaw = plan.yaw;
     if (isFP()) scene.setEye(player().ball, yaw, pitch);
     updateHud();
-    await pauseFor(quick ? 100 : 650);
+    // A moment to see where it's going before it throws.
+    await pauseFor(quick ? 400 : 1700);
     if (!alive()) return;
     hideWait();
     const r = botRelease(plan, level, Math.random);
