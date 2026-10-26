@@ -447,8 +447,8 @@ export class CourseScene {
   /**
    * First person, before the throw: player i's disc held just ahead, top up so its design shows,
    * tilted with the release (hyzer +, anhyzer −) and nose angle, drawn over everything so it never
-   * clips the ground. Right-handed: a backhand holds it a little left of center, a forehand a little
-   * right; a putt lower and flatter; charging draws it back a little. null puts it away.
+   * clips the ground. Right-handed: low on the left for a backhand, on the right for a forehand; a
+   * putt lower and flatter; charging draws it back a little. null puts it away.
    */
   setHeldDisc(i: number | null, o: { hyzer?: number; nose?: number; forehand?: boolean; putt?: boolean; charge?: number } = {}): void {
     for (const [k, m] of this.held) m.visible = k === i && this.fp;
@@ -464,9 +464,11 @@ export class CourseScene {
       this.persp.add(m);
       this.held.set(i, m);
     }
-    // Near the middle, above the HUD panel (which covers the bottom of the view).
-    const side = o.forehand ? 0.1 : -0.07, back = (o.charge ?? 0) * 0.12;
-    m.position.set(side, o.putt ? -0.02 : 0.01, -0.62 + back);
+    // Placed as a share of the view (so it stays on screen at any shape): low, and out to the side
+    // of the HUD panel, the left for a backhand and the right for a forehand.
+    const halfH = 0.62 * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2)), halfW = halfH * this.persp.aspect;
+    const side = (o.forehand ? 0.5 : -0.45) * halfW, back = (o.charge ?? 0) * 0.12;
+    m.position.set(side, (o.putt ? -0.5 : -0.42) * halfH, -0.62 + back);
     m.scale.setScalar(0.75);
     // Lying nearly flat seen from just above (its top toward the eye), then the release's roll and
     // the nose's pitch.
