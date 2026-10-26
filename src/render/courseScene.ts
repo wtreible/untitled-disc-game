@@ -467,12 +467,14 @@ export class CourseScene {
     // Placed as a share of the view (so it stays on screen at any shape): low, and out to the side
     // of the HUD panel, the left for a backhand and the right for a forehand.
     const halfH = 0.62 * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2)), halfW = halfH * this.persp.aspect;
-    const side = (o.forehand ? 0.5 : -0.45) * halfW, back = (o.charge ?? 0) * 0.12;
-    m.position.set(side, (o.putt ? -0.5 : -0.42) * halfH, -0.62 + back);
+    const side = (o.forehand ? 0.34 : -0.3) * halfW, back = (o.charge ?? 0) * 0.12;
+    m.position.set(side, (o.putt ? -0.58 : -0.52) * halfH, -0.62 + back);
     m.scale.setScalar(0.75);
-    // Lying nearly flat seen from just above (its top toward the eye), then the release's roll and
-    // the nose's pitch.
-    m.rotation.set(-1.05 + (o.putt ? -0.15 : 0) - (o.nose ?? 0) * 0.15, 0, (o.forehand ? -1 : 1) * (o.hyzer ?? 0) * 0.35, 'XZY'); // hyzer: a backhand's left edge down
+    // Nearly flat, its top turned a little toward the eye; the nose pitches its far edge (up raises
+    // it), then the release rolls it about the line of sight (hyzer: a backhand's left edge down, a
+    // forehand's right). 'ZXY': the pitch first, then the roll, both about the camera's axes, so the
+    // roll tilts the disc instead of turning it about its own center.
+    m.rotation.set(-Math.PI / 2 + 0.25 + (o.putt ? -0.1 : 0) + (o.nose ?? 0) * 0.35, 0, (o.forehand ? -1 : 1) * (o.hyzer ?? 0) * 0.6, 'ZXY');
     m.visible = true;
   }
 
