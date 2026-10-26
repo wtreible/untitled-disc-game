@@ -2347,7 +2347,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
     // First person, our turn: the disc in hand, as it'll be released.
     const holding = (phase === 'aim' || phase === 'charging') && isFP() && !intro && !looking && mine(game().current) && !botOf(game().current);
-    scene.setHeldDisc(holding ? game().current : null, { hyzer, nose, forehand, putt: puttStyle(), charge: phase === 'charging' ? power : 0 });
+    const hb = player().ball; // released from 1 m up over the lie (src/disc/flight.ts)
+    scene.setHeldDisc(holding ? game().current : null, holding ? [hb[0], hb[1], terrain.heightAt(hb[0], hb[1]) + 1] : null, { hyzer, nose, forehand, putt: puttStyle(), charge: phase === 'charging' ? power : 0 });
     if (chargeQueued && phase === 'aim' && !scene.gliding) startCharge();
     else if (phase !== 'aim') chargeQueued = false;
     if (phase === 'charging' && ctl) {

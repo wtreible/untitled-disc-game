@@ -445,14 +445,15 @@ export class CourseScene {
   }
 
   /**
-   * First person, before the throw: player i's disc held just ahead, top up so its design shows,
+   * First person, before the throw: player i's disc where the throw leaves from (`at`, in the world),
+   * kept just inside the bottom of the view when that's below it, top up so its design shows,
    * tilted with the release (hyzer +, anhyzer −) and nose angle, drawn over everything so it never
-   * clips the ground. Right-handed: low on the left for a backhand, on the right for a forehand; a
-   * putt lower and flatter; charging draws it back a little. null puts it away.
+   * clips the ground. Right-handed: a little left for a backhand, right for a forehand; a putt
+   * flatter; charging draws it back a little. null puts it away.
    */
-  setHeldDisc(i: number | null, o: { hyzer?: number; nose?: number; forehand?: boolean; putt?: boolean; charge?: number } = {}): void {
+  setHeldDisc(i: number | null, at: Vec3 | null, o: { hyzer?: number; nose?: number; forehand?: boolean; putt?: boolean; charge?: number } = {}): void {
     for (const [k, m] of this.held) m.visible = k === i && this.fp;
-    if (i === null || !this.fp) return;
+    if (i === null || !at || !this.fp) return;
     let m = this.held.get(i);
     if (!m) {
       m = discMesh(this.heldLook.colors[i] ?? '#ffffff', this.heldLook.designs[i]);
@@ -464,11 +465,16 @@ export class CourseScene {
       this.persp.add(m);
       this.held.set(i, m);
     }
-    // Placed as a share of the view (so it stays on screen at any shape): low, and out to the side
-    // of the HUD panel, the left for a backhand and the right for a forehand.
-    const halfH = 0.62 * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2)), halfW = halfH * this.persp.aspect;
-    const side = (o.forehand ? 0.34 : -0.3) * halfW, back = (o.charge ?? 0) * 0.12;
-    m.position.set(side, (o.putt ? -0.58 : -0.52) * halfH, -0.62 + back);
+    // The release point seen from the eye, brought in to arm's length (D). From eye height it's
+    // usually below the view (0.6 m ahead, 0.65 m down), so it's held up just inside the bottom
+    // edge; looking down brings it into view where it really is. The hand shifts it a little.
+    const D = 0.62, halfH = D * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2)), halfW = halfH * this.persp.aspect;
+    this.persp.updateMatrixWorld();
+    const q = this.persp.worldToLocal(new THREE.Vector3(at[0], at[1], at[2]));
+    const k = q.z < -0.01 ? D / -q.z : 0;
+    const x = THREE.MathUtils.clamp(q.x * k + (o.forehand ? 0.12 : -0.1) * halfW, -0.9 * halfW, 0.9 * halfW);
+    const y = k ? THREE.MathUtils.clamp(q.y * k, -0.8 * halfH, 0.9 * halfH) : -0.8 * halfH;
+    m.position.set(x, y, -D + (o.charge ?? 0) * 0.12);
     m.scale.setScalar(0.75);
     // Nearly flat, its top turned a little toward the eye; the nose pitches its far edge (up raises
     // it), then the release rolls it about the line of sight (hyzer: a backhand's left edge down, a
