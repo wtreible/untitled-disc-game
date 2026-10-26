@@ -26,6 +26,7 @@ import { FlatTerrain, HeightmapTerrain, type Terrain, type Vec3 } from '../game/
 import { applyLayout, isDefault, type Layout } from '../course/layout';
 import { botOfClient, botRelease, planInput, planThrow, type BotLevel, type BotSituation } from '../game/bot';
 import { dailyRecord, saveDailyRecord } from '../game/daily';
+import { designCanvas, isDesign } from '../render/discDesigns';
 import { mulberry32 } from '../game/physics';
 import { dailyBoard, postDaily, type Board } from '../net/daily';
 import { clientId } from '../net/room';
@@ -1759,11 +1760,19 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   // ---------- HUD ----------
+  /** A player's disc for the HUD: their design (drawn once), or a dot of their color. */
+  const icons = new Map<number, string>();
+  function discIcon(i: number): string {
+    const d = opts.designs?.[i], color = game().players[i].color;
+    if (!isDesign(d) || d === 'solid') return `<span style="color:${color}">●</span>`;
+    if (!icons.has(i)) icons.set(i, `<img class="disc-icon" alt="" src="${designCanvas(d, color, 48).toDataURL()}">`);
+    return icons.get(i)!;
+  }
 
 
   function updateHud(): void {
     const p = player();
-    $('turn').innerHTML = `<span style="color:${p.color}">●</span> ${esc(p.name)}`;
+    $('turn').innerHTML = `${discIcon(game().current)} ${esc(p.name)}`;
     picker.update(disc, forehand, { hyzer, shot: puttStyle() ? 'standard' : shot });
     $('release').textContent = backhandBlocked() ? 'Backhand blocked' : releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
     $('release').classList.toggle('blocked', backhandBlocked());

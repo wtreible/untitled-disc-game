@@ -13,6 +13,7 @@ import { HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { classCanvas, waterCanvas } from './classTexture';
 import { hillshadeBounds, hillshadeCanvas } from './hillshade';
 import { holeRuleMarkers } from './holeRules';
+import { designCanvas, isDesign } from './discDesigns';
 import { groundAt, setGround } from './ground';
 import { basketModel, discMesh, lockTreeLod, setTreeQuality, setTreeSolidity, setTreesVisible, tickTrees, treeMeshes, updateTreeLod, type TreeQuality } from './disc3d';
 import { BASKET } from '../disc/flight';
@@ -223,7 +224,13 @@ export class CourseScene {
       const g = new THREE.Group();
       const shadow = disc2d(5, '#000000', 0.4);
       const body = new THREE.Group();
-      body.add(disc2d(6.5, '#111111'), disc2d(5, color));
+      // A disc with a design shows it on the map too, a little bigger so it reads.
+      const design = playerDesigns[pi];
+      if (isDesign(design) && design !== 'solid') {
+        const tex = new THREE.CanvasTexture(designCanvas(design, color, 64));
+        tex.colorSpace = THREE.SRGBColorSpace;
+        body.add(disc2d(8, '#111111'), new THREE.Mesh(new THREE.CircleGeometry(6.8, 32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false })));
+      } else body.add(disc2d(6.5, '#111111'), disc2d(5, color));
       g.add(shadow, body);
       g.userData = { shadow, body };
       g.visible = false;
