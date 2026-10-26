@@ -99,7 +99,8 @@ export class Life {
     for (let i = 0; i < 6; i++) {
       // Sized and turned in the geometry, so it can be draped over hills as it drifts.
       const geo = new THREE.PlaneGeometry(rnd(50, 90), rnd(35, 60), 8, 8).rotateZ(rnd(0, Math.PI));
-      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, color: '#000000', transparent: true, opacity: 0.28, depthWrite: false }));
+      // No fog: a fogged shadow turns sky-colored far off (drifting blue patches on distant hills).
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, color: '#000000', transparent: true, opacity: 0.28, depthWrite: false, fog: false }));
       mesh.renderOrder = 3;
       const at: Vec2 = [rnd(bounds[0][0], bounds[1][0]), rnd(bounds[0][1], bounds[1][1])];
       drape(mesh, at);

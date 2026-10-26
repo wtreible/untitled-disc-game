@@ -14,6 +14,15 @@ function shade(color: string, k: number): string {
   return `#${(k > 0 ? c.lerp(new THREE.Color('#ffffff'), k) : c.lerp(new THREE.Color('#000000'), -k)).getHexString()}`;
 }
 
+/** The accents a design is drawn with: near-black on a light disc, near-white on a darker one. */
+export const ACCENT_DARK = '#161616', ACCENT_LIGHT = '#f6f4ee';
+/** How light a color looks (relative luminance, 0 black … 1 white). */
+function luminance(color: string): number {
+  const c = new THREE.Color(color);
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; // three keeps colors linear
+}
+export const accentFor = (color: string) => (luminance(color) > 0.35 ? ACCENT_DARK : ACCENT_LIGHT);
+
 /** A disc's top, `size` px square: the design in `color`, round, on transparent. */
 export function designCanvas(design: string, color: string, size = 128): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -23,7 +32,8 @@ export function designCanvas(design: string, color: string, size = 128): HTMLCan
   g.save();
   g.beginPath(); g.arc(R, R, R, 0, Math.PI * 2); g.clip();
   g.fillStyle = color; g.fillRect(0, 0, size, size);
-  const light = shade(color, 0.45), dark = shade(color, -0.35);
+  // `light` is the design's accent (it reads against the disc), `dark` its outline and the rim.
+  const light = accentFor(color), dark = light === ACCENT_DARK ? shade(color, -0.25) : shade(color, -0.35);
   switch (design) {
     case 'stripes':
       g.fillStyle = light;
@@ -41,6 +51,8 @@ export function designCanvas(design: string, color: string, size = 128): HTMLCan
         g.beginPath(); g.moveTo(R - R * 0.75 * k, R + R * 0.7);
         for (let i = 0; i <= 6; i++) { const x = R - R * 0.75 * k + (i / 6) * R * 1.5 * k; g.quadraticCurveTo(x - R * 0.12 * k, R - R * (0.2 + (i % 2) * 0.55) * k, x, R + R * 0.7 - (i % 2 ? R * 0.1 : 0)); }
         g.closePath(); g.fill();
+        // Outlined in the accent, so warm flames still read on a yellow or orange disc.
+        g.strokeStyle = light; g.lineWidth = size / 70; g.stroke();
       }
       break;
     case 'star': {
@@ -64,7 +76,7 @@ export function designCanvas(design: string, color: string, size = 128): HTMLCan
       break;
     case 'galaxy': {
       const grad = g.createRadialGradient(R, R, R * 0.1, R, R, R);
-      grad.addColorStop(0, light); grad.addColorStop(0.5, dark); grad.addColorStop(1, '#0b0b1e');
+      grad.addColorStop(0, shade(color, 0.3)); grad.addColorStop(0.5, shade(color, -0.45)); grad.addColorStop(1, '#0b0b1e');
       g.fillStyle = grad; g.fillRect(0, 0, size, size);
       let seed = 3;
       const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };

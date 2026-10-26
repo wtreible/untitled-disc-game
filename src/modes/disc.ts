@@ -1777,7 +1777,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('release').textContent = backhandBlocked() ? 'Backhand blocked' : releaseText(hyzer, forehand, puttStyle() ? 'standard' : shot);
     $('release').classList.toggle('blocked', backhandBlocked());
     $('nose').hidden = puttStyle();
-    $('look-ahead').textContent = looking ? 'Back' : 'Look ahead';
+    $('look-ahead').textContent = looking ? 'Back' : 'Look';
     $('look-ahead').hidden = range || (phase !== 'aim' && !looking);
     $('nose').textContent = nose === 0 ? 'Nose level' : `Nose ${Math.abs(nose) < 1 ? 'a little ' : ''}${nose > 0 ? 'up' : 'down'}`;
     const c2 = puttStyle() && toBasket() > C1;
@@ -2325,6 +2325,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const b = player().ball;
       tutorial.aim({ angle: Math.atan2(aimTarget[1] - b[1], aimTarget[0] - b[0]), dist: dist(b, aimTarget), disc: disc.id, firstPerson: isFP() });
     }
+    // First person, our turn: the disc in hand, as it'll be released.
+    const holding = (phase === 'aim' || phase === 'charging') && isFP() && !intro && !looking && mine(game().current) && !botOf(game().current);
+    scene.setHeldDisc(holding ? game().current : null, { hyzer, nose, forehand, putt: puttStyle(), charge: phase === 'charging' ? power : 0 });
     if (chargeQueued && phase === 'aim' && !scene.gliding) startCharge();
     else if (phase !== 'aim') chargeQueued = false;
     if (phase === 'charging' && ctl) {

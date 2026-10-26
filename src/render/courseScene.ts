@@ -67,6 +67,9 @@ export class CourseScene {
   private extraSymbols = new THREE.Group();
   private readonly ponds = new THREE.Group();
   private readonly magnetRing: THREE.LineLoop;
+  /** First person: each player's disc as held in front of them before the throw (made when first shown). */
+  private readonly held = new Map<number, THREE.Mesh>();
+  private heldLook: { colors: string[]; designs: (string | undefined)[] } = { colors: [], designs: [] };
   /** Circle 1 (10 m) on the ground around the basket: no jump putts inside it. */
   private readonly circle1: THREE.LineLoop;
   private readonly placePreview = new THREE.Group();
@@ -210,6 +213,9 @@ export class CourseScene {
       this.world3d.add(pad);
     }
     this.scene.add(this.world3d);
+    // The camera's in the scene so the disc held in front of it (setHeldDisc) is drawn.
+    this.scene.add(this.persp);
+    this.heldLook = { colors: playerColors, designs: playerDesigns };
     // Mandos, drop zones and island greens: seen from first person and on the map.
     this.scene.add(holeRuleMarkers(course.holes));
 
@@ -436,6 +442,34 @@ export class CourseScene {
       this.eyeGlide = far > 0.3 || from.q.angleTo(to.q) > 0.05 ? { ...from, to, t0: performance.now(), dur: Math.min(1600, 550 + far * 25) } : null;
     } else if (this.eyeGlide) this.eyeGlide.to = to;
     if (this.eyeGlide) { this.persp.position.copy(from.p); this.persp.quaternion.copy(from.q); }
+  }
+
+  /**
+   * First person, before the throw: player i's disc held ahead and to the right, top up so its design shows,
+   * tilted with the release (hyzer +, anhyzer −) and nose angle, drawn over everything so it never
+   * clips the ground. A forehand holds it to the right; a putt lower and flatter; charging draws it
+   * back a little. null puts it away.
+   */
+  setHeldDisc(i: number | null, o: { hyzer?: number; nose?: number; forehand?: boolean; putt?: boolean; charge?: number } = {}): void {
+    for (const [k, m] of this.held) m.visible = k === i && this.fp;
+    if (i === null || !this.fp) return;
+    let m = this.held.get(i);
+    if (!m) {
+      m = discMesh(this.heldLook.colors[i] ?? '#ffffff', this.heldLook.designs[i]);
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { mat.depthTest = false; mat.depthWrite = false; }
+      m.renderOrder = 50;
+      m.frustumCulled = false;
+      this.persp.add(m);
+      this.held.set(i, m);
+    }
+    // Off to the right, above the HUD panel (which covers the bottom of the view): in the right hand.
+    const side = o.forehand ? 0.36 : 0.28, back = (o.charge ?? 0) * 0.12;
+    m.position.set(side, o.putt ? -0.02 : 0.01, -0.62 + back);
+    m.scale.setScalar(0.75);
+    // Lying nearly flat seen from just above (its top toward the eye), then the release's roll and
+    // the nose's pitch.
+    m.rotation.set(-1.05 + (o.putt ? -0.15 : 0) - (o.nose ?? 0) * 0.15, 0, (o.forehand ? -1 : 1) * (o.hyzer ?? 0) * 0.35, 'XZY'); // hyzer: a backhand's left edge down
+    m.visible = true;
   }
 
   /** The camera is still easing to a new view (first person or top-down). */
@@ -1211,8 +1245,10 @@ export class CourseScene {
       for (let i = 0; i < pos.count; i++) pos.setZ(i, groundAt(cx + pos.getX(i), cy + pos.getY(i)));
       geo.computeBoundingSphere();
     }
+    // Multiplied over the ground, so no fog of its own: fog would turn its far end sky-blue, and
+    // multiplying the (already fogged) ground by sky blue tinted distant hills like water.
     const mat = multiply
-      ? new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, depthWrite: false })
+      ? new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, depthWrite: false, fog: false })
       : new THREE.MeshBasicMaterial({ map: tex, transparent: order > 0, depthWrite: order === 0 });
     const m = new THREE.Mesh(geo, mat);
     m.position.set(cx, cy, z);
