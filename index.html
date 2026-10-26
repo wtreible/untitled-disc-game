@@ -158,7 +158,7 @@
         <div class="menu-grid">
           <div class="col">
           <section class="panel-card courses">
-            <h3>Course</h3>
+            <h3>Course <button id="open-daily" class="chip-btn" title="One short round a day, the same for everyone">Daily challenge</button></h3>
             <div id="course-cards" class="course-cards"></div>
           </section>
 
@@ -273,6 +273,14 @@
         <div class="sheet-head"><h2>Augments</h2><span class="dim aug-count"></span><button id="aug-close" class="icon" title="Close">✕</button></div>
         <div class="seg aug-tiers"></div>
         <div class="aug-body"></div>
+      </div>
+    </div>
+
+    <!-- The daily challenge: today's holes, your round, the day's board -->
+    <div id="daily" class="modal" hidden>
+      <div class="sheet daily-sheet">
+        <div class="sheet-head"><h2>Daily challenge</h2><button id="daily-close" class="icon" title="Close">✕</button></div>
+        <div class="daily-body"></div>
       </div>
     </div>
 

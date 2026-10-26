@@ -13,11 +13,13 @@ import { DEFAULT_LAYOUT, isDefault, type Layout } from './course/layout';
 import { BOT_LEVELS, botClient, botOfClient, type BotLevel } from './game/bot';
 import { FORMATS, type Format, type TeamPlay } from './game/formats';
 import { DISC_DESIGNS, designCanvas, isDesign } from './render/discDesigns';
-import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
+import { MAX_PLAYERS, PROTOCOL, ROOMS_URL, RoomClient, clientId, newRoomCode, uniqueNames, type Lobby, type Member } from './net/room';
 import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
 import { closeAugmentBrowser, openAugmentBrowser } from './ui/augments';
 import { closeStats, openStats } from './ui/statsView';
+import { dailyFor, dailyRecord, todayUTC, type Daily } from './game/daily';
+import { dailyBoard } from './net/daily';
 import { initSound, music, sfx } from './audio/sound';
 import { prefs, setPref } from './settings';
 
@@ -552,6 +554,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('keys').hidden === false) { openKeys(false); return; }
   if (e.key === 'Escape' && $('aug-browser').hidden === false) { closeAugmentBrowser(); return; }
   if (e.key === 'Escape' && $('player-stats').hidden === false) { closeStats(); return; }
+  if (e.key === 'Escape' && $('daily').hidden === false) { closeDaily(); return; }
   if (e.key === 'Escape' && $('name-ask').hidden === false) { $('name-cancel').click(); return; }
   if (e.key === 'Escape' && $('setup').hidden === true) openPause($('settings').hidden === true);
 });
@@ -857,6 +860,47 @@ async function launch(l: Lobby): Promise<void> {
 }
 
 // ---------- start ----------
+// ---------- the daily challenge ----------
+/** Today's challenge: one of the real courses, a run of holes on it, the same for everyone. */
+const today = (): Daily => dailyFor(todayUTC(), COURSES.filter((c) => c.group === 'real').map((c) => ({ id: c.id, holes: c.holes })));
+function openDaily(): void {
+  const d = today(), c = COURSES.find((x) => x.id === d.course)!;
+  const s = summary?.[d.course];
+  const idx = Array.from({ length: d.count }, (_, k) => d.first + k);
+  const par = s ? idx.reduce((a, i) => a + s.pars[i], 0) : null;
+  const mine = dailyRecord(d.date);
+  const fmt = (v: number) => (v === 0 ? 'E' : v > 0 ? `+${v}` : String(v));
+  const body = $('daily').querySelector('.daily-body')!;
+  const head = `<p class="course-blurb"><b>${escapeHtml(d.date)}</b> · ${escapeHtml(c.name)} · holes ${escapeHtml(s?.refs?.[d.first] ?? String(d.first + 1))}–${escapeHtml(s?.refs?.[d.first + d.count - 1] ?? String(d.first + d.count))}${par ? ` · par ${par}` : ''}. The same holes and wind for everyone today. Your first finished round goes on the board.</p>`
+    + (mine ? `<p class="course-blurb">Your round: <b>${fmt(mine.toPar)}</b> (${mine.strokes} throws). Playing again is practice.</p>` : '')
+    + `<button id="daily-play" class="primary">${mine ? 'Practice' : 'Play'} <span class="arrow">→</span></button><h3>Today's board</h3><div class="daily-board"><small class="dim">Loading…</small></div>`;
+  body.innerHTML = head;
+  body.querySelector('#daily-play')!.addEventListener('click', () => { closeDaily(); void startDaily(d); });
+  $('daily').hidden = false;
+  void dailyBoard(d.date, clientId()).then((b) => {
+    const box = body.querySelector('.daily-board');
+    if (!box) return;
+    box.innerHTML = !b ? '<small class="dim">The board is offline.</small>' : b.players === 0 ? '<small class="dim">Nobody yet: be the first.</small>'
+      : `<table class="stats-rounds"><tbody>${b.top.map((r, k) => `<tr class="${r.you ? 'you' : ''}"><td>${k + 1}</td><td>${escapeHtml(r.name)}</td><td>${r.strokes}</td><td class="${r.toPar < 0 ? 'under' : r.toPar > 0 ? 'over' : 'even'}">${fmt(r.toPar)}</td></tr>`).join('')}</tbody></table>`
+        + `<small class="dim">${b.players} played${b.you && b.you.rank > b.top.length ? ` · you're ${b.you.rank}th` : ''}</small>`;
+  });
+}
+function closeDaily(): void { $('daily').hidden = true; }
+$('open-daily').addEventListener('click', openDaily);
+$('daily-close').addEventListener('click', closeDaily);
+$('daily').addEventListener('click', (e) => { if (e.target === $('daily')) closeDaily(); });
+/** Play the daily: alone, as the first row, plain stroke play on the mapped tees. */
+async function startDaily(d: Daily): Promise<void> {
+  if (room) return;
+  sfx('confirm');
+  const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
+  $('setup').hidden = true;
+  showGameButtons();
+  $('pause-sub').textContent = `Daily challenge · ${COURSES.find((c) => c.id === d.course)!.name}`;
+  const { startDisc } = await import('./modes/disc');
+  await startDisc({ names: [name], colors: rowColors().slice(0, 1), designs: [rowDesign(0)], course: d.course as Parameters<typeof startDisc>[0]['course'], first: d.first, count: d.count, daily: { date: d.date, seed: d.seed } });
+}
+
 $('start').addEventListener('click', async () => {
   sfx('confirm');
   if (course === 'tutorial' || course === 'crazy-tutorial') {

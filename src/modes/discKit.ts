@@ -168,10 +168,10 @@ export function releaseLabel(h: number): string {
  * Wind for a new hole: 30% calm (0–1 m/s), 50% breezy (1–3), 20% windy (3–5), any direction.
  * Capped at 5 m/s: a tailwind already costs a distance driver ~15% and turns a headwind drive over.
  */
-export function drawWind(): Vec2 {
-  const r = Math.random();
-  const speed = r < 0.3 ? Math.random() : r < 0.8 ? 1 + Math.random() * 2 : 3 + Math.random() * 2;
-  const a = Math.random() * Math.PI * 2;
+export function drawWind(rnd: () => number = Math.random): Vec2 {
+  const r = rnd();
+  const speed = r < 0.3 ? rnd() : r < 0.8 ? 1 + rnd() * 2 : 3 + rnd() * 2;
+  const a = rnd() * Math.PI * 2;
   return [Math.cos(a) * speed, Math.sin(a) * speed];
 }
 

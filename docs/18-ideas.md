@@ -25,7 +25,7 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 |---|---|---|
 | ★ **Stats and a player rating** (**done**, D97) | Circle 1/2 putting %, fairway hits, parked, scrambles, OB rate; a PDGA-style rating from recent rounds. Kept per browser. | Round event log |
 | **Tour mode** | A season of events across the real courses with entry rules (X-step only, a hex every hole…). Winnings buy discs and plastics (grippy for wet days, beat-in discs that turn more). The natural home for disc wear (deferred). | Bag building, Crazy mode rules |
-| **Daily challenge** | One seeded hole or round a day for everyone, with a leaderboard through the room server. | Seeded rounds, room server |
+| **Daily challenge** (**done**, D106) | One seeded hole or round a day for everyone, with a leaderboard through the room server. | Seeded rounds, room server |
 
 ## Opponents and modes
 
@@ -50,6 +50,6 @@ A list of possible additions, collected 2026-10-25, now being built in steps (be
 5. Mandos and drop zones (**done**, D103)
 6. Bots (**done**, D104)
 7. More formats: skins, match play, alternate-shot doubles, Bounty; disc designs (**done**, D105)
-8. Daily challenge
+8. Daily challenge (**done**, D106)
 9. Tour mode
 10. Course editor

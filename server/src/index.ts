@@ -90,9 +90,22 @@ const ID = /^[A-Za-z0-9_-]{6,40}$/;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const DESIGN = /^[a-z]{1,16}$/;
 
+/** The daily challenge's board (GET) and a score for it (POST), across sites: open to any origin. */
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    // /daily/<YYYY-MM-DD>: each day's board lives in its own Durable Object (as a room does).
+    const d = url.pathname.match(/^\/daily\/(\d{4}-\d{2}-\d{2})$/);
+    if (d) {
+      if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+      // Only around today (time zones put players a day either side).
+      const day = Date.parse(`${d[1]}T12:00:00Z`);
+      if (!DAY.test(d[1]) || !Number.isFinite(day) || Math.abs(day - Date.now()) > 2 * 86400000) return new Response('no such day', { status: 400, headers: CORS });
+      return env.ROOMS.get(env.ROOMS.idFromName(`daily:${d[1]}`)).fetch(req);
+    }
     const m = url.pathname.match(/^\/room\/([A-Za-z0-9]+)$/);
     if (!m) return new Response('Untitled Disc Game rooms. Connect a WebSocket to /room/<CODE>.', { status: 404 });
     const code = m[1].toUpperCase();
@@ -121,6 +134,7 @@ export class Room extends DurableObject<Env> {
 
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
+    if (url.pathname.startsWith('/daily/')) return this.daily(req, url);
     const client = url.searchParams.get('client') ?? '';
     const name = (url.searchParams.get('name') ?? '').trim().slice(0, 16) || 'Player';
     if (!ID.test(client)) return new Response('bad client id', { status: 400 });
@@ -257,6 +271,34 @@ export class Room extends DurableObject<Env> {
   }
 
   /** One alarm does two jobs: hand the room to a new host, and delete the room once idle. */
+  /**
+   * The daily challenge's board: GET lists it (best first, and where `client` stands); POST adds a
+   * player's score, their first of the day only (later rounds are practice).
+   */
+  private async daily(req: Request, url: URL): Promise<Response> {
+    this.sql.exec('CREATE TABLE IF NOT EXISTS daily (client TEXT PRIMARY KEY, name TEXT NOT NULL, strokes INTEGER NOT NULL, to_par INTEGER NOT NULL, at INTEGER NOT NULL)');
+    const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    let me = url.searchParams.get('client') ?? '';
+    if (req.method === 'POST') {
+      let b: { client?: unknown; name?: unknown; strokes?: unknown; toPar?: unknown };
+      try { b = await req.json(); } catch { return json({ error: 'bad body' }, 400); }
+      const ok = typeof b.client === 'string' && ID.test(b.client) && typeof b.name === 'string' && Number.isInteger(b.strokes) && (b.strokes as number) > 0 && (b.strokes as number) < 200
+        && Number.isInteger(b.toPar) && Math.abs(b.toPar as number) < 100;
+      if (!ok) return json({ error: 'bad score' }, 400);
+      const name = (b.name as string).trim().slice(0, 16) || 'Player';
+      this.sql.exec('INSERT OR IGNORE INTO daily (client, name, strokes, to_par, at) VALUES (?, ?, ?, ?, ?)', b.client, name, b.strokes, b.toPar, Date.now());
+      this.touch();
+      me = b.client as string;
+    } else if (req.method !== 'GET') return json({ error: 'GET or POST' }, 405);
+    const rows = [...this.sql.exec<{ client: string; name: string; strokes: number; to_par: number }>('SELECT client, name, strokes, to_par FROM daily ORDER BY to_par, at')];
+    const rank = rows.findIndex((r) => r.client === me);
+    return json({
+      players: rows.length,
+      top: rows.slice(0, 20).map((r) => ({ name: r.name, strokes: r.strokes, toPar: r.to_par, you: r.client === me })),
+      ...(rank >= 0 ? { you: { rank: rank + 1, strokes: rows[rank].strokes, toPar: rows[rank].to_par } } : {}),
+    });
+  }
+
   async alarm(): Promise<void> {
     const gone = Number(this.get('hostGone') ?? 0);
     if (gone && Date.now() - gone >= HOST_GRACE_MS) this.migrateHost();

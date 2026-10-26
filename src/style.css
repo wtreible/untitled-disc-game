@@ -638,3 +638,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .fmt-badge { margin-left: 4px; padding: 1px 6px; border-radius: 999px; background: rgba(184, 242, 92, 0.16); color: var(--accent); font: 700 10px var(--body); }
 #player-names .design-btn { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; flex: none; }
 #player-names .design-btn img { width: 30px; height: 30px; display: block; border-radius: 50%; box-shadow: 0 0 0 2px var(--line); }
+.daily-sheet { width: 560px; }
+.daily-sheet h3 { margin: 4px 0 0; font: 700 12px var(--head); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.daily-board tr.you td { color: var(--accent); font-weight: 700; }
+.courses h3 { display: flex; align-items: center; justify-content: space-between; }
+#daily-play { align-self: flex-start; }

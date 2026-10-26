@@ -25,6 +25,10 @@ import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { applyLayout, isDefault, type Layout } from '../course/layout';
 import { botOfClient, botRelease, planInput, planThrow, type BotLevel, type BotSituation } from '../game/bot';
+import { dailyRecord, saveDailyRecord } from '../game/daily';
+import { mulberry32 } from '../game/physics';
+import { dailyBoard, postDaily, type Board } from '../net/daily';
+import { clientId } from '../net/room';
 import { BOUNTY, BOUNTY_HEXES, bountyLeader, matchOf, matchText, skinsOf, type Format, type TeamPlay } from '../game/formats';
 import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
@@ -94,6 +98,8 @@ export interface DiscOptions {
   teamPlay?: TeamPlay;
   /** Each player's disc design (src/render/discDesigns.ts); solid when absent. */
   designs?: (string | undefined)[];
+  /** The daily challenge (src/game/daily.ts): its date, and the seed its wind comes from. */
+  daily?: { date: string; seed: number };
   /** Best shot: each player's team (src/game/teams.ts). */
   teams?: number[];
 }
@@ -169,6 +175,29 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (fmt === 'bounty') return st.bounty?.players.includes(row[0]) ? '🎯 bounty' : '';
     return '';
   }
+  /** The wind: the daily challenge's is the same for everyone that day. */
+  const windRng = opts.daily ? mulberry32(opts.daily.seed) : Math.random;
+  /** The daily challenge: the first finished round of the day goes on the board; its tile, once known. */
+  let dailyTile: string | null = null;
+  function finishDaily(): void {
+    if (!opts.daily || dailyTile !== null) return;
+    const { date } = opts.daily;
+    const strokes = roundHoles.reduce((a, h) => a + (round.scores[0][h] ?? 0), 0), toPar = round.toPar(0);
+    const prev = dailyRecord(date);
+    const first = !prev;
+    if (first) saveDailyRecord(date, { strokes, toPar, posted: false });
+    dailyTile = '';
+    const show = (b: Board | null) => {
+      const you = b?.you;
+      const line = !b ? 'the board is offline' : you ? `${ordinal(you.rank)} of ${b.players} today` : `${b.players} played today`;
+      dailyTile = `<div class="hl"><small>Daily challenge${first ? '' : ' · practice'}</small><b>${first ? fmtPar(toPar) : fmtPar(prev!.toPar)}</b><span>${esc(first ? line : `your round counts: ${line}`)}</span></div>`;
+      if (!$('results').hidden) $('results-summary').insertAdjacentHTML('afterbegin', dailyTile);
+    };
+    if (first) void postDaily(date, { client: clientId(), name: opts.names[0], strokes, toPar }).then((b) => { if (b) saveDailyRecord(date, { strokes, toPar, posted: true }); show(b); });
+    else void dailyBoard(date, clientId()).then(show);
+  }
+  /** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st. */
+  const ordinal = (n: number) => { const t = n % 100, u = n % 10; return `${n}${t >= 11 && t <= 13 ? 'th' : u === 1 ? 'st' : u === 2 ? 'nd' : u === 3 ? 'rd' : 'th'}`; };
   /** Holes whose skins or match result has been announced. */
   const announced = new Set<number>();
   /** When a hole's done: who took the skins, or the hole, and how the match stands. */
@@ -694,7 +723,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Bounty: after the first hole, whoever leads outright plays this one handicapped.
     const lead = fmt === 'bounty' && st.holeStarted ? bountyLeader(rows().map((r) => round.toPar(r[0]))) : null;
     const bounty = lead === null ? undefined : { players: rows()[lead], hex: BOUNTY_HEXES[Math.floor(Math.random() * BOUNTY_HEXES.length)] };
-    dispatch({ t: 'hole-start', wind: range ? rangeWind(rs) : drawWind(), ...(bounty ? { bounty } : {}) });
+    dispatch({ t: 'hole-start', wind: range ? rangeWind(rs) : drawWind(windRng), ...(bounty ? { bounty } : {}) });
   }
 
   /** A hole has started (ours or the host's event): set the scene for it. */
@@ -1567,6 +1596,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (last && game().finished) recordStats();
     if (!readOnly) announceHole();
     if (last && game().finished && formatTile()) $('results-summary').insertAdjacentHTML('afterbegin', formatTile());
+    if (last && game().finished && opts.daily) { finishDaily(); if (dailyTile) $('results-summary').insertAdjacentHTML('afterbegin', dailyTile); }
     $('results-title').textContent = readOnly ? 'Scorecard' : last ? 'Final card' : `Hole ${hole().ref} complete`;
     // Online, only the host moves everyone on to the next hole.
     // Online, the final card's way on is the host's: everyone back to the room's lobby together.

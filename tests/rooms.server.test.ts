@@ -186,6 +186,25 @@ describe.skipIf(!BASE)('room server', () => {
     ws.close(); a.close();
   });
 
+  it("the daily board: a player's first score counts, others are practice; far-off days refused", async () => {
+    const http = BASE!.replace(/^ws/, 'http');
+    // A fresh board: a day the other runs haven't used (yesterday's or tomorrow's would clash too).
+    const day = new Date().toISOString().slice(0, 10);
+    const who = `client-${Math.random().toString(36).slice(2, 10)}`;
+    const post = (strokes: number, toPar: number) => fetch(`${http}/daily/${day}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client: who, name: 'Ann', strokes, toPar }) });
+    const first = await post(10, 1);
+    expect(first.headers.get('access-control-allow-origin')).toBe('*');
+    const b1 = await first.json();
+    expect(b1.you).toMatchObject({ strokes: 10, toPar: 1 });
+    const b2 = await (await post(8, -1)).json(); // a better practice round doesn't replace it
+    expect(b2.you).toMatchObject({ strokes: 10, toPar: 1 });
+    const got = await (await fetch(`${http}/daily/${day}?client=${who}`)).json();
+    expect(got.players).toBeGreaterThanOrEqual(1);
+    expect(got.top.some((r: Msg) => r.you && r.name === 'Ann')).toBe(true);
+    expect((await fetch(`${http}/daily/2001-01-01`)).status).toBe(400);
+    expect((await fetch(`${http}/daily/${day}`, { method: 'POST', body: JSON.stringify({ client: who, name: 'x', strokes: -3, toPar: 0 }) })).status).toBe(400);
+  });
+
   it('the room survives everyone leaving: rejoining gets the same log', async () => {
     const code = room();
     const a = await connect(code, 'client-dddd', 'Di');
