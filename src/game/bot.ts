@@ -160,23 +160,23 @@ export async function planThrow(s: BotSituation, level: BotLevel, rng: Rng): Pro
   const inTrees = world.grid.classAt(start[0], start[1]) === 'trees';
   let n = 0;
   for (const target of targets) {
-   const D = dist(start, target), toTarget = Math.atan2(target[1] - start[1], target[0] - start[0]);
-   // The most controllable discs that still get there (slower discs fly straighter).
-   const able = discs.filter((x) => reachOf.get(x)! >= D).sort((a, b) => reachOf.get(a)! - reachOf.get(b)!).slice(0, 3);
-   for (const disc of able.length ? able : [discs.reduce((a, b) => (reachOf.get(a)! > reachOf.get(b)! ? a : b))]) {
-    for (const [hyzer, launch] of [[-0.5], [0], [0.5], ...(inTrees ? [[0, Math.max(0, disc.launch - 0.07)]] : [])] as [number, number?][]) {
-      const base: BotPlan = { disc, hyzer, yaw: toTarget, power: 0, putt: false, target, ...(launch !== undefined ? { launch } : {}) };
-      base.power = powerFor((p) => dist(start, ghostOf(planInput({ ...base, power: p }, s), world).rest) >= D);
-      // Aim off so the curve brings it back to the target.
-      const g = ghostOf(planInput(base, s), world).rest;
-      const yaw = toTarget + (toTarget - Math.atan2(g[1] - start[1], g[0] - start[0]));
-      for (const off of [-8, -4, 0, 4, 8]) {
-        const plan = { ...base, yaw: yaw + (off * Math.PI) / 180 };
-        plans.push({ plan, score: expect(plan) });
+    const D = dist(start, target), toTarget = Math.atan2(target[1] - start[1], target[0] - start[0]);
+    // The most controllable discs that still get there (slower discs fly straighter).
+    const able = discs.filter((x) => reachOf.get(x)! >= D).sort((a, b) => reachOf.get(a)! - reachOf.get(b)!).slice(0, 3);
+    for (const disc of able.length ? able : [discs.reduce((a, b) => (reachOf.get(a)! > reachOf.get(b)! ? a : b))]) {
+      for (const [hyzer, launch] of [[-0.5], [0], [0.5], ...(inTrees ? [[0, Math.max(0, disc.launch - 0.07)]] : [])] as [number, number?][]) {
+        const base: BotPlan = { disc, hyzer, yaw: toTarget, power: 0, putt: false, target, ...(launch !== undefined ? { launch } : {}) };
+        base.power = powerFor((p) => dist(start, ghostOf(planInput({ ...base, power: p }, s), world).rest) >= D);
+        // Aim off so the curve brings it back to the target.
+        const g = ghostOf(planInput(base, s), world).rest;
+        const yaw = toTarget + (toTarget - Math.atan2(g[1] - start[1], g[0] - start[0]));
+        for (const off of [-8, -4, 0, 4, 8]) {
+          const plan = { ...base, yaw: yaw + (off * Math.PI) / 180 };
+          plans.push({ plan, score: expect(plan) });
+        }
+        if (++n % 2 === 0) await pause();
       }
-      if (++n % 2 === 0) await pause();
     }
-   }
   }
   plans.sort((a, b) => a.score - b.score);
   // A sloppier bot sometimes settles for one of the next best.

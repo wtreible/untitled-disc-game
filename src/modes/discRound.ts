@@ -51,7 +51,7 @@ export type RoundEvent =
    * at release (s), which moving props (windmill, drawbridge, sliding ring) were simulated at.
    * `disc`: the disc's id (the range lists it with the throw).
    */
-  | { t: 'throw'; player: number; perfect: boolean; result: WireResult; twin?: Vec3[]; clock?: number; disc?: string }
+  | { t: 'throw'; player: number; perfect: boolean; result: WireResult; twin?: Vec3[]; clock?: number; disc?: string; forehand?: boolean }
   /** Take back the player's last throw (Crazy mode). */
   | { t: 'mulligan'; player: number }
   /** Crazy mode draft: the cards offered to a player (powerup ids). */

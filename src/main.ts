@@ -18,8 +18,8 @@ import type { RoundEvent } from './modes/discRound';
 import { cleanRules, RULE_LIMITS, tierWeights, type CrazyRules } from './rogue/rules';
 import { closeAugmentBrowser, openAugmentBrowser } from './ui/augments';
 import { closeStats, openStats } from './ui/statsView';
-import { dailyFor, dailyRecord, todayUTC, type Daily } from './game/daily';
-import { dailyBoard } from './net/daily';
+import { dailyFor, dailyRecord, ordinal, saveDailyRecord, todayUTC, type Daily } from './game/daily';
+import { dailyBoard, postDaily } from './net/daily';
 import { initSound, music, sfx } from './audio/sound';
 import { prefs, setPref } from './settings';
 
@@ -149,8 +149,14 @@ let format: Format = last.format ?? 'stroke';
 let teamPlay: TeamPlay = last.teamPlay ?? 'best';
 /** Hot seat: which rows are bots, and how good (null: a person). */
 const localBots: (BotLevel | null)[] = [...(last.bots ?? [])];
-/** Online (host): the bots seated after the people. */
-const roomBots: BotLevel[] = [];
+/**
+ * Online: the bots seated after the people, by client id (which names the level and a number that
+ * stays with the bot). Guests mirror the host's, so whoever hosts next (or the host after a reload)
+ * keeps them.
+ */
+const roomBots: string[] = [];
+const botNumber = (client: string) => Number(client.split('-')[2]);
+const mirrorBots = (l: Lobby | null) => roomBots.splice(0, roomBots.length, ...(l?.seats ?? []).map((q) => q.client).filter((c) => botOfClient(c)));
 /** Tees and pins (real courses; the Round card's Tees and Pins rows). */
 let layout: Layout = last.layout ?? { ...DEFAULT_LAYOUT };
 let course: CourseId = COURSES.some((c) => c.id === last.course) ? last.course! : 'simple';
@@ -217,9 +223,11 @@ function sidesNow(): number {
   return teamsOn && plan ? new Set(plan.slice(0, n)).size : n;
 }
 function renderFormat(): void {
-  $('format-row').hidden = trainingCourse();
+  $('format-row').hidden = $('format-desc').hidden = trainingCourse();
   $('format-seg').innerHTML = FORMATS.map(([v, name, text]) => `<button data-v="${v}" title="${text}" class="${format === v ? 'on' : ''}">${name}</button>`).join('');
-  $('format-note').textContent = format === 'match' && sidesNow() !== 2 ? 'needs two sides: stroke play' : '';
+  // What the format is, under its buttons (and why match play falls back, when it does).
+  const n = sidesNow();
+  $('format-desc').textContent = FORMATS.find(([v]) => v === format)![2] + '.' + (format === 'match' && n !== 2 ? ` Needs exactly two sides: with ${n} it's played as stroke play.` : '');
   $('format-seg').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
     format = b.dataset.v as Format;
     save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), format });
@@ -415,11 +423,11 @@ function renderTeams(n: number): void {
   const groups = teamGroups(plan, n);
   $('teams-seg').innerHTML = `<button data-v="0" class="${teamsOn ? '' : 'on'}">Solo</button><button data-v="1" class="${teamsOn && teamPlay === 'best' ? 'on' : ''}" title="Best shot: everyone throws, the team plays the best">Best shot</button><button data-v="2" class="${teamsOn && teamPlay === 'alternate' ? 'on' : ''}" title="Alternate shot: teammates take turns with one disc">Alternate</button>`;
   $('teams-note').textContent = !teamsOn ? '' : groups ? teamsLabel(groups) : 'One team: everyone plays alone';
+  renderFormat(); // the sides changed: match play may need its note
   $('teams-seg').querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
     teamsOn = b.dataset.v !== '0';
     if (teamsOn) teamPlay = b.dataset.v === '2' ? 'alternate' : 'best';
     save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), teamsOn, teamPlay });
-    renderFormat();
     renderPlayers();
     pushLobby();
     renderRoom();
@@ -595,7 +603,7 @@ function pushLobby(): void {
   const kept = (lobby?.seats ?? []).filter((q) => !botOfClient(q.client) && !members.some((m) => m.client === q.client) && Date.now() - (awaySince.get(q.client) ?? 0) < SEAT_GRACE_MS);
   const order = [...members, ...kept].sort((a, b) => seatOf(a) - seatOf(b)); // stable: newcomers keep arrival order
   // Bots sit after the people (as many as there's room for).
-  const bots = roomBots.map((lv, i) => ({ client: botClient(lv, i), name: `Bot ${i + 1} (${BOT_LEVELS.find(([v]) => v === lv)![1]})`, color: undefined as string | undefined, design: DISC_DESIGNS[(i + 1) % DISC_DESIGNS.length][0] }));
+  const bots = roomBots.map((c) => ({ client: c, name: `Bot ${botNumber(c)} (${BOT_LEVELS.find(([v]) => v === botOfClient(c))![1]})`, color: undefined as string | undefined, design: DISC_DESIGNS[botNumber(c) % DISC_DESIGNS.length][0] }));
   const seated = [...order, ...bots].slice(0, MAX_PLAYERS);
   const names = uniqueNames(seated.map((m) => m.name), seated.map((m) => m.client));
   const colors = playerColors(seated.map((m) => m.color));
@@ -678,8 +686,8 @@ function renderRoom(): void {
   if (sw && myColor) sw.style.background = myColor;
   $('add-bot-box').hidden = !amHost() || seats.length >= MAX_PLAYERS;
   if (amHost()) $('room-members').querySelectorAll<HTMLButtonElement>('.bot-x').forEach((b) => b.addEventListener('click', () => {
-    const k = parseInt(b.dataset.client!.split('-')[2], 10) - 1;
-    roomBots.splice(k, 1);
+    const k = roomBots.indexOf(b.dataset.client!);
+    if (k >= 0) roomBots.splice(k, 1);
     pushLobby();
     renderRoom();
   }));
@@ -750,6 +758,7 @@ function joinRoom(code: string): void {
     welcome: (w) => {
       if (launched) return;
       me = w.you; host = w.host; members = w.members; lobby = w.lobby;
+      mirrorBots(lobby);
       // A reconnect to the same game gets only the events after `since`.
       if (!w.since) roomLog.length = 0;
       for (const x of w.log) if (x.seq === roomLog.length) roomLog.push(x);
@@ -760,7 +769,7 @@ function joinRoom(code: string): void {
       else pushLobby();
     },
     members: (m) => { members = m; if (!launched) { trackAway(); pushLobby(); renderRoom(); } },
-    lobby: (l) => { lobby = l; if (!launched) { if (!amHost()) showLobby(l); renderRoom(); } },
+    lobby: (l) => { lobby = l; if (!amHost()) mirrorBots(l); if (!launched) { if (!amHost()) showLobby(l); renderRoom(); } },
     started: (l) => { lobby = l; launch(l); },
     // The host left: someone else (maybe us) runs the lobby now.
     host: (h) => { host = h; if (!launched) { pushLobby(); renderRoom(); } },
@@ -797,7 +806,10 @@ $('player-names').addEventListener('keydown', (e) => { if (e.key === 'Enter' && 
 $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('join-room').click(); });
 $('add-bot').addEventListener('click', () => {
   if (!room || !amHost()) return;
-  roomBots.push($<HTMLSelectElement>('add-bot-level').value as BotLevel);
+  // The lowest number no bot has, so the others keep theirs (and their team picks).
+  let n = 1;
+  while (roomBots.some((c) => botNumber(c) === n)) n++;
+  roomBots.push(botClient($<HTMLSelectElement>('add-bot-level').value as BotLevel, n - 1));
   pushLobby();
   renderRoom();
 });
@@ -816,6 +828,7 @@ $('leave-room').addEventListener('click', () => {
   save(LAST_ROOM, null);
   room?.close();
   room = null; lobby = null; members = [];
+  mirrorBots(null);
   leaveRoomLink();
   $('setup').classList.remove('online-guest');
   renderPlayers();
@@ -877,12 +890,17 @@ function openDaily(): void {
   body.innerHTML = head;
   body.querySelector('#daily-play')!.addEventListener('click', () => { closeDaily(); void startDaily(d); });
   $('daily').hidden = false;
-  void dailyBoard(d.date, clientId()).then((b) => {
+  // A round that couldn't go up when it was played (the board was offline) goes up now.
+  const name = [...$('player-names').querySelectorAll('input')][0]?.value.trim() || 'Player 1';
+  const board = mine && !mine.posted
+    ? postDaily(d.date, { client: clientId(), name, strokes: mine.strokes, toPar: mine.toPar }).then((b) => { if (b) saveDailyRecord(d.date, { ...mine, posted: true }); return b; })
+    : dailyBoard(d.date, clientId());
+  void board.then((b) => {
     const box = body.querySelector('.daily-board');
     if (!box) return;
     box.innerHTML = !b ? '<small class="dim">The board is offline.</small>' : b.players === 0 ? '<small class="dim">Nobody yet: be the first.</small>'
       : `<table class="stats-rounds"><tbody>${b.top.map((r, k) => `<tr class="${r.you ? 'you' : ''}"><td>${k + 1}</td><td>${escapeHtml(r.name)}</td><td>${r.strokes}</td><td class="${r.toPar < 0 ? 'under' : r.toPar > 0 ? 'over' : 'even'}">${fmt(r.toPar)}</td></tr>`).join('')}</tbody></table>`
-        + `<small class="dim">${b.players} played${b.you && b.you.rank > b.top.length ? ` · you're ${b.you.rank}th` : ''}</small>`;
+        + `<small class="dim">${b.players} played${b.you && b.you.rank > b.top.length ? ` · you're ${ordinal(b.you.rank)}` : ''}</small>`;
   });
 }
 function closeDaily(): void { $('daily').hidden = true; }

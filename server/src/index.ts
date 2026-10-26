@@ -270,13 +270,11 @@ export class Room extends DurableObject<Env> {
     }
   }
 
-  /** One alarm does two jobs: hand the room to a new host, and delete the room once idle. */
   /**
    * The daily challenge's board: GET lists it (best first, and where `client` stands); POST adds a
    * player's score, their first of the day only (later rounds are practice).
    */
   private async daily(req: Request, url: URL): Promise<Response> {
-    this.sql.exec('CREATE TABLE IF NOT EXISTS daily (client TEXT PRIMARY KEY, name TEXT NOT NULL, strokes INTEGER NOT NULL, to_par INTEGER NOT NULL, at INTEGER NOT NULL)');
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
     let me = url.searchParams.get('client') ?? '';
     if (req.method === 'POST') {
@@ -286,19 +284,27 @@ export class Room extends DurableObject<Env> {
         && Number.isInteger(b.toPar) && Math.abs(b.toPar as number) < 100;
       if (!ok) return json({ error: 'bad score' }, 400);
       const name = (b.name as string).trim().slice(0, 16) || 'Player';
+      // Made by the first score, so looking at a day nobody's played stores nothing (and so is
+      // never left behind without the idle alarm that touch() sets).
+      this.sql.exec('CREATE TABLE IF NOT EXISTS daily (client TEXT PRIMARY KEY, name TEXT NOT NULL, strokes INTEGER NOT NULL, to_par INTEGER NOT NULL, at INTEGER NOT NULL)');
       this.sql.exec('INSERT OR IGNORE INTO daily (client, name, strokes, to_par, at) VALUES (?, ?, ?, ?, ?)', b.client, name, b.strokes, b.toPar, Date.now());
       this.touch();
       me = b.client as string;
     } else if (req.method !== 'GET') return json({ error: 'GET or POST' }, 405);
-    const rows = [...this.sql.exec<{ client: string; name: string; strokes: number; to_par: number }>('SELECT client, name, strokes, to_par FROM daily ORDER BY to_par, at')];
-    const rank = rows.findIndex((r) => r.client === me);
+    if (!this.sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'daily'").toArray().length) return json({ players: 0, top: [] });
+    // The top 20, the count, and where `me` stands (ranked as the list is: by score, then who was first).
+    const top = this.sql.exec<{ client: string; name: string; strokes: number; to_par: number }>('SELECT client, name, strokes, to_par FROM daily ORDER BY to_par, at LIMIT 20').toArray();
+    const players = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM daily').one().n;
+    const mine = this.sql.exec<{ strokes: number; to_par: number; at: number }>('SELECT strokes, to_par, at FROM daily WHERE client = ?', me).toArray()[0];
+    const rank = mine && this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM daily WHERE to_par < ? OR (to_par = ? AND at < ?)', mine.to_par, mine.to_par, mine.at).one().n + 1;
     return json({
-      players: rows.length,
-      top: rows.slice(0, 20).map((r) => ({ name: r.name, strokes: r.strokes, toPar: r.to_par, you: r.client === me })),
-      ...(rank >= 0 ? { you: { rank: rank + 1, strokes: rows[rank].strokes, toPar: rows[rank].to_par } } : {}),
+      players,
+      top: top.map((r) => ({ name: r.name, strokes: r.strokes, toPar: r.to_par, you: r.client === me })),
+      ...(mine ? { you: { rank, strokes: mine.strokes, toPar: mine.to_par } } : {}),
     });
   }
 
+  /** One alarm does two jobs: hand the room to a new host, and delete the room once idle. */
   async alarm(): Promise<void> {
     const gone = Number(this.get('hostGone') ?? 0);
     if (gone && Date.now() - gone >= HOST_GRACE_MS) this.migrateHost();

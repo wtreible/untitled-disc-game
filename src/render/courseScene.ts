@@ -445,10 +445,10 @@ export class CourseScene {
   }
 
   /**
-   * First person, before the throw: player i's disc held ahead and to the right, top up so its design shows,
+   * First person, before the throw: player i's disc held just ahead, top up so its design shows,
    * tilted with the release (hyzer +, anhyzer −) and nose angle, drawn over everything so it never
-   * clips the ground. A forehand holds it to the right; a putt lower and flatter; charging draws it
-   * back a little. null puts it away.
+   * clips the ground. Right-handed: a backhand holds it a little left of center, a forehand a little
+   * right; a putt lower and flatter; charging draws it back a little. null puts it away.
    */
   setHeldDisc(i: number | null, o: { hyzer?: number; nose?: number; forehand?: boolean; putt?: boolean; charge?: number } = {}): void {
     for (const [k, m] of this.held) m.visible = k === i && this.fp;
@@ -456,14 +456,16 @@ export class CourseScene {
     let m = this.held.get(i);
     if (!m) {
       m = discMesh(this.heldLook.colors[i] ?? '#ffffff', this.heldLook.designs[i]);
-      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { mat.depthTest = false; mat.depthWrite = false; }
+      // Transparent (though opaque) so it's drawn after the see-through layers (hillshade, cloud
+      // shadows, water), which would otherwise paint over it: renderOrder only sorts within a pass.
+      for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { mat.depthTest = false; mat.depthWrite = false; mat.transparent = true; }
       m.renderOrder = 50;
       m.frustumCulled = false;
       this.persp.add(m);
       this.held.set(i, m);
     }
-    // Off to the right, above the HUD panel (which covers the bottom of the view): in the right hand.
-    const side = o.forehand ? 0.36 : 0.28, back = (o.charge ?? 0) * 0.12;
+    // Near the middle, above the HUD panel (which covers the bottom of the view).
+    const side = o.forehand ? 0.1 : -0.07, back = (o.charge ?? 0) * 0.12;
     m.position.set(side, o.putt ? -0.02 : 0.01, -0.62 + back);
     m.scale.setScalar(0.75);
     // Lying nearly flat seen from just above (its top toward the eye), then the release's roll and
@@ -1001,7 +1003,8 @@ export class CourseScene {
 
   // ---------- dynamic objects ----------
 
-  setDisc(i: number, p: Vec3 | null, bank: number, heading: number, active: boolean): void {
+  /** `spin`: turned about its own axis (radians, counter-clockwise from above when flat). */
+  setDisc(i: number, p: Vec3 | null, bank: number, heading: number, active: boolean, spin = 0): void {
     const g = this.discMarkers[i];
     const d3 = this.discs3d[i];
     g.visible = p !== null;
@@ -1022,6 +1025,7 @@ export class CourseScene {
     d3.rotation.set(0, 0, 0);
     d3.rotateZ(heading);
     d3.rotateX(-bank);
+    d3.rotateZ(spin);
   }
 
   setAim(from: Vec2 | null, to: Vec2, color: string): void {

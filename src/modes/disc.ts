@@ -25,7 +25,7 @@ import { SurfaceGrid } from '../game/surfaces';
 import { FlatTerrain, HeightmapTerrain, type Terrain, type Vec3 } from '../game/terrain';
 import { applyLayout, isDefault, type Layout } from '../course/layout';
 import { botOfClient, botRelease, planInput, planThrow, type BotLevel, type BotSituation } from '../game/bot';
-import { dailyRecord, saveDailyRecord } from '../game/daily';
+import { dailyRecord, ordinal, saveDailyRecord } from '../game/daily';
 import { designCanvas, isDesign } from '../render/discDesigns';
 import { mulberry32 } from '../game/physics';
 import { dailyBoard, postDaily, type Board } from '../net/daily';
@@ -194,11 +194,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       dailyTile = `<div class="hl"><small>Daily challenge${first ? '' : ' · practice'}</small><b>${first ? fmtPar(toPar) : fmtPar(prev!.toPar)}</b><span>${esc(first ? line : `your round counts: ${line}`)}</span></div>`;
       if (!$('results').hidden) $('results-summary').insertAdjacentHTML('afterbegin', dailyTile);
     };
-    if (first) void postDaily(date, { client: clientId(), name: opts.names[0], strokes, toPar }).then((b) => { if (b) saveDailyRecord(date, { strokes, toPar, posted: true }); show(b); });
+    // The round that counts goes up now if it couldn't before (the board was offline then).
+    const post = !prev ? { strokes, toPar } : !prev.posted ? { strokes: prev.strokes, toPar: prev.toPar } : null;
+    if (post) void postDaily(date, { client: clientId(), name: opts.names[0], ...post }).then((b) => { if (b) saveDailyRecord(date, { ...post, posted: true }); show(b); });
     else void dailyBoard(date, clientId()).then(show);
   }
-  /** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st. */
-  const ordinal = (n: number) => { const t = n % 100, u = n % 10; return `${n}${t >= 11 && t <= 13 ? 'th' : u === 1 ? 'st' : u === 2 ? 'nd' : u === 3 ? 'rd' : 'th'}`; };
   /** Holes whose skins or match result has been announced. */
   const announced = new Set<number>();
   /** When a hole's done: who took the skins, or the hole, and how the match stands. */
@@ -220,6 +220,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const tile = (label: string, big: string, line: string) => `<div class="hl"><small>${label}</small><b>${esc(big)}</b><span>${esc(line)}</span></div>`;
     if (fmt === 'skins') {
       const s = skins(), best = Math.max(...s.won), top = rows().filter((_, k) => s.won[k] === best);
+      // Every hole tied: nobody took a skin, so there's no winner to name.
+      if (best === 0) return tile('Skins', 'No skins won', `${s.carry} left in the pot`);
       return tile('Skins', top.map((r) => teamName(r[0])).join(' & '), `${best} skin${best === 1 ? '' : 's'}${s.carry ? ` · ${s.carry} left in the pot` : ''}`);
     }
     if (fmt === 'match') return tile('Match play', matchText(match(), matchNames()), `${match().holes.filter((x) => x === 0).length}–${match().holes.filter((x) => x === 1).length} in holes won`);
@@ -653,6 +655,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (st.stage === 'drafting') return st.drafting[0] ?? null;
     if (st.stage === 'placing') return st.placing[0]?.player ?? null;
     return null;
+  }
+  /** The round is waiting on a bot (its throw, draft pick, placement or bag). */
+  function waitingOnBot(): boolean {
+    if (st.stage === 'bagging') return st.needBag.some((p) => !!botOf(p));
+    const p = waitingOn();
+    return p !== null && !!botOf(p);
   }
   function updateAway(): void {
     if (!net) return;
@@ -1165,7 +1173,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     else startCharge();
   }
   function startCharge(): void {
-    if (phase !== 'aim' || !$('draft').hidden || botOf(game().current)) return; // a bot throws for itself // not behind a draft (Crazy mode's tutorial deals one on the range)
+    if (phase !== 'aim' || !$('draft').hidden || botOf(game().current)) return; // not behind a draft (Crazy mode's tutorial deals one on the range); a bot throws for itself
     // Not before the camera is at the disc (it glides there from the last throw).
     if (scene.gliding) { chargeQueued = true; return; }
     chargeQueued = false;
@@ -1269,6 +1277,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     quakeNow = false;
     const e: Extract<RoundEvent, { t: 'throw' }> = { t: 'throw', player: me, perfect, result: st.wire(result), clock: Math.round(gameClock * 1000) / 1000 }; // world() simulated at gameClock
     if (range) e.disc = disc.id;
+    if (input.mirror) e.forehand = true; // the model spins the other way
     if (other) e.twin = st.wire(other).samples.filter((_, i) => i % 2 === 0);
     const early = sendNow(e);
     playThrow(e, puttStyle() ? 1 : prefs().playback, false);
@@ -1364,6 +1373,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
 
   /** Fly a throw event's disc (then replay it, then apply it). `remote`: another player's throw. */
+  /**
+   * The model's spin at flight sample t (60 a second): clockwise seen from above for a right-handed
+   * backhand, the other way for a forehand, stopping when the disc does. 2.5 turns a second, well
+   * under a real disc's, so it reads as spin at 60 fps instead of strobing.
+   */
+  const spinAt = (f: NonNullable<typeof flight>, t: number) => (f.e.forehand ? 1 : -1) * ((2.5 * Math.PI * 2) / 60) * Math.min(t, f.result.samples.length - 1);
   function playThrow(e: Extract<RoundEvent, { t: 'throw' }>, speed: number, remote: boolean): void {
     hideWait();
     // Someone else's throw: their clock is the one the moving props were simulated at, so take it.
@@ -1753,6 +1768,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('pause-lobby').hidden = !isHost;
     if (st.stage === 'card' && !$('results').hidden) showCard();
     else if (st.stage === 'need-hole' || st.stage === 'need-rules') advance();
+    // Waiting on a bot: the old host was playing it, so it's ours to play now (not mid-throw).
+    else if (isHost && waitingOnBot() && (st.stage !== 'playing' || phase === 'watching')) { phase = 'idle'; advance(); }
     updateAway();
   }
   /** The room is back in its lobby: reload into it (the menu rejoins the room it last joined without asking names). */
@@ -2345,7 +2362,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const q = g.players[i];
       // Best shot: a throw waiting on its teammates' sits where it landed.
       const at = st.teams ? st.volley.get(st.teamOf(i))?.find((x) => x.player === i)?.result.rest ?? q?.ball : q?.ball;
-      scene.setDisc(i, q && at && !q.holed && !(flight && i === flight.e.player) ? above(at, 0.07) : null, 0, yaw, i === g.current); // above a tee pad (5 cm)
+      scene.setDisc(i, q && at && !q.holed && !(flight && i === flight.e.player) ? above(at, dist(at, hole().tee) < 1.7 ? 0.07 : 0.02) : null, 0, yaw, i === g.current); // on the tee pad (5 cm up), or the ground
     });
     if (!flight?.e.twin) scene.setTwin(null, '#fff');
     // The ghost disc, at the same moment of its own flight (in the replay too).
@@ -2363,7 +2380,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const t = replay.t, cam = replay.cam;
       const k = Math.floor(t);
       const { pos, kk, dt } = stepChase(cam, s, t, now);
-      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, headingAt(s, kk), true);
+      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, headingAt(s, kk), true, spinAt(flight, t));
       emitTrail(pos);
       scene.chase(pos, cam.smooth, !cam.started, dt);
       showTwin(t);
@@ -2380,7 +2397,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const k = Math.floor(t);
       const { pos, kk, dt } = stepChase(follow, s, t, now);
       if (!follow.started) { scene.setFirstPerson(true); $('minimap').hidden = true; $('reticle').hidden = true; scene.minimapEnabled = false; }
-      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, headingAt(s, kk), true);
+      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, headingAt(s, kk), true, spinAt(flight, t));
       emitTrail(pos);
       scene.chase(pos, follow.smooth, !follow.started, dt);
       showTwin(t);
@@ -2394,7 +2411,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       const k = Math.floor(flight.t);
       const kk = Math.max(0, Math.min(k, s.length - 1));
       const pos = sampleAt(s, flight.t);
-      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, headingAt(s, kk), true);
+      scene.setDisc(flight.e.player, pos, flight.result.banks[kk] ?? 0, headingAt(s, kk), true, spinAt(flight, flight.t));
       emitTrail(pos);
       showTwin(flight.t);
       soundUpTo(flight.t, false);

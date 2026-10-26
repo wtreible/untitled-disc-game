@@ -644,4 +644,5 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .daily-board tr.you td { color: var(--accent); font-weight: 700; }
 .courses h3 { display: flex; align-items: center; justify-content: space-between; }
 #daily-play { align-self: flex-start; }
+.format-desc { margin: -4px 0 4px; font-size: 12px; }
 .disc-icon { width: 18px; height: 18px; vertical-align: -3px; border-radius: 50%; }
