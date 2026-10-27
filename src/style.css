@@ -252,8 +252,10 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .disc-picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .disc-card {
   display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 3px 6px; text-align: center; border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04); border: 2px solid transparent; color: var(--text); min-width: 0;
+  background: rgba(255, 255, 255, 0.04); border: 2px solid transparent; color: var(--text); min-width: 0; position: relative;
 }
+/* Its number key, in the corner. */
+.disc-card[data-key]::before { content: attr(data-key); position: absolute; top: 3px; left: 6px; font: 700 10px var(--body); color: var(--muted); }
 .disc-card .chart { width: 34px; height: 50px; }
 .disc-card:hover { background: rgba(255, 255, 255, 0.08); }
 .disc-card:focus:not(:focus-visible) { outline: none; }
@@ -595,6 +597,10 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .range-panel .rp-val { font: 600 12px var(--body); letter-spacing: 0; text-transform: none; color: var(--text); text-align: right; }
 .range-panel .rp-seg { display: flex; flex-wrap: wrap; }
 .range-panel .rp-seg button { flex: 1 1 auto; padding: 5px 8px; font-size: 12px; }
+/* The shot type picker: wraps to fit the range panel, the putting card and Settings. */
+.shot-types { display: flex; flex-wrap: wrap; }
+.shot-types button { flex: 1 1 auto; padding: 5px 8px; font-size: 12px; }
+.pt-shot { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .range-panel .rp-tools { display: flex; gap: 6px; }
 .range-panel .rp-tools button { flex: 1; padding: 6px 8px; font-size: 12.5px; }
 .range-panel .rp-tools button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }

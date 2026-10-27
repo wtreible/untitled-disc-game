@@ -5,6 +5,7 @@ import { DEFAULT_BASKETS, type RangeConditions } from '../course/range';
 import { WEATHER, type WeatherId } from '../render/weather';
 import { sfx } from '../audio/sound';
 import { fmtLen, fmtSpeed } from '../units';
+import { shotTypeSeg, wireShotTypes } from './shotTypes';
 
 /** The range as this browser last set it (saved), plus this viewer's own flight-line toggle. */
 export interface RangeSetup extends RangeConditions {
@@ -80,6 +81,7 @@ export function mountRangePanel(el: HTMLElement, s: RangeSetup, cb: RangeCallbac
         <input type="range" min="0" max="345" step="15" data-k="from" value="${s.windFrom}" title="Wind direction" ${off()}></section>
       <section><h4>Weather</h4>
         <div class="seg rp-seg" data-k="weather">${Object.values(WEATHER).map((w) => `<button data-v="${w.id}" class="${s.weather === w.id ? 'on' : ''}" ${off()}>${w.label}</button>`).join('')}</div></section>
+      <section><h4>Shot type</h4>${shotTypeSeg()}</section>
       <label class="toggle small"><input type="checkbox" data-k="ghost" ${s.ghost ? 'checked' : ''}><span class="switch"></span>
         <span class="toggle-text"><b>Flight line</b><small>Where a perfect throw goes</small></span></label>
       <section><h4>Course</h4>
@@ -101,6 +103,7 @@ export function mountRangePanel(el: HTMLElement, s: RangeSetup, cb: RangeCallbac
     const click = (sel: string, fn: (b: HTMLButtonElement) => void) => el.querySelectorAll<HTMLButtonElement>(sel).forEach((b) => b.addEventListener('click', () => { b.blur(); sfx('select'); fn(b); }));
     click('[data-k=dir] button', (b) => { s.windFrom = parseInt(b.dataset.v!, 10); if (s.windSpeed < 0.5) s.windSpeed = 3; changed('wind'); });
     click('[data-k=weather] button', (b) => { s.weather = b.dataset.v as WeatherId; changed('weather'); });
+    wireShotTypes(el); // just this browser's, not the room's
     click('[data-tool]', (b) => setTool(tool === b.dataset.tool ? null : (b.dataset.tool as RangeTool)));
     click('[data-act=lines]', () => cb.clearLines());
     click('[data-act=reset]', () => { setTool(null); cb.reset(); });
@@ -124,6 +127,7 @@ export function mountRangePanel(el: HTMLElement, s: RangeSetup, cb: RangeCallbac
   const setTool = (t: RangeTool | null) => { tool = t; cb.tool(t); render(); };
   render();
   window.addEventListener('unitschange', render);
+  window.addEventListener('prefschange', render); // the shot type, picked here or in Settings
   return {
     get tool() { return tool; },
     setTool,

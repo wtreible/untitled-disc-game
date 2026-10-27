@@ -1,6 +1,6 @@
 // Which key does what: one table for the game, quick chat and the menus, rebindable in Settings →
 // Controls (saved in prefs). Keys are KeyboardEvent.key, lowercased (' ' is Space). Esc, the
-// arrow-key fine steps (Shift) and quick chat's 1–8 stay as they are.
+// arrow-key fine steps (Shift), the number keys' discs and quick chat's 1–8 stay as they are.
 import { prefs, setPref } from './settings';
 
 export type KeyAction =

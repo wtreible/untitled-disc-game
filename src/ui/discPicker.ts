@@ -74,7 +74,12 @@ export function mountDiscPicker(el: HTMLElement, onPick: (d: Disc) => void): { u
   let bag: string[] | null = null;
   let rel: Release = FLAT;
   const mark = () => {
-    el.querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => { b.hidden = !!bag && !bag.includes(b.dataset.id!); });
+    // Each card shown is numbered for its key (1, 2, …), left to right.
+    let n = 0;
+    el.querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => {
+      b.hidden = !!bag && !bag.includes(b.dataset.id!);
+      if (b.hidden) delete b.dataset.key; else b.dataset.key = String(++n);
+    });
     if (!last) return;
     el.classList.toggle('forehand', last.forehand);
     el.querySelectorAll<HTMLButtonElement>('.disc-card').forEach((b) => b.classList.toggle('on', b.dataset.id === last!.current.id));

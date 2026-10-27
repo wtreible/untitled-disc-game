@@ -1,4 +1,4 @@
-// Throw styles (Settings → Dev): how a throw's power, and how cleanly it's released, come from the
+// Throw styles (Settings → Shot type, and on the driving and putting ranges): how a throw's power, and how cleanly it's released, come from the
 // player's input. They run on one button (the throw key, or the swing button), except the flick and
 // the X-step flick, which are swings of the pointer. Times are performance.now() ms; nothing here
 // touches the page.
@@ -29,7 +29,7 @@ export const THROW_STYLES: [ThrowStyle, string, string][] = [
   ['hybrid', 'X-step flick', 'Tap the throw key to get ready, press on the course and pull back to start the run-up, tap the key on beats 1 and 2, then swipe up and let go on beat 3'],
 ];
 
-/** The styles that can be picked for now; the others are greyed out in Settings → Dev until they're right. */
+/** The styles that can be picked for now; the others are left out of the shot type pickers until they're right. */
 export const ENABLED_STYLES: ThrowStyle[] = ['classic', 'two-stage', 'flick', 'xstep', 'hybrid'];
 /** The style a throw uses: the chosen one if it's enabled, else 1 stage. */
 export const usableStyle = (s: ThrowStyle): ThrowStyle => (ENABLED_STYLES.includes(s) ? s : 'classic');
@@ -90,7 +90,7 @@ export const SNAP_LANE: [number, number] = [SNAP.runout, 2 * SNAP.center - SNAP.
  * is read over at release (ms); the slowest release that counts (× full); the dead-straight band (rad);
  * and, for the X-step flick, how far down from the press reaching back starts the run-up (CSS px).
  */
-export const FLICK = { half: (26 * Math.PI) / 180, r0: 18, R: 170, full: 1500, window: 80, slowest: 0.08, straight: (2.5 * Math.PI) / 180, reach: 40 };
+export const FLICK = { half: (26 * Math.PI) / 180, r0: 18, R: 340, full: 1500, window: 80, slowest: 0.08, straight: (2.5 * Math.PI) / 180, reach: 40 };
 /** X-step: one beat (ms), the window either side of a beat that counts as perfect, and the timeline's length (beats). */
 export const XSTEP = { beat: 420, perfect: 45, span: 3.6 };
 /** Two-stage putts: the reticle's breath (ms per cycle), and how long before it lets go on its own. */

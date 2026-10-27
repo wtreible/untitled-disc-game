@@ -7,6 +7,7 @@
 import type { Vec2 } from '../course/geo';
 import { FT } from '../course/range';
 import { fmtLen } from '../units';
+import { shotTypeSeg, wireShotTypes } from '../ui/shotTypes';
 import type { RoundEvent } from './discRound';
 import { esc } from './discKit';
 
@@ -65,7 +66,9 @@ export function renderPutting(el: HTMLElement, s: PuttState, names: string[], co
       <div class="tu-bar"><i style="width:${(s.station / STATIONS.length) * 100}%"></i></div>
       <h4>${fmtLen(st.ft * FT)} <small class="dim">· ${st.pts} ${st.pts === 1 ? 'point' : 'points'} a make</small></h4>
       <div class="pt-table">${names.map((_, p) => `<div class="pt-row"><b><i style="background:${colors[p]}"></i>${esc(names[p])}</b><span class="pt-dots">${dots(p, s.station)}</span><em>${s.scores[p]}</em></div>`).join('')}</div>
+      <div class="pt-shot"><small class="dim">Shot type</small>${shotTypeSeg()}</div>
       <div class="tu-actions"><button class="chip-btn" data-act="quit">${end.lobby || end.wait ? 'Leave room' : 'End'}</button></div>`;
+    wireShotTypes(el);
   }
   el.querySelectorAll<HTMLButtonElement>('button[data-act]').forEach((b) => b.addEventListener('click', () => {
     if (b.dataset.act === 'again') end.again?.();

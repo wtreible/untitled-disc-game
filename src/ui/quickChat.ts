@@ -102,7 +102,7 @@ export function mountQuickChat(send: (m: ChatMsg) => void, enabled: () => boolea
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).tagName === 'INPUT') return;
     if (isKey(e, 'chat') && !e.repeat && !open) show('hold', pointer);
-    else if (open && /^[1-8]$/.test(e.key)) pick(parseInt(e.key, 10) - 1);
+    else if (open && /^[1-8]$/.test(e.key)) { e.stopImmediatePropagation(); pick(parseInt(e.key, 10) - 1); } // not a disc pick too
     else if (open && e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
   }, true);
   window.addEventListener('keyup', (e) => { if (isKey(e, 'chat') && open === 'hold') pick(picked); });
