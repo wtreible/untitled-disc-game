@@ -512,7 +512,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #draft-cards { display: flex; gap: 14px; flex-wrap: wrap; }
 .pcard { flex: 1 1 210px; min-height: 170px; display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 16px; border-radius: 14px; background: var(--navy-1); border: 2px solid var(--navy-3); }
 .pcard b { font: 700 22px var(--head); letter-spacing: 0.02em; }
-.pcard span:last-child { color: var(--muted); font-size: 14px; line-height: 1.45; font-weight: 500; }
+.pcard .ptxt { color: var(--muted); font-size: 14px; line-height: 1.45; font-weight: 500; flex: 1; }
 .pcard .ptier { font: 800 12px var(--head); text-transform: uppercase; letter-spacing: 0.16em; }
 .pcard.epic { border-color: #7a4bb0; }
 .pcard.legendary { border-color: #c9952a; box-shadow: 0 0 22px rgba(255, 194, 61, 0.3); }
@@ -575,8 +575,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .aug-card.epic .ptier { color: var(--t-epic); } .aug-card.legendary .ptier { color: var(--t-legendary); }
 .aug-card b { font: 700 15px var(--head); }
 .aug-card .txt { font-size: 12.5px; color: var(--text); opacity: 0.85; }
-.aug-card .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-.aug-card em { font-style: normal; font-size: 10.5px; color: var(--muted); background: rgba(255, 255, 255, 0.06); border-radius: 4px; padding: 1px 6px; }
+.aug-card .tags, .aug-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.aug-card em, .aug-tags em { font-style: normal; font-size: 10.5px; color: var(--muted); background: rgba(255, 255, 255, 0.06); border-radius: 4px; padding: 1px 6px; }
+.aug-mini .aug-tags em { font-size: 9.5px; padding: 0 5px; }
 .aug-card em.own { color: var(--accent); }
 .pcard .pcat { font: 600 10.5px var(--body); color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
 .crazy-rules { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 6px; padding: 10px 12px; border-radius: 10px; background: rgba(255, 106, 61, 0.06); border: 1px solid rgba(255, 106, 61, 0.2); }

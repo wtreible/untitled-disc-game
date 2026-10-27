@@ -7,11 +7,16 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const catLabel = (p: Powerup) => CATEGORIES.find((c) => c.id === p.category)?.label ?? '';
 const kindNote = (p: Powerup) => (p.kind === 'hex' ? 'Hex: affects everyone else' : p.kind === 'personal' ? 'Your course only' : '');
 
-/** Small card: name and effect, full text on hover. `count` > 1 shows a ×n badge (stacked). */
+/** Whether it stacks, and what it touches: the tags shown with it everywhere (browser, draft, side panel), plus any `extra`. */
+export function augTags(p: Powerup, ...extra: string[]): string {
+  return [p.unique ? 'one only' : 'stacks', kindNote(p), ...extra].filter(Boolean).map((t) => `<em>${esc(t)}</em>`).join('');
+}
+
+/** Small card: name, effect and tags, full text on hover. `count` > 1 shows a ×n badge (stacked). */
 export function miniCard(p: Powerup, count = 1, note = ''): string {
   const full = [p.name, convertText(p.text), catLabel(p), kindNote(p), note].filter(Boolean).join('\n');
   return `<div class="aug-mini ${p.tier}" title="${esc(full)}" tabindex="0">
-    <b>${esc(p.name)}${count > 1 ? ` <i>×${count}</i>` : ''}</b><span>${esc(convertText(p.text))}</span>${note ? `<small>${esc(note)}</small>` : ''}</div>`;
+    <b>${esc(p.name)}${count > 1 ? ` <i>×${count}</i>` : ''}</b><span>${esc(convertText(p.text))}</span>${note ? `<small>${esc(note)}</small>` : ''}<div class="aug-tags">${augTags(p)}</div></div>`;
 }
 
 /** A chip (scorecard): just the name, tier-colored; full text on hover. */
@@ -46,10 +51,9 @@ export function renderSidePanel(el: HTMLElement, who: { name: string; color: str
 
 /** Full-size card for the browser. */
 function browseCard(p: Powerup, ownedBy: string[]): string {
-  const tags = [p.unique ? 'one only' : 'stacks', kindNote(p)].filter(Boolean).map((t) => `<em>${esc(t)}</em>`).join('');
   return `<div class="aug-card ${p.tier}">
     <span class="ptier">${p.tier}</span><b>${esc(p.name)}</b><span class="txt">${esc(convertText(p.text))}</span>
-    <span class="tags">${tags}${ownedBy.length ? `<em class="own">Have: ${esc(ownedBy.join(', '))}</em>` : ''}</span></div>`;
+    <span class="tags">${augTags(p)}${ownedBy.length ? `<em class="own">Have: ${esc(ownedBy.join(', '))}</em>` : ''}</span></div>`;
 }
 
 /**

@@ -4,6 +4,7 @@
 import { DISCS } from '../disc/discs';
 import { byId, CATEGORIES, type Tier } from '../rogue/powerups';
 import { discCard } from '../ui/discPicker';
+import { augTags } from '../ui/augments';
 import { convertText } from '../units';
 import { $, esc } from './discKit';
 
@@ -70,13 +71,15 @@ export interface DraftPick {
 /** Deal the draft cards for one player. */
 export function showDraft(d: DraftPick): void {
   const cards = d.cards.map(byId);
+  const haveOf = (id: string) => d.owned.filter((x) => x === id).length;
   $('draft-title').innerHTML = `<span style="color:${d.color}">●</span> ${esc(d.name)}: ${d.starter ? 'pick your starter augment' : 'pick an augment'}`;
   $('draft-tier').textContent = d.tier ? `${d.tier[0].toUpperCase()}${d.tier.slice(1)} draft` : 'One of each tier';
   $('draft-tier').className = `tier ${d.tier ?? ''}`;
   $('draft-cards').innerHTML = cards.map((c, i) => `<button class="pcard ${c.tier}" data-i="${i}">
       <span class="ptier">${c.tier}${d.bumped === i ? ' ★ bumped' : ''}</span>
       <span class="pcat">${esc(CATEGORIES.find((k) => k.id === c.category)?.label ?? '')}</span>
-      <b>${esc(c.name)}</b><span>${esc(convertText(c.text))}</span></button>`).join('');
+      <b>${esc(c.name)}</b><span class="ptxt">${esc(convertText(c.text))}</span>
+      <span class="aug-tags">${augTags(c, haveOf(c.id) ? `You have ×${haveOf(c.id)}` : '')}</span></button>`).join('');
   $('draft-reroll').hidden = d.rerolls <= 0;
   $('draft-reroll').textContent = `Reroll (${d.rerolls})`;
   $('draft-owned').textContent = d.owned.length ? `Have: ${d.owned.map((id) => byId(id).name).join(', ')}` : '';
