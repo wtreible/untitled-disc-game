@@ -6,7 +6,7 @@ import { simulateThrow, type ThrowInput } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
-import { FLICK, RETICLE, SNAP, SNAP_LANE, ThrowControl, XSTEP, beatScore, idleView, reticleAt, snapExecution, snapHalf, type Release, type ThrowSetup } from '../src/modes/throwStyles';
+import { FLICK, RETICLE, SNAP, SNAP_LANE, ThrowControl, XSTEP, beatAt, beatScore, idleView, reticleAt, snapExecution, snapHalf, type Release, type ThrowSetup } from '../src/modes/throwStyles';
 
 const setup = (style: ThrowSetup['style'], over: Partial<ThrowSetup> = {}): ThrowSetup => ({ style, meterSpeed: 1, putt: false, discSpeed: 7, special: false, noOverpower: false, ...over });
 const rel = (r: Release | 'cancel' | null | undefined): Release => { expect(r).toBeTypeOf('object'); return r as Release; };
@@ -145,8 +145,8 @@ describe('throw styles', () => {
     c.press(0);
     let t0 = 0;
     for (let t = 10; t <= 60; t += 10) { c.move(400, 400 + t, t); if (t === 40) t0 = t; }
-    offs.forEach((off, i) => { if (off !== null) { c.frame(t0 + (i + 1) * XSTEP.beat + off - 1); c.press(t0 + (i + 1) * XSTEP.beat + off); } });
-    const end = t0 + 3 * XSTEP.beat + late;
+    offs.forEach((off, i) => { if (off !== null) { c.frame(t0 + beatAt(i + 1) * XSTEP.beat + off - 1); c.press(t0 + beatAt(i + 1) * XSTEP.beat + off); } });
+    const end = t0 + beatAt(3) * XSTEP.beat + late;
     for (let t = end - 144; t <= end; t += 8) c.move(400, 460 - pxs * (t - end + 144) / 1000, t);
     return c.release(end);
   };
@@ -180,8 +180,8 @@ describe('throw styles', () => {
     const run = (offs: number[]) => {
       const c = new ThrowControl(setup('xstep'));
       c.press(0);
-      offs.forEach((o, i) => { c.frame((i + 1) * XSTEP.beat + o - 1); c.press((i + 1) * XSTEP.beat + o); });
-      return rel(c.release(3 * XSTEP.beat + offs[2] + 800));
+      offs.forEach((o, i) => { c.frame(beatAt(i + 1) * XSTEP.beat + o - 1); c.press(beatAt(i + 1) * XSTEP.beat + o); });
+      return rel(c.release(beatAt(3) * XSTEP.beat + offs[2] + 800));
     };
     const good = run([0, 10, -20]), bad = run([150, -150, 160]);
     expect(good.note).toBe('Rhythm 100%');
@@ -195,9 +195,20 @@ describe('throw styles', () => {
   it('X-step: missed beats are stumbles, and a missed plant plants anyway', () => {
     const c = new ThrowControl(setup('xstep'));
     c.press(0);
-    for (let t = 0; t <= 4 * XSTEP.beat; t += 16) c.frame(t);
-    expect(c.frame(4 * XSTEP.beat).view.track!.beats.every((b) => b.hit === 0)).toBe(true);
-    expect(rel(c.release(4 * XSTEP.beat + 300)).note).toBe('Rhythm 0%');
+    for (let t = 0; t <= beatAt(4) * XSTEP.beat; t += 16) c.frame(t);
+    expect(c.frame(beatAt(4) * XSTEP.beat).view.track!.beats.every((b) => b.hit === 0)).toBe(true);
+    expect(rel(c.release(beatAt(4) * XSTEP.beat + 300)).note).toBe('Rhythm 0%');
+  });
+
+  it('X-step: the first beat comes after a lead-in, the others a beat apart', () => {
+    expect(beatAt(1) / 1).toBeGreaterThanOrEqual(1.25);
+    expect(beatAt(1)).toBeLessThanOrEqual(1.5);
+    expect(beatAt(2) - beatAt(1)).toBe(1);
+    // Pressing a plain beat after the start is now early for beat 1.
+    const c = new ThrowControl(setup('xstep'));
+    c.press(0);
+    c.press(XSTEP.beat);
+    expect(c.frame(XSTEP.beat + 1).view.track!.beats[0].hit).toBeLessThan(1);
   });
 
   it('X-step: the timeline shows the beats ahead and the cursor moving toward them', () => {

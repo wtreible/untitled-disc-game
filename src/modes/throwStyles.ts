@@ -91,8 +91,13 @@ export const SNAP_LANE: [number, number] = [SNAP.runout, 2 * SNAP.center - SNAP.
  * and, for the X-step flick, how far down from the press reaching back starts the run-up (CSS px).
  */
 export const FLICK = { half: (26 * Math.PI) / 180, r0: 18, R: 340, full: 1500, window: 80, slowest: 0.08, straight: (2.5 * Math.PI) / 180, reach: 40 };
-/** X-step: one beat (ms), the window either side of a beat that counts as perfect, and the timeline's length (beats). */
-export const XSTEP = { beat: 420, perfect: 45, span: 3.6 };
+/**
+ * X-step: one beat (ms), the window either side of a beat that counts as perfect, the timeline's
+ * length (beats), and the extra lead-in before beat 1 (beats), so there's time to get ready for it.
+ */
+export const XSTEP = { beat: 420, perfect: 45, span: 3.975, lead: 0.375 };
+/** X-step: when beat `k` (1–3) falls, in beats from the start of the run-up. */
+export const beatAt = (k: number) => XSTEP.lead + k;
 /** Two-stage putts: the reticle's breath (ms per cycle), and how long before it lets go on its own. */
 export const RETICLE = { period: 1300, timeout: 4000 };
 
@@ -140,7 +145,7 @@ export function reticleAt(ms: number, s: ThrowSetup): number {
 }
 
 /** X-step's beats on the timeline: steps on 1 and 2, the plant (hold, or the X-step flick's release) on 3; each one's hit so far. */
-const beatsOf = (hits: number[], last = 'HOLD') => [1, 2, 3].map((k) => ({ at: k / XSTEP.span, hit: hits[k - 1] ?? null, label: k === 3 ? last : String(k) }));
+const beatsOf = (hits: number[], last = 'HOLD') => [1, 2, 3].map((k) => ({ at: beatAt(k) / XSTEP.span, hit: hits[k - 1] ?? null, label: k === 3 ? last : String(k) }));
 
 /** Flick: the fan's half-angle (rad): wider with timing, and for putts. */
 export const flickHalf = (s: ThrowSetup) => Math.min(Math.PI / 2.2, FLICK.half * timingOf(s) * (s.putt ? 1.3 : 1));
@@ -195,12 +200,12 @@ export class ThrowControl {
     // The X-step flick's steps, once the run-up's going: beats 1 and 2 (beat 3 is the release).
     if (st.k === 'flick' && st.run?.t0 != null && st.run.hits.length < 2) {
       const k = st.run.hits.length + 1;
-      st.run.hits.push(beatScore(now - (st.run.t0 + k * this.beat), this.beat, timingOf(this.s)));
+      st.run.hits.push(beatScore(now - (st.run.t0 + beatAt(k) * this.beat), this.beat, timingOf(this.s)));
     }
     if (st.k === 'steps') {
       // This press is for the next beat: steps on beats 1 and 2, the plant (hold) on beat 3.
       const k = st.hits.length + 1;
-      st.hits.push(beatScore(now - (st.t0 + k * this.beat), this.beat, timingOf(this.s)));
+      st.hits.push(beatScore(now - (st.t0 + beatAt(k) * this.beat), this.beat, timingOf(this.s)));
       if (k === 3) this.stage = { k: 'plant', t0: now, hits: st.hits };
     }
     return null;
@@ -283,14 +288,14 @@ export class ThrowControl {
         // The X-step flick: the run-up's timeline; a missed step is a stumble.
         if (run.t0 === null) return { view: { ...view, track: { cursor: 0, beats: beatsOf([], 'FLICK') }, hint: 'Pull back to start the run-up' } };
         const due = run.hits.length + 1;
-        if (due <= 2 && now > run.t0 + (due + 0.5) * this.beat) run.hits.push(0);
+        if (due <= 2 && now > run.t0 + (beatAt(due) + 0.5) * this.beat) run.hits.push(0);
         const track = { cursor: Math.min(1, (now - run.t0) / (XSTEP.span * this.beat)), beats: beatsOf(run.hits, 'FLICK') };
         return { view: { ...view, track, hint: run.hits.length < 2 ? 'Tap on the beat' : 'Swipe up and let go on FLICK' } };
       }
       case 'steps': {
         // A missed beat counts as a stumble; a missed plant plants anyway.
         const due = st.hits.length + 1;
-        if (now > st.t0 + (due + 0.5) * this.beat) {
+        if (now > st.t0 + (beatAt(due) + 0.5) * this.beat) {
           st.hits.push(0);
           if (due === 3) this.stage = { k: 'plant', t0: now, hits: st.hits };
         }
@@ -306,7 +311,7 @@ export class ThrowControl {
   private track(now: number, t0: number, hits: number[], done = false): NonNullable<ThrowView['track']> {
     const span = XSTEP.span * this.beat;
     return {
-      cursor: done ? 3 / XSTEP.span : Math.min(1, (now - t0) / span),
+      cursor: done ? beatAt(3) / XSTEP.span : Math.min(1, (now - t0) / span),
       beats: beatsOf(hits),
     };
   }
@@ -346,7 +351,7 @@ export class ThrowControl {
 
   /** The X-step flick: the rhythm (the two steps, and letting go on beat 3) on top of the flick, as X-step's. */
   private withRhythm(r: Release, now: number, run: Run): Release {
-    const hits = [run.hits[0] ?? 0, run.hits[1] ?? 0, beatScore(now - (run.t0! + 3 * this.beat), this.beat, timingOf(this.s))];
+    const hits = [run.hits[0] ?? 0, run.hits[1] ?? 0, beatScore(now - (run.t0! + beatAt(3) * this.beat), this.beat, timingOf(this.s))];
     const rhythm = hits.reduce((a, b) => a + b, 0) / 3;
     const ex = r.execution!;
     return { power: r.power * (0.9 + 0.2 * rhythm), execution: { ...ex, wobble: ex.wobble + (1 - rhythm) * 0.8 }, note: `${r.note} · rhythm ${Math.round(rhythm * 100)}%` };
