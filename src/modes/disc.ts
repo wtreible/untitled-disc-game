@@ -35,6 +35,7 @@ import { CourseScene } from '../render/courseScene';
 import { loadProps } from '../render/props';
 import { treeShape } from '../disc/treeShapes';
 import { mountDiscPicker } from '../ui/discPicker';
+import { shotTypeSeg, wireShotTypes } from '../ui/shotTypes';
 import { IMAGERY, data } from '../assets';
 import { VIEW_LABELS } from '../render/scene';
 import { ESRI_ATTRIBUTION, loadImagery } from '../render/tiles';
@@ -1279,28 +1280,23 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       ret.classList.toggle('tight', v.reticle < 0.4);
     }
   }
-  /** Where the cursor was when the throw started, while the meter floats there; null: it's in the HUD. */
+  /** Where the cursor was when the throw started, while a copy of the meter floats there; null: none. */
   let floatAt: [number, number] | null = null;
-  /** Float the meter out of the HUD (to the page, so the HUD's transform and blur don't hold it) or put it back. */
+  /** Show or drop the meter's copy by the cursor (the HUD keeps its own). */
   function floatMeter(on: boolean): void {
     if (on === (floatAt !== null)) return;
-    const wrap = $('meter-wrap'), slot = $('meter-slot');
-    if (on) {
-      slot.style.minHeight = `${slot.offsetHeight}px`; // the HUD keeps its shape
-      floatAt = pointerAt[0] || pointerAt[1] ? [...pointerAt] : [innerWidth / 2, innerHeight / 2]; // the pointer's never moved: mid-screen
-      document.body.appendChild(wrap);
-      wrap.classList.add('floating');
-    } else {
-      floatAt = null;
-      wrap.classList.remove('floating');
-      wrap.style.left = wrap.style.top = '';
-      slot.appendChild(wrap);
-      slot.style.minHeight = '';
-    }
+    floatAt = on ? (pointerAt[0] || pointerAt[1] ? [...pointerAt] : [innerWidth / 2, innerHeight / 2]) : null; // the pointer's never moved: mid-screen
+    $('meter-float').hidden = !on;
+    if (!on) $('meter-float').innerHTML = '';
   }
-  /** Just below where the throw started (above it near the bottom), kept on screen. */
+  /**
+   * The copy, as the HUD's meter is now, just below where the throw started (above it near the
+   * bottom), kept on screen. It repeats the meter's ids so the same styles apply; the HUD's come
+   * first in the page, so the game's lookups still find those.
+   */
   function placeFloat(): void {
-    const wrap = $('meter-wrap'), [x, y] = floatAt!;
+    const wrap = $('meter-float'), [x, y] = floatAt!;
+    wrap.innerHTML = $('meter-wrap').innerHTML;
     const w = wrap.offsetWidth, h = wrap.offsetHeight, gap = 34;
     const top = y + gap + h < innerHeight - 8 ? y + gap : Math.max(30, y - gap - h);
     wrap.style.left = `${Math.min(innerWidth - w - 8, Math.max(8, x - w / 2))}px`;
@@ -2404,9 +2400,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** The crosshair's look (Settings → Customize). */
   const applyCrosshair = () => { $('reticle').dataset.style = prefs().crosshair; };
   applyCrosshair();
+  /** The shot type row on the controls (also on the range panel, the putting card and in Settings). */
+  const renderShotTypes = () => { $('hud-shot-types').innerHTML = shotTypeSeg(); wireShotTypes($('hud-shot-types')); };
+  renderShotTypes();
   window.addEventListener('prefschange', () => {
     scene.setFov(prefs().fov);
     applyCrosshair();
+    renderShotTypes();
     $('help').hidden = !prefs().help;
     applyGraphics();
     // The shot type may have changed: the meter's layout, and the putting card's picker.

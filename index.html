@@ -28,12 +28,10 @@
           <button id="view-toggle" class="chip-btn" title="Toggle view (V)"></button>
         </span>
       </div>
-      <div class="hud-row stats-row"><div id="stats"></div></div>
+      <div class="hud-row" id="hud-shot-types" title="Shot type: how you throw"></div>
       <div class="hud-row" id="rogue-bar" hidden></div>
-      <div class="hud-row">
-        <div id="meter-slot" class="meter-slot"><div id="meter-wrap" class="meter-wrap"><div id="meter-hint"></div><div id="meter-lane" hidden><span class="lane-end">Late</span><span class="lane-end">Early</span><span class="lane-name">Run-up</span><div id="meter-window" hidden><span>SNAP</span></div><div id="meter-needle" hidden></div><div id="meter-track" hidden></div></div><div id="meter"><div id="meter-fill"></div><div id="meter-wobble" title="Muscling it: past here your aim wobbles more"></div><div id="meter-target"></div></div><div id="flick-pad" hidden></div></div></div>
-        <button id="swing" class="primary">Hold to swing <kbd>Space</kbd></button>
-      </div>
+      <div id="meter-wrap" class="meter-wrap"><div id="meter-hint"></div><div id="meter-lane" hidden><span class="lane-end">Late</span><span class="lane-end">Early</span><span class="lane-name">Run-up</span><div id="meter-window" hidden><span>SNAP</span></div><div id="meter-needle" hidden></div><div id="meter-track" hidden></div></div><div id="meter"><div id="meter-fill"></div><div id="meter-wobble" title="Muscling it: past here your aim wobbles more"></div><div id="meter-target"></div></div><div id="flick-pad" hidden></div></div>
+      <div class="hud-row swing-row"><div id="stats"></div><button id="swing" class="primary">Hold to swing <kbd>Space</kbd></button></div>
       <div class="help" id="help">Click to aim · ←/→ fine aim · [ / ] disc · right-drag pan · scroll zoom · F re-frame · V view</div>
       <div class="disc-picker" id="disc-picker" title="Pick a disc ( [ / ] )"></div>
     </footer>
@@ -46,6 +44,8 @@
     <aside id="tutorial" class="tutorial" hidden></aside>
     <aside id="putting" class="tutorial putting" hidden></aside>
     <div id="replay-bar" hidden><span class="rec"></span>REPLAY <span class="dim">drag orbit · scroll zoom · <kbd>R</kbd> reset · <kbd>Space</kbd> skip</span></div>
+    <!-- The meter, copied by the cursor while a throw is input (src/modes/disc.ts: floatMeter) -->
+    <div id="meter-float" class="meter-wrap floating" hidden></div>
     <div id="reticle" class="xhair" data-style="ring" hidden></div>
     <div id="wind-compass" hidden title="Wind, turned to your view"><svg viewBox="-12 -12 24 24" width="18" height="18" aria-hidden="true"><path d="M0 -10 L6 2 L1.5 0.5 L1.5 10 L-1.5 10 L-1.5 0.5 L-6 2 Z" fill="currentColor"/></svg><b></b></div>
     <div id="minimap" hidden title="Click to aim here"></div>

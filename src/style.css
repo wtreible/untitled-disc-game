@@ -273,7 +273,6 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #stats { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .hud-row .view-btns { margin-left: auto; display: flex; gap: 6px; }
 #hud > .hud-row:first-child { gap: 8px; }
-.stats-row { margin-top: -4px; }
 #stats b { color: var(--text); }
 #meter { position: relative; height: 16px; background: rgba(255, 255, 255, 0.1); border-radius: 999px; overflow: hidden; }
 #meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #6fd43f, var(--accent) 60%, var(--eagle) 85%, var(--hot)); }
@@ -286,7 +285,9 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #meter-target { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px #000; }
 #swing { user-select: none; touch-action: none; }
 /* The controls sit in the bottom-left corner, compact (the minimap has the bottom-right). */
-#hud { left: 14px; transform: none; width: min(460px, calc(100vw - 28px)); gap: 7px; padding: 10px 12px; }
+#hud { left: 14px; transform: none; width: min(520px, calc(100vw - 28px)); gap: 8px; padding: 10px 12px; }
+#hud .swing-row { justify-content: space-between; flex-wrap: nowrap; }
+#hud-shot-types .shot-types { flex: 1; }
 #hud .hud-row { gap: 6px 8px; }
 #hud #turn { font-size: 17px; min-width: 0; margin-right: 2px; }
 #hud #stats { margin-left: 0; font-size: 12px; }
@@ -294,8 +295,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #hud #swing { padding: 7px 12px; font-size: 13px; }
 #hud .hud-row .chip-btn { padding: 4px 9px; font-size: 12px; }
 #hud .disc-picker { grid-template-columns: repeat(4, 1fr); gap: 4px; }
-#hud .disc-card { flex-direction: row; justify-content: flex-start; gap: 6px; padding: 3px 5px; border-radius: 8px; }
-#hud .disc-card .chart { width: 20px; height: 30px; }
+#hud .disc-card { flex-direction: row; justify-content: flex-start; gap: 6px; padding: 4px 6px; border-radius: 8px; }
+#hud .disc-card .chart { width: 38px; height: 56px; }
+#hud .disc-card .txt .nums, #hud .disc-card .range { white-space: nowrap; }
+/* On the controls the hint has its own line (the floating copy's hangs above it). */
+#hud #meter-hint { position: static; min-height: 14px; line-height: 14px; }
 #hud .disc-card .txt { align-items: flex-start; text-align: left; }
 #hud .disc-card .txt b { font-size: 12.5px; }
 #hud .disc-card .txt .nums, #hud .disc-card .range { font-size: 9.5px; }
@@ -340,7 +344,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #wind-compass { position: fixed; left: 50%; top: calc(50% + 20px); transform: translateX(-50%); display: flex; align-items: center; gap: 4px; pointer-events: none; color: #fff; font: 700 11px var(--body); text-shadow: 0 1px 2px #000; filter: drop-shadow(0 1px 1px #000); }
 #wind-compass.calm svg { opacity: 0.4; }
 #minimap {
-  position: fixed; right: 12px; bottom: 12px; width: 250px; height: 250px; cursor: crosshair;
+  position: fixed; right: 12px; bottom: 12px; width: 300px; height: 300px; cursor: crosshair;
   border: 2px solid rgba(255, 255, 255, 0.55); border-radius: 12px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
 }
 .pause-btn { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); background: var(--panel); border-radius: 10px; padding: 7px 10px; }
@@ -514,7 +518,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 /* ---------- augments: side panel, browser, scorecard, setup ---------- */
 :root { --t-common: #8fd3ff; --t-epic: #c69bff; --t-legendary: #ffc83d; }
 .aug-panel {
-  position: fixed; top: 96px; left: 14px; width: 232px; max-height: calc(100vh - 400px); overflow-y: auto;
+  position: fixed; top: 96px; left: 14px; width: 232px; max-height: calc(100vh - 500px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px;
   background: var(--panel); backdrop-filter: blur(6px); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3); z-index: 3;
 }
@@ -609,7 +613,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 
 /* ---------- driving range panel ---------- */
 .range-panel {
-  position: fixed; top: 14px; right: 14px; width: 268px; max-height: calc(100vh - 300px); overflow-y: auto;
+  position: fixed; top: 14px; right: 14px; width: 268px; max-height: calc(100vh - 350px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 12px;
   background: var(--panel); backdrop-filter: blur(6px); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35); z-index: 3;
 }
@@ -652,9 +656,8 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .stats-clear { align-self: flex-start; }
 .players h3 { display: flex; align-items: center; justify-content: space-between; }
 #release.blocked { color: var(--hot); border-color: var(--hot); }
-.meter-slot { flex: 1; min-width: 160px; }
 .meter-wrap { position: relative; display: flex; flex-direction: column; gap: 3px; }
-/* While a throw is input, its meter floats by the cursor (src/modes/disc.ts: floatMeter). */
+/* While a throw is input, a copy of its meter floats by the cursor (src/modes/disc.ts: floatMeter). */
 .meter-wrap.floating { position: fixed; z-index: 31; width: 300px; padding: 8px 10px; border-radius: 12px; pointer-events: none;
   background: rgba(8, 19, 29, 0.78); border: 1px solid var(--line); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45); }
 /* The throw style's own lane over the bar: 2 stage's timing (late … SNAP … early), X-step's run-up. */

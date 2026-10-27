@@ -83,7 +83,7 @@ export class CourseScene {
   private miniPpm = 1;
   /** Minimap rect in CSS pixels from the bottom-left corner of the canvas. */
   /** The minimap inset: in from the right edge (`right`) and up from the bottom (`y`), CSS px. */
-  readonly minimap = { right: 12, y: 12, w: 250, h: 250 };
+  readonly minimap = { right: 12, y: 12, w: 300, h: 300 };
   /** The minimap's left edge, CSS px from the canvas's left. */
   private miniLeft(): number { return this.size().w - this.minimap.right - this.minimap.w; }
   private readonly skyColor: THREE.Color;
