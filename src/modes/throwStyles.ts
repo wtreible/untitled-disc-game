@@ -1,13 +1,14 @@
 // Throw styles (Settings → Dev): how a throw's power, and how cleanly it's released, come from the
-// player's input. All of them run on one button (the throw key, or the swing button) plus, for the
-// flick, the pointer. Times are performance.now() ms; nothing here touches the page.
+// player's input. They run on one button (the throw key, or the swing button), except the flick,
+// which is a swing of the pointer. Times are performance.now() ms; nothing here touches the page.
 //
 //   classic    hold: the meter fills and empties; let go to throw (the base game)
 //   two-stage  hold for power, let go, then press again as the needle sweeps back into the SNAP
 //              window: early pulls and hyzers, late pushes and turns it over. Putts instead get a
 //              breathing reticle on the basket: press again while it's small
-//   flick      press, and a slice appears at the pointer: swipe out through it. How fast is power;
-//              where it leaves the slice is where it goes, and out the side is a shank
+//   flick      press on the course, pull back, swipe up and let go, as in a golf game. The swing's
+//              speed as it's let go is power; its direction then is accuracy, and outside the fan
+//              is a shank
 //   xstep      press to start the run-up, then press as the cursor crosses each beat of the
 //              timeline: tap, tap, hold on the last; let go to throw. The rhythm adds or costs
 //              distance and steadiness
@@ -18,12 +19,12 @@ export type ThrowStyle = 'classic' | 'two-stage' | 'flick' | 'xstep';
 export const THROW_STYLES: [ThrowStyle, string, string][] = [
   ['classic', '1 stage', 'Hold to fill the meter, let go to throw'],
   ['two-stage', '2 stage', 'Hold for power, let go, then press again as the needle reaches the SNAP window (putts: when the reticle is smallest)'],
-  ['flick', 'Flick', 'Press the throw key, then swipe the mouse (or finger) out through the slice: faster is farther, stay inside it'],
+  ['flick', 'Flick', 'Press on the course, pull back, then swipe up and let go: faster is farther, straight up is straight'],
   ['xstep', 'X-step', 'Press to start, then press as the cursor crosses each beat: tap, tap, hold, and let go to throw'],
 ];
 
 /** The styles that can be picked for now; the others are greyed out in Settings → Dev until they're right. */
-export const ENABLED_STYLES: ThrowStyle[] = ['classic'];
+export const ENABLED_STYLES: ThrowStyle[] = ['classic', 'two-stage', 'flick', 'xstep'];
 /** The style a throw uses: the chosen one if it's enabled, else 1 stage. */
 export const usableStyle = (s: ThrowStyle): ThrowStyle => (ENABLED_STYLES.includes(s) ? s : 'classic');
 
@@ -62,23 +63,32 @@ export interface ThrowView {
   window?: [number, number];
   /** X-step: the timeline. The cursor and each beat as fractions of it; each beat's hit (null: not yet). */
   track?: { cursor: number; beats: { at: number; hit: number | null; hold: boolean }[] };
-  /** Flick: the slice, anchored where the pointer was (CSS px). `reach` 0..1 of the way out; `angle` off its middle (rad, + right). */
-  wedge?: { at: [number, number]; half: number; r0: number; R: number; reach: number; angle: number; started: boolean };
+  /** Flick: the fan, anchored at the bottom of the backswing (CSS px), and the swing's trail. `angle`: the swing's direction now, off straight up (rad, + right); null before it's swinging up. */
+  flick?: { at: [number, number]; half: number; R: number; trail: [number, number][]; started: boolean; angle: number | null };
   /** Two-stage putts: the reticle's size, 0 (tight) … 1 (wide). */
   reticle?: number;
   hint: string;
 }
 
-/** Two-stage: where the SNAP window sits on the bar, and how fast the needle sweeps (bars/s). */
-export const SNAP = { center: 0.15, sweep: 1.3, half: 0.05, perSpeed: 0.004 };
-/** Flick: the slice's half-angle, its inner and outer radius (CSS px), and the swipe speed through it for full power (px/s). */
-export const FLICK = { half: (26 * Math.PI) / 180, r0: 18, R: 170, full: 1500 };
+/** Two-stage: where the SNAP window sits on the bar, how fast the needle sweeps (bars/s), and where it runs out (a shank). */
+export const SNAP = { center: 0.15, sweep: 1.3, half: 0.05, perSpeed: 0.004, runout: -0.12 };
+/** Two-stage: the stretch of the bar its timing lane shows, the SNAP window in the middle. */
+export const SNAP_LANE: [number, number] = [SNAP.runout, 2 * SNAP.center - SNAP.runout];
+/**
+ * Flick: the fan's half-angle; how far up from the bottom of the backswing counts as swinging (CSS px);
+ * the fan's drawn length; the swing speed for full power (px/s); the stretch of the swing its speed
+ * is read over at release (ms); the slowest release that counts (× full); and the dead-straight band (rad).
+ */
+export const FLICK = { half: (26 * Math.PI) / 180, r0: 18, R: 170, full: 1500, window: 80, slowest: 0.08, straight: (2.5 * Math.PI) / 180 };
 /** X-step: one beat (ms), the window either side of a beat that counts as perfect, and the timeline's length (beats). */
 export const XSTEP = { beat: 420, perfect: 45, span: 3.6 };
 /** Two-stage putts: the reticle's breath (ms per cycle), and how long before it lets go on its own. */
 export const RETICLE = { period: 1300, timeout: 4000 };
 
 const timingOf = (s: ThrowSetup) => s.timing ?? 1;
+
+/** The style a throw is actually input with: putts and standstill throws have no run-up, so X-step goes the 1-stage way. */
+export const styleFor = (s: ThrowSetup): ThrowStyle => (s.style === 'xstep' && (s.putt || s.standstill) ? 'classic' : s.style);
 
 /** Two-stage window half-width: narrower for fast discs, special shots, and past 90% power. */
 export function snapHalf(s: ThrowSetup, power: number): number {
@@ -113,12 +123,23 @@ export function reticleAt(ms: number, s: ThrowSetup): number {
   return min + (1 - min) * Math.abs(Math.sin((Math.PI * ms * s.meterSpeed) / RETICLE.period));
 }
 
+/** X-step's beats on the timeline: steps on 1 and 2, the plant (hold) on 3; each one's hit so far. */
+const beatsOf = (hits: number[]) => [1, 2, 3].map((k) => ({ at: k / XSTEP.span, hit: hits[k - 1] ?? null, hold: k === 3 }));
+
+/** What the HUD shows for a style before the throw starts: the lanes it'll use, empty. `power`: what's lined up (the target tick). */
+export function idleView(s: ThrowSetup, power: number): ThrowView {
+  const style = styleFor(s);
+  if (style === 'two-stage' && !s.putt) { const h = snapHalf(s, power); return { fill: 0, window: [SNAP.center - h, SNAP.center + h], hint: '' }; }
+  if (style === 'xstep') return { fill: 0, track: { cursor: 0, beats: beatsOf([]) }, hint: '' };
+  return { fill: 0, hint: '' };
+}
+
 type Stage =
   | { k: 'idle' }
   | { k: 'power'; t0: number }
   | { k: 'snap'; t0: number; power: number }
   | { k: 'steady'; t0: number; power: number }
-  | { k: 'flick'; t0: number; origin: [number, number]; tIn: number | null }
+  | { k: 'flick'; t0: number; at: [number, number]; trail: [number, number, number][]; from: number | null }
   | { k: 'steps'; t0: number; hits: number[] }
   | { k: 'plant'; t0: number; hits: number[] };
 
@@ -128,8 +149,8 @@ export class ThrowControl {
   private pointer: [number, number] = [0, 0];
   constructor(private readonly s: ThrowSetup) {}
 
-  /** Putts and standstill throws don't get a run-up: X-step goes the classic way. */
-  private get style(): ThrowStyle { return this.s.style === 'xstep' && (this.s.putt || this.s.standstill) ? 'classic' : this.s.style; }
+  /** The style this throw is input with. */
+  get style(): ThrowStyle { return styleFor(this.s); }
   private get beat(): number { return XSTEP.beat / this.s.meterSpeed; }
   private get half(): number { return Math.min(Math.PI / 2.2, FLICK.half * timingOf(this.s) * (this.s.putt ? 1.3 : 1)); }
   get active(): boolean { return this.stage.k !== 'idle'; }
@@ -138,7 +159,7 @@ export class ThrowControl {
   press(now: number): Release | 'cancel' | null {
     const st = this.stage;
     if (st.k === 'idle') {
-      if (this.style === 'flick') this.stage = { k: 'flick', t0: now, origin: [...this.pointer], tIn: null };
+      if (this.style === 'flick') this.stage = { k: 'flick', t0: now, at: [...this.pointer], trail: [[...this.pointer, now]], from: null };
       else if (this.style === 'xstep') this.stage = { k: 'steps', t0: now, hits: [] };
       else this.stage = { k: 'power', t0: now };
       return null;
@@ -168,9 +189,9 @@ export class ThrowControl {
       return { power };
     }
     if (st.k === 'flick') {
-      // Let go mid-swipe: thrown with the swipe so far; before it started, called off.
+      // Let go before swinging up, or with the swing stopped: called off.
       this.stage = { k: 'idle' };
-      return st.tIn === null ? 'cancel' : this.flickRelease(now, st);
+      return this.flickRelease(now, st) ?? 'cancel';
     }
     if (st.k === 'plant') {
       this.stage = { k: 'idle' };
@@ -181,23 +202,17 @@ export class ThrowControl {
     return null;
   }
 
-  /** The pointer moved (CSS px, page coordinates). */
+  /** The pointer moved (CSS px, page coordinates). The flick lets go on the button, so this never releases. */
   move(x: number, y: number, now: number): Release | null {
     this.pointer = [x, y];
     const st = this.stage;
     if (st.k !== 'flick') return null;
-    const [d, a] = this.polar(st.origin);
-    if (st.tIn === null) {
-      if (d < FLICK.r0) return null;
-      // Out of the tip backwards: the slice follows the pointer, nothing's started.
-      if (Math.abs(a) > Math.PI / 2) { st.origin = [x - (FLICK.r0 * 0.5) * Math.sin(a), y + (FLICK.r0 * 0.5) * Math.cos(a)]; return null; }
-      st.tIn = now;
-      // Started off to the side, outside the slice: a shank straight away.
-      if (Math.abs(a) > this.half) { this.stage = { k: 'idle' }; return this.flickRelease(now, st); }
-      return null;
-    }
-    // Out through the side, or past the end: that's the release.
-    if (Math.abs(a) > this.half || d >= FLICK.R) { this.stage = { k: 'idle' }; return this.flickRelease(now, st); }
+    st.trail.push([x, y, now]);
+    if (st.trail.length > 90) st.trail.shift();
+    if (st.from !== null) return null;
+    // The backswing: the fan stays at its lowest point, until the pointer comes back up past it.
+    if (y >= st.at[1]) st.at = [x, y];
+    else if (st.at[1] - y >= FLICK.r0) st.from = now;
     return null;
   }
 
@@ -206,12 +221,18 @@ export class ThrowControl {
     const st = this.stage;
     switch (st.k) {
       case 'idle': return { view: { fill: 0, hint: '' } };
-      case 'power': return { view: { fill: this.fillAt(now), hint: this.style === 'two-stage' ? 'Let go to set the power' : '' } };
+      case 'power': {
+        const fill = this.fillAt(now);
+        // Two-stage throws: the SNAP window ahead, narrowing as the power goes past 90%.
+        if (this.style !== 'two-stage') return { view: { fill, hint: '' } };
+        const h = snapHalf(this.s, fill);
+        return { view: { fill, ...(this.s.putt ? {} : { window: [SNAP.center - h, SNAP.center + h] as [number, number] }), hint: 'Let go to set the power' } };
+      }
       case 'snap': {
         const needle = this.needleAt(now, st);
         const h = snapHalf(this.s, st.power);
         // The needle ran off the end: nobody pressed, a shank.
-        if (needle < -0.12) { this.stage = { k: 'idle' }; return { view: { fill: st.power, hint: '' }, done: this.snapRelease(-0.12, st) }; }
+        if (needle < SNAP.runout) { this.stage = { k: 'idle' }; return { view: { fill: st.power, hint: '' }, done: this.snapRelease(SNAP.runout, st) }; }
         return { view: { fill: st.power, needle, window: [SNAP.center - h, SNAP.center + h], hint: 'Press as the needle hits SNAP' } };
       }
       case 'steady': {
@@ -219,10 +240,9 @@ export class ThrowControl {
         return { view: { fill: st.power, reticle: reticleAt(now - st.t0, this.s), hint: 'Press when the circle is smallest' } };
       }
       case 'flick': {
-        const [d, a] = this.polar(st.origin);
-        const started = st.tIn !== null;
-        const speed = started ? (Math.max(0, d - FLICK.r0) / Math.max(16, now - st.tIn!)) * 1000 : 0;
-        return { view: { fill: Math.min(1, speed / this.full), wedge: { at: st.origin, half: this.half, r0: FLICK.r0, R: FLICK.R, reach: Math.min(1, d / FLICK.R), angle: a, started }, hint: started ? 'Swipe!' : 'Swipe out through the slice' } };
+        const v = st.from === null ? null : this.swing(now, st);
+        const trail = st.trail.map(([x, y]): [number, number] => [x, y]);
+        return { view: { fill: v ? Math.min(1, v.speed / this.full) : 0, flick: { at: st.at, half: this.half, R: FLICK.R, trail, started: st.from !== null, angle: v && v.speed > 0 ? v.angle : null }, hint: st.from === null ? 'Pull back, then swipe up' : 'Let go as you swipe' } };
       }
       case 'steps': {
         // A missed beat counts as a stumble; a missed plant plants anyway.
@@ -244,13 +264,15 @@ export class ThrowControl {
     const span = XSTEP.span * this.beat;
     return {
       cursor: done ? 3 / XSTEP.span : Math.min(1, (now - t0) / span),
-      beats: [1, 2, 3].map((k) => ({ at: k / XSTEP.span, hit: hits[k - 1] ?? null, hold: k === 3 })),
+      beats: beatsOf(hits),
     };
   }
-  /** The pointer from `o`: distance (px) and angle off straight up (rad, + to the right). */
-  private polar(o: [number, number]): [number, number] {
-    const dx = this.pointer[0] - o[0], dy = o[1] - this.pointer[1];
-    return [Math.hypot(dx, dy), Math.atan2(dx, dy)];
+  /** The flick's swing at `now`: its speed (px/s) and direction off straight up (rad, + right), over the last FLICK.window ms of the swing up. */
+  private swing(now: number, st: Extract<Stage, { k: 'flick' }>): { speed: number; angle: number } {
+    const up = st.trail.filter((p) => p[2] >= st.from!);
+    const ref = [...up].reverse().find((p) => p[2] <= now - FLICK.window) ?? up[0] ?? st.trail[st.trail.length - 1];
+    const dx = this.pointer[0] - ref[0], dy = ref[1] - this.pointer[1];
+    return { speed: (Math.hypot(dx, dy) / Math.max(16, now - ref[2])) * 1000, angle: Math.atan2(dx, dy) };
   }
   private fillAt(now: number): number {
     const st = this.stage;
@@ -275,19 +297,23 @@ export class ThrowControl {
   }
 
   private get full(): number { return FLICK.full * this.s.meterSpeed * (this.s.putt ? 0.7 : 1); }
-  private flickRelease(now: number, st: Extract<Stage, { k: 'flick' }>): Release {
-    // Power: how fast it went through the slice. Faster than full is muscled.
-    const [d, a] = this.polar(st.origin);
-    const speed = (Math.max(0, d - FLICK.r0) / Math.max(16, now - (st.tIn ?? now))) * 1000;
+  /** The flick let go: null if it wasn't swinging up (never started, stopped, or going back down). */
+  private flickRelease(now: number, st: Extract<Stage, { k: 'flick' }>): Release | null {
+    if (st.from === null) return null;
+    const { speed, angle } = this.swing(now, st);
     const k = speed / this.full;
-    // Direction: where it left the slice, off its middle (right pushes right). Out the side: a shank.
-    const out = Math.abs(a) > this.half;
-    const f = Math.max(-1, Math.min(1, a / this.half));
-    const toRight = out ? Math.sign(a) * 10 : f * 6;
-    const yaw = -toRight * (this.s.mirror ? -1 : 1) * (this.s.putt ? 0.4 : 1);
+    if (k < FLICK.slowest || Math.abs(angle) >= Math.PI / 2) return null;
+    // Direction: off straight up (right pushes right), dead straight near the middle; outside the fan, a shank.
+    const out = Math.abs(angle) > this.half;
+    const f = Math.sign(angle) * Math.max(0, Math.abs(angle) - FLICK.straight) / (this.half - FLICK.straight);
+    const toRight = (out ? Math.sign(angle) * 10 : f * 6) * (this.s.putt ? 0.4 : 1);
+    const yaw = -toRight * (this.s.mirror ? -1 : 1);
+    // Power: the swing's speed. Faster than full is muscled.
     const over = this.s.noOverpower ? 0 : Math.max(0, k - 1);
     const wobble = (out ? 2.2 : 0.6) + Math.min(2, over * 2);
-    const note = out ? 'Out of the slice: shanked' : k > 1 ? 'Muscled it' : `${Math.round(Math.min(1, k) * 100)}% swipe`;
+    const off = Math.round(Math.abs(toRight));
+    const line = off === 0 ? 'straight' : `${off}° ${toRight > 0 ? 'right' : 'left'}`;
+    const note = out ? `Shanked ${toRight > 0 ? 'right' : 'left'}` : `${k > 1 ? 'Muscled' : `${Math.round(k * 100)}%`} · ${line}`;
     return { power: Math.min(1, k), execution: { yaw, bank: 0, wobble }, note };
   }
 }

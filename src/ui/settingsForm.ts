@@ -64,7 +64,7 @@ export function mountSettings(el: HTMLElement): void {
       case 'dev': return `
         <div class="row"><span>Throw style</span><select data-k="throwStyle">
           ${THROW_STYLES.map(([v, name]) => { const on = ENABLED_STYLES.includes(v); return `<option value="${v}" ${usableStyle(p.throwStyle) === v ? 'selected' : ''} ${on ? '' : 'disabled'}>${name}${on ? '' : ' (not yet)'}</option>`; }).join('')}</select></div>
-        <small class="dim">${THROW_STYLES.find(([v]) => v === usableStyle(p.throwStyle))?.[2] ?? ''}. The other styles are greyed out until they play right.</small>`;
+        <small class="dim">${THROW_STYLES.find(([v]) => v === usableStyle(p.throwStyle))?.[2] ?? ''}.</small>`;
     }
   };
 

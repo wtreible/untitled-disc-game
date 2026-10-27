@@ -6,7 +6,7 @@ import { simulateThrow, type ThrowInput } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
-import { FLICK, RETICLE, SNAP, ThrowControl, XSTEP, beatScore, reticleAt, snapExecution, snapHalf, type Release, type ThrowSetup } from '../src/modes/throwStyles';
+import { FLICK, RETICLE, SNAP, ThrowControl, XSTEP, beatScore, idleView, reticleAt, snapExecution, snapHalf, type Release, type ThrowSetup } from '../src/modes/throwStyles';
 
 const setup = (style: ThrowSetup['style'], over: Partial<ThrowSetup> = {}): ThrowSetup => ({ style, meterSpeed: 1, putt: false, discSpeed: 7, special: false, noOverpower: false, ...over });
 const rel = (r: Release | 'cancel' | null | undefined): Release => { expect(r).toBeTypeOf('object'); return r as Release; };
@@ -57,48 +57,71 @@ describe('throw styles', () => {
     expect(Math.abs(snapExecution(3, true).yaw)).toBeLessThan(Math.abs(snapExecution(3, false).yaw));
   });
 
-  /** Press at (400, 400), then swipe at `deg` off straight up, out to `to` px, taking `ms`. */
-  const swipe = (deg: number, ms: number, o: Partial<ThrowSetup> = {}, to = FLICK.R + 1) => {
+  /** Press at (400, 400), pull back 60 px, then swing up at `deg` off straight up at `pxs` px/s for `ms`; `hold` ms still before letting go. */
+  const swing = (deg: number, pxs: number, o: Partial<ThrowSetup> = {}, ms = 152, hold = 0) => {
     const c = new ThrowControl(setup('flick', o));
     c.move(400, 400, 0);
     c.press(0);
+    for (let t = 10; t <= 100; t += 10) c.move(400, 400 + (60 * t) / 100, t); // the backswing
     const a = (deg * Math.PI) / 180;
-    let out: Release | null = null;
-    for (let k = 1; k <= 20 && !out; k++) out = c.move(400 + Math.sin(a) * (to * k) / 20, 400 - Math.cos(a) * (to * k) / 20, (ms * k) / 20);
-    return { c, out };
+    for (let t = 8; t <= ms; t += 8) c.move(400 + Math.sin(a) * pxs * t / 1000, 460 - Math.cos(a) * pxs * t / 1000, 100 + t);
+    return { c, out: c.release(100 + ms + hold) };
   };
 
-  it('flick: swipe out through the slice; speed is power, where it leaves is direction', () => {
-    const soft = rel(swipe(0, 220).out), hard = rel(swipe(0, 60).out), right = rel(swipe(18, 150).out);
-    expect(soft.power).toBeGreaterThan(0.3);
-    expect(soft.power).toBeLessThan(0.7);
+  it('flick: the speed it is let go at is power, its direction is accuracy', () => {
+    const soft = rel(swing(0, FLICK.full * 0.5).out), hard = rel(swing(0, FLICK.full * 1.5).out), right = rel(swing(15, FLICK.full * 0.6).out);
+    expect(soft.power).toBeCloseTo(0.5, 1);
+    expect(soft.note).toBe('50% · straight');
     expect(hard.power).toBe(1);
-    expect(hard.note).toBe('Muscled it');
+    expect(hard.note).toMatch(/^Muscled/);
     expect(hard.execution!.wobble).toBeGreaterThan(soft.execution!.wobble);
     expect(Math.abs(soft.execution!.yaw)).toBeLessThan(0.01);
-    expect(right.execution!.yaw).toBeLessThan(-2); // out the right of the slice: pushed right
+    expect(right.execution!.yaw).toBeLessThan(-2); // swung up and to the right: pushed right
+    expect(right.note).toMatch(/° right$/);
     // A forehand's screen direction is the same: right is still right.
-    expect(rel(swipe(18, 150, { mirror: true }).out).execution!.yaw).toBeGreaterThan(2);
+    expect(rel(swing(15, FLICK.full * 0.6, { mirror: true }).out).execution!.yaw).toBeGreaterThan(2);
+    // Within a couple of degrees of straight up is dead straight.
+    expect(rel(swing(2, FLICK.full * 0.6).out).execution!.yaw).toBe(-0);
   });
 
-  it('flick: out through the side of the slice is a shank; a wider slice (timing) forgives it', () => {
-    const out = rel(swipe(40, 150).out);
-    expect(out.note).toMatch(/shanked/);
-    expect(Math.abs(out.execution!.yaw)).toBeGreaterThan(8);
-    expect(rel(swipe(30, 150, { timing: 1.4 }).out).note).not.toMatch(/shanked/);
-  });
-
-  it('flick: the slice follows the pointer until the swipe starts; letting go before then calls it off', () => {
+  it('flick: only the end of the swing counts, so speeding up at the release is what matters', () => {
     const c = new ThrowControl(setup('flick'));
     c.move(400, 400, 0);
     c.press(0);
-    c.move(400, 440, 50); // backwards: not a swipe
-    const w = c.frame(60).view.wedge!;
-    expect(w.started).toBe(false);
-    expect(w.at[1]).toBeGreaterThan(420);
+    c.move(400, 440, 60);
+    for (let t = 8; t <= 400; t += 8) c.move(400, 440 - 0.3 * t, 60 + t); // slow…
+    for (let t = 8; t <= 80; t += 8) c.move(400, 320 - 1.2 * t, 460 + t); // …then fast
+    expect(rel(c.release(540)).power).toBeCloseTo(1200 / FLICK.full, 1);
+  });
+
+  it('flick: outside the fan is a shank; a wider fan (timing) forgives it', () => {
+    const out = rel(swing(40, FLICK.full * 0.6).out);
+    expect(out.note).toBe('Shanked right');
+    expect(Math.abs(out.execution!.yaw)).toBeGreaterThan(8);
+    expect(rel(swing(30, FLICK.full * 0.6, { timing: 1.4 }).out).note).not.toMatch(/Shanked/);
+  });
+
+  it('flick: the fan follows the backswing; let go before swinging up, or after stopping, calls it off', () => {
+    const c = new ThrowControl(setup('flick'));
+    c.move(400, 400, 0);
+    c.press(0);
+    c.move(410, 450, 50);
+    const f = c.frame(60).view.flick!;
+    expect(f.started).toBe(false);
+    expect(f.at).toEqual([410, 450]);
     expect(c.release(100)).toBe('cancel');
-    // Let go part way through a swipe: thrown with it so far.
-    expect(rel(swipe(0, 150, {}, 100).c.release(160)).power).toBeGreaterThan(0);
+    expect(swing(0, FLICK.full * 0.6, {}, 152, 400).out).toBe('cancel'); // swung, then held still
+    // Swinging, the fan stays put and the trail runs from the press.
+    const s = new ThrowControl(setup('flick'));
+    s.move(400, 400, 0);
+    s.press(0);
+    s.move(400, 450, 50);
+    s.move(400, 400, 80);
+    const g = s.frame(80).view.flick!;
+    expect(g.started).toBe(true);
+    expect(g.at).toEqual([400, 450]);
+    expect(g.trail.length).toBe(3);
+    expect(g.angle).toBeCloseTo(0, 5);
   });
 
   it('X-step: on the beat adds distance, off it costs distance and adds wobble', () => {
@@ -151,6 +174,14 @@ describe('throw styles', () => {
   it('timing widens the 2-stage window and the X-step beats', () => {
     expect(snapHalf(setup('two-stage', { timing: 1.4 }), 0.5)).toBeCloseTo(snapHalf(setup('two-stage'), 0.5) * 1.4, 9);
     expect(beatScore(100, XSTEP.beat, 1.4)).toBeGreaterThan(beatScore(100, XSTEP.beat));
+  });
+
+  it('before the throw, the HUD shows the lanes the style will use', () => {
+    expect(idleView(setup('two-stage'), 0.5).window).toBeDefined();
+    expect(idleView(setup('two-stage', { putt: true }), 0.5).window).toBeUndefined();
+    expect(idleView(setup('xstep'), 0.5).track!.beats.map((b) => b.hit)).toEqual([null, null, null]);
+    expect(idleView(setup('xstep', { standstill: true }), 0.5).track).toBeUndefined();
+    expect(idleView(setup('flick'), 0.5)).toEqual({ fill: 0, hint: '' });
   });
 
   it('X-step putts are thrown the 1-stage way', () => {

@@ -280,7 +280,6 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
   background: repeating-linear-gradient(135deg, rgba(255, 96, 80, 0.5) 0 4px, rgba(255, 96, 80, 0.12) 4px 8px); pointer-events: none; }
 #meter-window { position: absolute; top: 0; bottom: 0; background: rgba(111, 212, 63, 0.55); box-shadow: inset 0 0 0 2px #b8f25c; border-radius: 4px; display: grid; place-items: center; overflow: visible; }
 #meter-window span { font: 800 9px var(--head); letter-spacing: 0.08em; color: #fff; text-shadow: 0 1px 2px #000; }
-.meter-snapping #meter-fill { opacity: 0.35; }
 #meter-needle { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: #29d3ff; box-shadow: 0 0 0 1px #000, 0 0 8px #29d3ff; }
 #meter-target { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px #000; }
 #swing { user-select: none; touch-action: none; }
@@ -625,7 +624,15 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .stats-clear { align-self: flex-start; }
 .players h3 { display: flex; align-items: center; justify-content: space-between; }
 #release.blocked { color: var(--hot); border-color: var(--hot); }
-.meter-wrap { position: relative; flex: 1; min-width: 160px; }
+.meter-wrap { position: relative; flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 3px; }
+/* The throw style's own lane over the bar: 2 stage's timing (late … SNAP … early), X-step's run-up. */
+#meter-lane { position: relative; height: 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+#meter-lane .lane-end, #meter-lane .lane-name { position: absolute; top: 0; bottom: 0; display: grid; place-items: center; padding: 0 9px; font: 700 9px var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
+#meter-lane .lane-end:first-child { left: 0; } #meter-lane .lane-end:nth-child(2) { right: 0; }
+#meter-lane .lane-name { left: 0; }
+#meter-lane[data-kind='snap'] .lane-name, #meter-lane[data-kind='steps'] .lane-end { display: none; }
+#flick-pad { height: 22px; line-height: 20px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px dashed rgba(255, 255, 255, 0.35); border-radius: 999px; font: 600 12px var(--body); color: var(--muted); }
+#flick-pad b { color: var(--text); }
 #meter-hint { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); text-align: center; font: 700 11px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
 #meter-track { position: absolute; inset: 0; }
 #meter-track .beat { position: absolute; top: 1px; bottom: 1px; width: 26px; margin-left: -13px; border-radius: 6px; border: 2px solid rgba(255, 255, 255, 0.7); display: grid; place-items: center; font: 800 9px var(--head); color: #fff; }

@@ -60,7 +60,7 @@ import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } fro
 import { BASICS, mountTutorial, type StepSetup, type Tutorial, type TutorialThrow } from './tutorial';
 import { CRAZY_TUTORIAL } from './crazyTutorial';
 import { puttingState, renderPutting, stationBasket } from './putting';
-import { ThrowControl, usableStyle, type Release, type ThrowView } from './throwStyles';
+import { FLICK, SNAP_LANE, ThrowControl, idleView, styleFor, usableStyle, type Release, type ThrowSetup, type ThrowView } from './throwStyles';
 import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, meterAt, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
 
 /** idle: between steps; watching: another player's turn (online). */
@@ -1167,6 +1167,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   let ctl: ThrowControl | null = null;
   /** Where the pointer last was: a flick measures from here. */
   let pointerAt: [number, number] = [0, 0];
+  /** The throw as it would be input now (Settings → Dev: throw style). */
+  function throwSetup(): ThrowSetup {
+    const m = modsFor(game().current);
+    return { style: usableStyle(prefs().throwStyle), meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill(), timing: m.timing, mirror: forehand };
+  }
+  /** Flick style: thrown by swinging the pointer on the course. */
+  const flickStyle = () => styleFor(throwSetup()) === 'flick';
   /** The throw button went down: a new throw, or the next press of one in progress (a snap, a step). */
   function throwDown(): void {
     if (phase === 'charging' && ctl) settle(ctl.press(performance.now()));
@@ -1181,8 +1188,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     if (backhandBlocked()) { chip('A tree’s in the way of your backhand', 'hot', `${keyFor('forehand')} forehand · ${keyFor('shot')} roller or overhand`, 2600); return; }
     phase = 'charging';
     chargeStart = performance.now();
-    const m = modsFor(game().current);
-    ctl = new ThrowControl({ style: usableStyle(prefs().throwStyle), meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill(), timing: m.timing, mirror: forehand });
+    ctl = new ThrowControl(throwSetup());
     ctl.move(pointerAt[0], pointerAt[1], chargeStart);
     ctl.press(chargeStart);
     // Hype Crowd: the gallery's on its feet for your putt.
@@ -1204,44 +1210,78 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     pointerAt = [e.clientX, e.clientY];
     if (phase === 'charging' && ctl) settle(ctl.move(e.clientX, e.clientY, performance.now()));
   });
-  /** The meter's extras for the throw styles: the snap needle and window, the X-step beats, a hint. */
+  /** The flick's swing as last drawn, for the readout when it's let go. */
+  let lastFlick: NonNullable<ThrowView['flick']> | null = null;
+  let readoutTimer = 0;
+  /**
+   * The meter, laid out for the throw style. 1 stage: the bar. 2 stage: a timing lane over it, the
+   * SNAP window in the middle and the needle sweeping in from the right. X-step: the run-up's beats
+   * over it. Flick: no bar; a fan and the swing's trail at the pointer. `v`: the throw being input,
+   * else what's lined up (someone else's turn shows the plain bar, their live charge).
+   */
   function drawMeter(v: ThrowView | null): void {
-    const needle = $('meter-needle'), win = $('meter-window'), track = $('meter-track');
-    needle.hidden = v?.needle === undefined;
-    win.hidden = !v?.window;
-    track.hidden = !v?.track;
-    $('meter').classList.toggle('meter-snapping', !!v?.window || v?.reticle !== undefined);
-    $('meter-hint').textContent = v?.hint ?? '';
-    if (v?.needle !== undefined) needle.style.left = `${Math.max(0, v.needle) * 100}%`;
-    if (v?.window) { win.style.left = `${v.window[0] * 100}%`; win.style.width = `${(v.window[1] - v.window[0]) * 100}%`; }
+    const s = throwSetup();
+    const style = mine(game().current) && !botOf(game().current) ? (ctl?.style ?? styleFor(s)) : 'classic';
+    v ??= style === 'classic' ? { fill: 0, hint: '' } : idleView(s, tick);
+    const lane = $('meter-lane'), needle = $('meter-needle'), win = $('meter-window'), track = $('meter-track');
+    $('meter').hidden = style === 'flick';
+    $('flick-pad').hidden = style !== 'flick';
+    if (style === 'flick') $('flick-pad').innerHTML = `Pull back, swipe up, let go · target <b>${Math.round(tick * 100)}%</b>`;
+    lane.hidden = !v.window && !v.track;
+    lane.dataset.kind = v.track ? 'steps' : 'snap';
+    $('meter-hint').textContent = v.hint;
+    // 2 stage: the lane is the stretch of the bar around the window, so the needle crosses it big.
+    const inLane = (x: number) => ((x - SNAP_LANE[0]) / (SNAP_LANE[1] - SNAP_LANE[0])) * 100;
+    needle.hidden = v.needle === undefined || v.needle > SNAP_LANE[1];
+    win.hidden = !v.window;
+    if (v.needle !== undefined) needle.style.left = `${Math.max(0, inLane(v.needle))}%`;
+    if (v.window) { win.style.left = `${inLane(v.window[0])}%`; win.style.width = `${inLane(v.window[1]) - inLane(v.window[0])}%`; }
     // X-step: the beats on a timeline, and the cursor running across it.
-    if (v?.track) {
+    track.hidden = !v.track;
+    if (v.track) {
       const cls = (h: number | null) => (h === null ? '' : h >= 0.8 ? 'good' : h >= 0.4 ? 'ok' : 'miss');
       track.innerHTML = v.track.beats.map((b, k) => `<div class="beat ${b.hold ? 'hold' : ''} ${cls(b.hit)}" style="left:${b.at * 100}%">${b.hold ? 'HOLD' : k + 1}</div>`).join('')
         + `<div class="cursor" style="left:${v.track.cursor * 100}%"></div>`;
     }
-    // Flick: the slice at the pointer, the swipe so far inside it.
-    const svg = $('flick-wedge') as unknown as SVGSVGElement;
-    svg.toggleAttribute('hidden', !v?.wedge);
-    if (v?.wedge) {
-      const { at: [x, y], half, r0, R, reach, angle, started } = v.wedge;
-      const pt = (a: number, r: number) => `${(x + Math.sin(a) * r).toFixed(1)},${(y - Math.cos(a) * r).toFixed(1)}`;
-      const slice = `M${pt(-half, r0)} L${pt(-half, R)} A${R},${R} 0 0 1 ${pt(half, R)} L${pt(half, r0)} A${r0},${r0} 0 0 0 ${pt(-half, r0)} Z`;
-      const out = Math.abs(angle) > half;
-      const swipe = started ? `<line x1="${x}" y1="${y}" x2="${(x + Math.sin(angle) * reach * R).toFixed(1)}" y2="${(y - Math.cos(angle) * reach * R).toFixed(1)}" stroke="${out ? '#ff6a5c' : '#29d3ff'}" stroke-width="4" stroke-linecap="round"/>` : '';
-      svg.innerHTML = `<path d="${slice}" fill="rgba(41,211,255,0.16)" stroke="rgba(255,255,255,0.8)" stroke-width="2"/>`
-        + `<line x1="${x}" y1="${y}" x2="${(x).toFixed(1)}" y2="${(y - R).toFixed(1)}" stroke="rgba(255,255,255,0.35)" stroke-dasharray="4 5"/>`
-        + `<circle cx="${x}" cy="${y}" r="5" fill="#fff"/>${swipe}`;
-    }
+    // Flick: the fan at the bottom of the backswing, the swing's trail through it.
+    lastFlick = v.flick ?? null;
+    if (v.flick) { clearTimeout(readoutTimer); readoutTimer = 0; drawFlick(v.flick); }
+    else if (!readoutTimer) $('flick-wedge').toggleAttribute('hidden', true);
     // Two-stage putts: the reticle breathing on the basket.
     const ret = $('putt-reticle');
-    ret.hidden = v?.reticle === undefined;
-    if (v?.reticle !== undefined) {
+    ret.hidden = v.reticle === undefined;
+    if (v.reticle !== undefined) {
       const q = scene.project(above(myPin(), CHAIN_MID));
       const d = 18 + 90 * v.reticle;
       Object.assign(ret.style, { left: `${q.x}px`, top: `${q.y}px`, width: `${d}px`, height: `${d}px` });
       ret.classList.toggle('tight', v.reticle < 0.4);
     }
+  }
+  /** The flick's fan and swing; `note`: how it went, by the end of the trail once it's let go. */
+  function drawFlick(f: NonNullable<ThrowView['flick']>, note?: string): void {
+    const svg = $('flick-wedge') as unknown as SVGSVGElement;
+    svg.toggleAttribute('hidden', false);
+    const { at: [x, y], half, R, trail, angle } = f;
+    const pt = (a: number, r: number) => `${(x + Math.sin(a) * r).toFixed(1)},${(y - Math.cos(a) * r).toFixed(1)}`;
+    const fan = `M${pt(-half, FLICK.r0)} L${pt(-half, R)} A${R},${R} 0 0 1 ${pt(half, R)} L${pt(half, FLICK.r0)} A${FLICK.r0},${FLICK.r0} 0 0 0 ${pt(-half, FLICK.r0)} Z`;
+    const out = angle !== null && Math.abs(angle) > half;
+    const color = out ? '#ff6a5c' : '#29d3ff';
+    const path = trail.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ');
+    const [ex, ey] = trail[trail.length - 1] ?? [x, y];
+    const label = (tx: number, ty: number, text: string, size: number) => `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="800" fill="#fff" stroke="rgba(0,0,0,0.6)" stroke-width="3" paint-order="stroke">${text}</text>`;
+    svg.innerHTML = `<path d="${fan}" fill="rgba(41,211,255,0.14)" stroke="rgba(255,255,255,0.8)" stroke-width="2"/>`
+      + `<line x1="${x}" y1="${y}" x2="${x}" y2="${(y - R).toFixed(1)}" stroke="rgba(255,255,255,0.4)" stroke-dasharray="4 5"/>`
+      + `<polyline points="${path}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>`
+      + `<circle cx="${x}" cy="${y}" r="5" fill="#fff"/>`
+      + (note ? label(ex, ey - 14, note, 15) : label(x, y - R - 8, `Target ${Math.round(tick * 100)}%`, 12));
+  }
+  /** The flick was let go: its trail stays up a moment with how it went. */
+  function flickReadout(note: string): void {
+    if (!lastFlick) return;
+    drawFlick(lastFlick, note);
+    lastFlick = null;
+    clearTimeout(readoutTimer);
+    readoutTimer = window.setTimeout(() => { readoutTimer = 0; $('flick-wedge').toggleAttribute('hidden', true); }, 1400);
   }
   window.addEventListener('blur', () => { chargeQueued = false; });
 
@@ -1252,8 +1292,11 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** `as`: the whole throw, when a bot planned it (its putt is a putt whatever the view). */
   function release(r: Release, as?: ThrowInput): void {
     if (phase !== 'charging') return;
+    const flicked = lastFlick;
     drawMeter(null);
-    if (r.note) chip(r.note, /Clean|Rhythm (8|9|1)/.test(r.note) ? 'birdie' : 'info', undefined, 1800);
+    lastFlick = flicked;
+    if (r.note) chip(r.note, /Clean|Rhythm (8|9|1)|straight/.test(r.note) ? 'birdie' : 'info', undefined, 1800);
+    if (r.note) flickReadout(r.note);
     kept.set(game().current, { aimTarget, yaw, pitch, disc, hyzer, forehand, shot });
     const me = game().current;
     const perfect = perfectArmed;
@@ -1827,17 +1870,20 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // The wobble zone: throws only (putts don't), and gone with Run-Up or Golden Arm.
     $('meter-wobble').style.left = `${FLIGHT.wobbleFrom * 100}%`;
     $('meter-wobble').hidden = puttStyle() || modsFor(game().current).noOverpowerWobble;
+    if (phase !== 'charging') drawMeter(null);
     $('view-toggle').textContent = VIEW_LABELS[scene.viewMode];
     $('fp-toggle').textContent = isFP() ? '1st person' : 'Top-down';
     $('swing').toggleAttribute('disabled', phase !== 'aim' && phase !== 'charging');
-    $('swing').innerHTML = `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>${keyFor('throw')}</kbd>`;
+    const flicking = phase === 'aim' && flickStyle();
+    $('swing').innerHTML = flicking ? `Swipe up to ${puttStyle() ? 'putt' : 'throw'}` : `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>${keyFor('throw')}</kbd>`;
     // Written from the current keys (Settings → Controls).
     const k = keyFor, two = (a: Parameters<typeof keyFor>[0], b: Parameters<typeof keyFor>[0]) => `${k(a)}/${k(b)}`;
     const common = `${two('target-farther', 'target-closer')} target distance · ${two('hyzer', 'anhyzer')} release angle · ${k('disc-prev')} / ${k('disc-next')} disc · ${k('forehand')} forehand · ${k('shot')} shot`;
     const view = vector ? '' : ` · ${k('view')} view`;
-    $('help').textContent = isFP()
-      ? `Drag or ${two('aim-left', 'aim-right')} to aim (${two('look-up', 'look-down')} = launch) · ${common} · scroll zoom · click minimap to aim · ${k('first-person')} top-down${view}`
-      : `Click to aim · ${two('aim-left', 'aim-right')} fine aim · ${common} · ${k('first-person')} 1st person · right-drag pan · scroll zoom${view} · ${k('reframe')} re-frame`;
+    // Flick style: a left-button drag on the course is the throw, so first person looks with the right.
+    $('help').textContent = (flicking ? 'Pull back and swipe up on the course to throw · ' : '') + (isFP()
+      ? `${flicking ? 'Right-drag' : 'Drag'} or ${two('aim-left', 'aim-right')} to aim (${two('look-up', 'look-down')} = launch) · ${common} · scroll zoom · click minimap to aim · ${k('first-person')} top-down${view}`
+      : `Click to aim · ${two('aim-left', 'aim-right')} fine aim · ${common} · ${k('first-person')} 1st person · right-drag pan · scroll zoom${view} · ${k('reframe')} re-frame`);
     if (range) { rangeBoard(); return; }
     // One row a player, or a team in best shot (its members are always on the same spot and score).
     const all = rows();
@@ -1884,6 +1930,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** The scorecard is up while its key is held. */
   let heldCard = false;
   let drag: { x: number; y: number; mode: 'aim' | 'pan' | 'look' | 'orbit' } | null = null;
+  /** Flick style: a press on the course, which is a swing once it moves (a click still aims, top-down). */
+  let swingPress: { from: [number, number]; swinging: boolean } | null = null;
 
   function setAimTarget(t: Vec2): void {
     aimTarget = t;
@@ -1904,12 +1952,19 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
       return;
     }
-    if (isFP()) drag = { x: e.clientX, y: e.clientY, mode: 'look' };
+    if (e.button === 0 && phase === 'aim' && !panel?.tool && flickStyle()) swingPress = { from: [e.clientX, e.clientY], swinging: false };
+    else if (isFP()) drag = { x: e.clientX, y: e.clientY, mode: 'look' };
     else if (e.button === 0 && phase === 'aim' && panel?.tool) rangeEdit(panel.tool, scene.screenToWorld(e.clientX, e.clientY));
     else if (e.button === 0 && phase === 'aim') { drag = { x: e.clientX, y: e.clientY, mode: 'aim' }; setAimTarget(scene.screenToWorld(e.clientX, e.clientY)); }
     else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
   });
   canvas.addEventListener('pointermove', (e) => {
+    // A press that moves is a flick: the throw starts from where it went down.
+    if (swingPress && !swingPress.swinging && Math.hypot(e.clientX - swingPress.from[0], e.clientY - swingPress.from[1]) >= 6) {
+      swingPress.swinging = true;
+      pointerAt = swingPress.from;
+      throwDown();
+    }
     if (!drag) return;
     if (drag.mode === 'aim' && phase === 'aim') setAimTarget(scene.screenToWorld(e.clientX, e.clientY));
     else if (drag.mode === 'pan') scene.panPixels(e.clientX - drag.x, e.clientY - drag.y);
@@ -1925,7 +1980,13 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     drag.x = e.clientX;
     drag.y = e.clientY;
   });
-  canvas.addEventListener('pointerup', () => { drag = null; });
+  canvas.addEventListener('pointerup', (e) => {
+    drag = null;
+    const press = swingPress;
+    swingPress = null;
+    if (press?.swinging) letGo();
+    else if (press && phase === 'aim' && !isFP()) setAimTarget(scene.screenToWorld(e.clientX, e.clientY));
+  });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const f = Math.exp(-e.deltaY * 0.0015);
