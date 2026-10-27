@@ -43,20 +43,24 @@ export interface Prefs {
   ghosts: boolean;
   /** After each of your throws: carry, peak height, how it moved, release speed. */
   shotInfo: boolean;
-  /** Dev: how throws are input (src/modes/throwStyles.ts). */
+  /** Shot type: how throws are input (src/modes/throwStyles.ts). */
   throwStyle: ThrowStyle;
+  /** First person: the mark in the middle of the screen. */
+  crosshair: Crosshair;
   /** Keys changed from the defaults (src/keys.ts). */
   keys: Partial<Record<KeyAction, string>>;
 }
 
 export type Graphics = 'low' | 'medium' | 'high';
+export type Crosshair = 'ring' | 'dot' | 'cross' | 'ring-cross' | 'none';
+export const CROSSHAIRS: [Crosshair, string][] = [['ring', 'Ring'], ['dot', 'Dot'], ['cross', 'Cross'], ['ring-cross', 'Ring + cross'], ['none', 'None']];
 
 const KEY = 'untitled-disc-game:prefs';
 /** The system's own "reduce motion" setting, the default for ours. */
 const systemReduceMotion = (): boolean => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 const DEFAULTS: Prefs = {
   replays: true, follow: true, firstPerson: true, fov: 62, playback: 1.5, help: true, graphics: 'medium', fps: false, music: 0.6, sfx: 0.8, muted: false, flyovers: true, weather: true,
-  reduceMotion: false, quickSolo: false, lookSpeed: 1, invertLook: false, confirmLeave: true, ghosts: false, shotInfo: true, throwStyle: 'classic', keys: {},
+  reduceMotion: false, quickSolo: false, lookSpeed: 1, invertLook: false, confirmLeave: true, ghosts: false, shotInfo: true, throwStyle: 'classic', crosshair: 'ring', keys: {},
 };
 
 let cache: Prefs | null = null;

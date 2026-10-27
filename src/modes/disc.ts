@@ -1234,6 +1234,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   function drawMeter(v: ThrowView | null): void {
     const s = throwSetup();
     const style = mine(game().current) && !botOf(game().current) ? (ctl?.style ?? styleFor(s)) : 'classic';
+    // A bar to watch (1 stage, 2 stage, X-step): by the cursor while it's input. The flicks draw there anyway.
+    floatMeter(phase === 'charging' && !!ctl && !swung(style));
     v ??= style === 'classic' ? { fill: 0, hint: '' } : idleView(s, tick);
     const lane = $('meter-lane'), needle = $('meter-needle'), win = $('meter-window'), track = $('meter-track');
     $('meter').hidden = swung(style);
@@ -1266,6 +1268,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     // Ready: the fan (and the X-step flick's run-up) waits at the pointer.
     else if (swung(style) && flickArmed && phase === 'aim') { clearTimeout(readoutTimer); readoutTimer = 0; drawFlick({ at: pointerAt, half: flickHalf(s), R: FLICK.R, trail: [], started: false, angle: null }, undefined, floating); }
     else if (!readoutTimer) $('flick-wedge').toggleAttribute('hidden', true);
+    if (floatAt) placeFloat();
     // Two-stage putts: the reticle breathing on the basket.
     const ret = $('putt-reticle');
     ret.hidden = v.reticle === undefined;
@@ -1275,6 +1278,33 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       Object.assign(ret.style, { left: `${q.x}px`, top: `${q.y}px`, width: `${d}px`, height: `${d}px` });
       ret.classList.toggle('tight', v.reticle < 0.4);
     }
+  }
+  /** Where the cursor was when the throw started, while the meter floats there; null: it's in the HUD. */
+  let floatAt: [number, number] | null = null;
+  /** Float the meter out of the HUD (to the page, so the HUD's transform and blur don't hold it) or put it back. */
+  function floatMeter(on: boolean): void {
+    if (on === (floatAt !== null)) return;
+    const wrap = $('meter-wrap'), slot = $('meter-slot');
+    if (on) {
+      slot.style.minHeight = `${slot.offsetHeight}px`; // the HUD keeps its shape
+      floatAt = pointerAt[0] || pointerAt[1] ? [...pointerAt] : [innerWidth / 2, innerHeight / 2]; // the pointer's never moved: mid-screen
+      document.body.appendChild(wrap);
+      wrap.classList.add('floating');
+    } else {
+      floatAt = null;
+      wrap.classList.remove('floating');
+      wrap.style.left = wrap.style.top = '';
+      slot.appendChild(wrap);
+      slot.style.minHeight = '';
+    }
+  }
+  /** Just below where the throw started (above it near the bottom), kept on screen. */
+  function placeFloat(): void {
+    const wrap = $('meter-wrap'), [x, y] = floatAt!;
+    const w = wrap.offsetWidth, h = wrap.offsetHeight, gap = 34;
+    const top = y + gap + h < innerHeight - 8 ? y + gap : Math.max(30, y - gap - h);
+    wrap.style.left = `${Math.min(innerWidth - w - 8, Math.max(8, x - w / 2))}px`;
+    wrap.style.top = `${top}px`;
   }
   /** The flick's fan and swing; `note`: how it went, by the end of the trail once it's let go; `track`: the X-step flick's run-up, just under the fan. */
   function drawFlick(f: NonNullable<ThrowView['flick']>, note?: string, track?: ThrowView['track']): void {
@@ -2371,8 +2401,12 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   window.addEventListener('unitschange', () => { startHoleInfo(); updateHud(); });
   const applyGraphics = () => { scene.setGraphics(prefs().graphics); $('fps').hidden = !prefs().fps; };
   applyGraphics();
+  /** The crosshair's look (Settings → Customize). */
+  const applyCrosshair = () => { $('reticle').dataset.style = prefs().crosshair; };
+  applyCrosshair();
   window.addEventListener('prefschange', () => {
     scene.setFov(prefs().fov);
+    applyCrosshair();
     $('help').hidden = !prefs().help;
     applyGraphics();
     // The shot type may have changed: the meter's layout, and the putting card's picker.

@@ -82,7 +82,10 @@ export class CourseScene {
   private miniCenter: Vec2 = [0, 0];
   private miniPpm = 1;
   /** Minimap rect in CSS pixels from the bottom-left corner of the canvas. */
-  readonly minimap = { x: 12, y: 12, w: 250, h: 250 };
+  /** The minimap inset: in from the right edge (`right`) and up from the bottom (`y`), CSS px. */
+  readonly minimap = { right: 12, y: 12, w: 250, h: 250 };
+  /** The minimap's left edge, CSS px from the canvas's left. */
+  private miniLeft(): number { return this.size().w - this.minimap.right - this.minimap.w; }
   private readonly skyColor: THREE.Color;
   private readonly groundColor: THREE.Color;
   private readonly fog: THREE.Fog;
@@ -908,8 +911,8 @@ export class CourseScene {
   /** Minimap click → world point, or null if outside the inset. */
   minimapToWorld(clientX: number, clientY: number): Vec2 | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const { x, y, w, h } = this.minimap;
-    const lx = clientX - rect.left - x;
+    const { y, w, h } = this.minimap;
+    const lx = clientX - rect.left - this.miniLeft();
     const ly = rect.bottom - clientY - y; // from the bottom
     if (!this.fp || lx < 0 || ly < 0 || lx > w || ly > h) return null;
     const v = new THREE.Vector3((lx / w) * 2 - 1, (ly / h) * 2 - 1, 0).unproject(this.miniCam);
@@ -1182,14 +1185,15 @@ export class CourseScene {
       if (jolt) cam.position.sub(jolt);
       return;
     }
-    // First person, then the minimap inset drawn top-down over the bottom-left corner.
+    // First person, then the minimap inset drawn top-down over the bottom-right corner.
     this.previewMat.dashSize = 0.25;
     this.previewMat.gapSize = 0.18;
     this.renderer.render(this.scene, this.persp);
     if (jolt) cam.position.sub(jolt);
     if (!this.minimapEnabled) return;
 
-    const { x, y, w, h } = this.minimap;
+    const { y, w, h } = this.minimap;
+    const x = this.miniLeft();
     const size = this.size();
     this.applyVisibility(false);
     scalePixels(this.miniPpm);

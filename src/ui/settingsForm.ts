@@ -1,13 +1,13 @@
 // One settings form, rendered into both the main menu and the pause menu, in tabs: Audio, Camera,
-// Gameplay, Graphics, Controls, Shot type. Every control writes through to prefs/units, and both copies
+// Gameplay, Graphics, Customize, Controls, Shot type. Every control writes through to prefs/units, and both copies
 // refresh when anything changes.
 import { DEFAULT_KEYS, KEY_GROUPS, UNBINDABLE, bindKey, keyBindings, keyName, resetKeys, type KeyAction } from '../keys';
-import { prefs, setPref, type Graphics, type Prefs } from '../settings';
+import { CROSSHAIRS, prefs, setPref, type Crosshair, type Graphics, type Prefs } from '../settings';
 import { shotTypeSeg, shotTypeText, wireShotTypes } from './shotTypes';
 import { getUnits, setUnits } from '../units';
 
-type Tab = 'audio' | 'camera' | 'gameplay' | 'graphics' | 'controls' | 'shot';
-const TABS: [Tab, string][] = [['audio', 'Audio'], ['camera', 'Camera'], ['gameplay', 'Gameplay'], ['graphics', 'Graphics'], ['controls', 'Controls'], ['shot', 'Shot type']];
+type Tab = 'audio' | 'camera' | 'gameplay' | 'graphics' | 'customize' | 'controls' | 'shot';
+const TABS: [Tab, string][] = [['audio', 'Audio'], ['camera', 'Camera'], ['gameplay', 'Gameplay'], ['graphics', 'Graphics'], ['customize', 'Customize'], ['controls', 'Controls'], ['shot', 'Shot type']];
 type Flag = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs];
 
 const toggle = (k: Flag, title: string, note = '', off = '') => {
@@ -41,19 +41,23 @@ export function mountSettings(el: HTMLElement): void {
         <div class="row"><span>Flight speed</span><div class="seg" data-k="playback">
           ${[1, 1.5, 2].map((v) => `<button data-v="${v}" class="${p.playback === v ? 'on' : ''}">${v}×</button>`).join('')}</div></div>`;
       case 'gameplay': return `
-        <div class="row"><span>Units</span><div class="seg" data-k="units">
-          <button data-v="imperial" class="${getUnits() === 'imperial' ? 'on' : ''}">Feet</button>
-          <button data-v="metric" class="${getUnits() === 'metric' ? 'on' : ''}">Meters</button></div></div>
         ${toggle('ghosts', 'Ghost disc', 'Your best tee shot on each hole flies alongside the next one (not in Crazy mode)')}
         ${toggle('shotInfo', 'Shot analysis', 'After each of your throws: carry, peak height, which way it moved, release speed')}
         ${toggle('quickSolo', 'Quick turns when playing alone', 'No replay, and your next throw is ready as soon as the disc stops')}
-        ${toggle('confirmLeave', 'Ask before leaving a round', 'The browser checks before you close or reload mid-round')}
-        ${toggle('help', 'Show control hints')}`;
+        ${toggle('confirmLeave', 'Ask before leaving a round', 'The browser checks before you close or reload mid-round')}`;
       case 'graphics': return `
         <div class="row"><span>Graphics</span><div class="seg" data-k="graphics">
           ${(['low', 'medium', 'high'] as const).map((v) => `<button data-v="${v}" class="${p.graphics === v ? 'on' : ''}">${v[0].toUpperCase() + v.slice(1)}</button>`).join('')}</div></div>
         ${toggle('weather', 'Weather and time of day', 'Each round: sun, golden hour, overcast or rain (looks only)')}
-        ${toggle('reduceMotion', 'Reduce motion', 'Camera cuts instead of gliding; no flyovers, replays or follow cam; no menu animations')}
+        ${toggle('reduceMotion', 'Reduce motion', 'Camera cuts instead of gliding; no flyovers, replays or follow cam; no menu animations')}`;
+      case 'customize': return `
+        <div class="row"><span>Crosshair</span><small class="dim">First person, mid-screen</small></div>
+        <div class="seg xhair-seg" data-k="crosshair">
+          ${CROSSHAIRS.map(([v, name]) => `<button data-v="${v}" class="${p.crosshair === v ? 'on' : ''}" title="${name}"><i class="xhair" data-style="${v}"></i>${name}</button>`).join('')}</div>
+        <div class="row"><span>Units</span><div class="seg" data-k="units">
+          <button data-v="imperial" class="${getUnits() === 'imperial' ? 'on' : ''}">Feet</button>
+          <button data-v="metric" class="${getUnits() === 'metric' ? 'on' : ''}">Meters</button></div></div>
+        ${toggle('help', 'Show control hints')}
         ${toggle('fps', 'Show frame rate')}`;
       case 'controls': {
         const keys = keyBindings();
@@ -76,6 +80,7 @@ export function mountSettings(el: HTMLElement): void {
       if (k === 'units') setUnits(b.dataset.v as 'metric' | 'imperial');
       else if (k === 'playback') setPref('playback', parseFloat(b.dataset.v!));
       else if (k === 'graphics') setPref('graphics', b.dataset.v as Graphics);
+      else if (k === 'crosshair') setPref('crosshair', b.dataset.v as Crosshair);
     }));
     el.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((i) => i.addEventListener('change', () => setPref(i.dataset.k as Flag, i.checked)));
     el.querySelectorAll<HTMLInputElement>('input[type=range]').forEach((r) => {

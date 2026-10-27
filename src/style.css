@@ -285,6 +285,21 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #meter-needle { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: #29d3ff; box-shadow: 0 0 0 1px #000, 0 0 8px #29d3ff; }
 #meter-target { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px #000; }
 #swing { user-select: none; touch-action: none; }
+/* The controls sit in the bottom-left corner, compact (the minimap has the bottom-right). */
+#hud { left: 14px; transform: none; width: min(460px, calc(100vw - 28px)); gap: 7px; padding: 10px 12px; }
+#hud .hud-row { gap: 6px 8px; }
+#hud #turn { font-size: 17px; min-width: 0; margin-right: 2px; }
+#hud #stats { margin-left: 0; font-size: 12px; }
+#hud .help { font-size: 10.5px; line-height: 1.35; }
+#hud #swing { padding: 7px 12px; font-size: 13px; }
+#hud .hud-row .chip-btn { padding: 4px 9px; font-size: 12px; }
+#hud .disc-picker { grid-template-columns: repeat(4, 1fr); gap: 4px; }
+#hud .disc-card { flex-direction: row; justify-content: flex-start; gap: 6px; padding: 3px 5px; border-radius: 8px; }
+#hud .disc-card .chart { width: 20px; height: 30px; }
+#hud .disc-card .txt { align-items: flex-start; text-align: left; }
+#hud .disc-card .txt b { font-size: 12.5px; }
+#hud .disc-card .txt .nums, #hud .disc-card .range { font-size: 9.5px; }
+#hud .disc-card[data-key]::before { left: auto; right: 5px; top: 2px; }
 .help { color: var(--muted); font-size: 11.5px; }
 #rogue-bar { font-size: 13px; color: var(--muted); }
 #rogue-bar b { color: var(--eagle); }
@@ -309,16 +324,23 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #replay-bar .rec { width: 10px; height: 10px; border-radius: 50%; background: var(--bogey); animation: blink 1.2s infinite; }
 @keyframes blink { 50% { opacity: 0.25; } }
 
-#reticle {
-  position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none;
-  border: 2px solid rgba(255, 255, 255, 0.85); border-radius: 50%; box-shadow: 0 0 3px #000;
-}
-#reticle::after { content: ''; position: absolute; left: 8px; top: 8px; width: 2px; height: 2px; background: #fff; }
+#reticle { position: fixed; left: 50%; top: 50%; margin: -11px 0 0 -11px; pointer-events: none; }
+/* The crosshair (Settings → Customize), on the screen and in the picker's buttons: a 22 px mark. */
+.xhair { position: relative; display: block; width: 22px; height: 22px; box-sizing: border-box; flex: none; filter: drop-shadow(0 0 1.5px #000); }
+.xhair[data-style='ring'], .xhair[data-style='ring-cross'] { border: 2px solid rgba(255, 255, 255, 0.85); border-radius: 50%; }
+.xhair[data-style='ring']::after { content: ''; position: absolute; left: 8px; top: 8px; width: 2px; height: 2px; background: #fff; }
+.xhair[data-style='dot']::after { content: ''; position: absolute; left: 8px; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+.xhair[data-style='cross'] { background: linear-gradient(#fff, #fff) center / 18px 2px no-repeat, linear-gradient(#fff, #fff) center / 2px 18px no-repeat; }
+.xhair[data-style='ring-cross'] { background: linear-gradient(#fff, #fff) center / 8px 2px no-repeat, linear-gradient(#fff, #fff) center / 2px 8px no-repeat; }
+#reticle[data-style='none'] { display: none; }
+.xhair[data-style='none'] { border: 1.5px dashed rgba(255, 255, 255, 0.35); border-radius: 50%; filter: none; }
+.xhair-seg { display: flex; flex-wrap: wrap; }
+.xhair-seg button { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1 1 auto; padding: 8px 8px 6px; font-size: 12px; }
 /* First person: the wind under the reticle, turned to the view (up = straight ahead). */
 #wind-compass { position: fixed; left: 50%; top: calc(50% + 20px); transform: translateX(-50%); display: flex; align-items: center; gap: 4px; pointer-events: none; color: #fff; font: 700 11px var(--body); text-shadow: 0 1px 2px #000; filter: drop-shadow(0 1px 1px #000); }
 #wind-compass.calm svg { opacity: 0.4; }
 #minimap {
-  position: fixed; left: 12px; bottom: 12px; width: 250px; height: 250px; cursor: crosshair;
+  position: fixed; right: 12px; bottom: 12px; width: 250px; height: 250px; cursor: crosshair;
   border: 2px solid rgba(255, 255, 255, 0.55); border-radius: 12px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
 }
 .pause-btn { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); background: var(--panel); border-radius: 10px; padding: 7px 10px; }
@@ -630,7 +652,11 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .stats-clear { align-self: flex-start; }
 .players h3 { display: flex; align-items: center; justify-content: space-between; }
 #release.blocked { color: var(--hot); border-color: var(--hot); }
-.meter-wrap { position: relative; flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 3px; }
+.meter-slot { flex: 1; min-width: 160px; }
+.meter-wrap { position: relative; display: flex; flex-direction: column; gap: 3px; }
+/* While a throw is input, its meter floats by the cursor (src/modes/disc.ts: floatMeter). */
+.meter-wrap.floating { position: fixed; z-index: 31; width: 300px; padding: 8px 10px; border-radius: 12px; pointer-events: none;
+  background: rgba(8, 19, 29, 0.78); border: 1px solid var(--line); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45); }
 /* The throw style's own lane over the bar: 2 stage's timing (late … SNAP … early), X-step's run-up. */
 #meter-lane { position: relative; height: 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
 #meter-lane .lane-end, #meter-lane .lane-name { position: absolute; top: 0; bottom: 0; display: grid; place-items: center; padding: 0 9px; font: 700 9px var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
