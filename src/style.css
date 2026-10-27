@@ -633,6 +633,7 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 #meter-lane[data-kind='snap'] .lane-name, #meter-lane[data-kind='steps'] .lane-end { display: none; }
 #flick-pad { height: 22px; line-height: 20px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px dashed rgba(255, 255, 255, 0.35); border-radius: 999px; font: 600 12px var(--body); color: var(--muted); }
 #flick-pad b { color: var(--text); }
+#flick-pad.armed { border: 1px solid #29d3ff; color: var(--text); background: rgba(41, 211, 255, 0.12); }
 #meter-hint { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); text-align: center; font: 700 11px var(--body); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
 #meter-track { position: absolute; inset: 0; }
 #meter-track .beat { position: absolute; top: 1px; bottom: 1px; width: 26px; margin-left: -13px; border-radius: 6px; border: 2px solid rgba(255, 255, 255, 0.7); display: grid; place-items: center; font: 800 9px var(--head); color: #fff; }

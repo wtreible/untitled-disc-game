@@ -6,7 +6,7 @@ import { simulateThrow, type ThrowInput } from '../src/disc/flight';
 import { TreeIndex } from '../src/disc/trees';
 import { SurfaceGrid } from '../src/game/surfaces';
 import { FlatTerrain } from '../src/game/terrain';
-import { FLICK, RETICLE, SNAP, ThrowControl, XSTEP, beatScore, idleView, reticleAt, snapExecution, snapHalf, type Release, type ThrowSetup } from '../src/modes/throwStyles';
+import { FLICK, RETICLE, SNAP, SNAP_LANE, ThrowControl, XSTEP, beatScore, idleView, reticleAt, snapExecution, snapHalf, type Release, type ThrowSetup } from '../src/modes/throwStyles';
 
 const setup = (style: ThrowSetup['style'], over: Partial<ThrowSetup> = {}): ThrowSetup => ({ style, meterSpeed: 1, putt: false, discSpeed: 7, special: false, noOverpower: false, ...over });
 const rel = (r: Release | 'cancel' | null | undefined): Release => { expect(r).toBeTypeOf('object'); return r as Release; };
@@ -25,8 +25,8 @@ describe('throw styles', () => {
     const snapAt = (needle: number) => {
       const c = new ThrowControl(setup('two-stage'));
       c.press(0);
-      expect(c.release(600)).toBeNull(); // power set: the needle starts back from 0.6
-      return rel(c.press(600 + ((0.6 - needle) / SNAP.sweep) * 1000));
+      expect(c.release(600)).toBeNull(); // power set: the needle starts at the lane's right end
+      return rel(c.press(600 + SNAP.lead + ((SNAP_LANE[1] - needle) / SNAP.sweep) * 1000));
     };
     const clean = snapAt(SNAP.center);
     expect(clean.power).toBeCloseTo(0.6, 5);
@@ -38,6 +38,20 @@ describe('throw styles', () => {
     expect(early.note).toMatch(/^Early by \d+ ms$/);
     expect(late.execution!.yaw).toBeLessThan(-3);
     expect(late.execution!.bank).toBeLessThan(0);
+  });
+
+  it('2 stage: the needle bounces off the lane ends, so a miss gets another pass', () => {
+    const [lo, hi] = SNAP_LANE, w = hi - lo;
+    const c = new ThrowControl(setup('two-stage'));
+    c.press(0);
+    c.release(500);
+    expect(c.frame(500 + SNAP.lead).view.needle).toBe(hi); // waits at the start
+    const at = (d: number) => 500 + SNAP.lead + (d / SNAP.sweep) * 1000;
+    expect(c.frame(at(w * 0.9)).view.needle).toBeCloseTo(lo + w * 0.1, 5); // first pass, heading left
+    expect(c.frame(at(w * 1.25)).view.needle).toBeCloseTo(lo + w * 0.25, 5); // bounced, heading right
+    expect(c.frame(at(w * (SNAP.passes - 0.01))).done).toBeUndefined(); // last pass still live
+    // Coming back through the window on the second pass is as clean as the first.
+    expect(rel(c.press(at(w + (SNAP.center - lo)))).note).toBe('Clean release');
   });
 
   it('2 stage: nobody presses, the needle runs out and it shanks late', () => {
@@ -124,6 +138,44 @@ describe('throw styles', () => {
     expect(g.angle).toBeCloseTo(0, 5);
   });
 
+  /** X-step flick: press at (400, 400), reach back 60 px (the run-up starts at 40), tap the steps `offs` ms off beats 1 and 2, then swing straight up at `pxs` and let go `late` ms off beat 3. */
+  const hybrid = (offs: (number | null)[], late: number, pxs = FLICK.full * 0.6, o: Partial<ThrowSetup> = {}) => {
+    const c = new ThrowControl(setup('hybrid', o));
+    c.move(400, 400, 0);
+    c.press(0);
+    let t0 = 0;
+    for (let t = 10; t <= 60; t += 10) { c.move(400, 400 + t, t); if (t === 40) t0 = t; }
+    offs.forEach((off, i) => { if (off !== null) { c.frame(t0 + (i + 1) * XSTEP.beat + off - 1); c.press(t0 + (i + 1) * XSTEP.beat + off); } });
+    const end = t0 + 3 * XSTEP.beat + late;
+    for (let t = end - 144; t <= end; t += 8) c.move(400, 460 - pxs * (t - end + 144) / 1000, t);
+    return c.release(end);
+  };
+
+  it('X-step flick: the flick\'s power and direction, with the run-up\'s rhythm on top', () => {
+    const good = rel(hybrid([0, 10], 0)), bad = rel(hybrid([150, -150], 200));
+    expect(good.note).toBe('60% · straight · rhythm 100%');
+    expect(good.power).toBeCloseTo(0.6 * 1.1, 1);
+    expect(bad.power).toBeLessThan(0.6);
+    expect(bad.execution!.wobble).toBeGreaterThan(good.execution!.wobble);
+    // A skipped step is a stumble.
+    expect(rel(hybrid([0, null], 0)).note).toMatch(/rhythm 67%$/);
+  });
+
+  it('X-step flick: letting go before reaching back calls it off; the timeline waits for the reach', () => {
+    const c = new ThrowControl(setup('hybrid'));
+    c.move(400, 400, 0);
+    c.press(0);
+    c.move(400, 420, 30);
+    const v = c.frame(500).view;
+    expect(v.track!.cursor).toBe(0);
+    expect(v.track!.beats.map((b) => b.label)).toEqual(['1', '2', 'FLICK']);
+    expect(c.release(520)).toBe('cancel');
+  });
+
+  it('X-step flick putts and standstill throws are plain flicks', () => {
+    for (const o of [{ putt: true }, { standstill: true }]) expect(new ThrowControl(setup('hybrid', o)).style).toBe('flick');
+  });
+
   it('X-step: on the beat adds distance, off it costs distance and adds wobble', () => {
     const run = (offs: number[]) => {
       const c = new ThrowControl(setup('xstep'));
@@ -152,7 +204,7 @@ describe('throw styles', () => {
     const c = new ThrowControl(setup('xstep'));
     c.press(0);
     const t = c.frame(XSTEP.beat / 2).view.track!;
-    expect(t.beats.map((b) => b.hold)).toEqual([false, false, true]);
+    expect(t.beats.map((b) => b.label)).toEqual(['1', '2', 'HOLD']);
     expect(t.cursor).toBeGreaterThan(0);
     expect(t.cursor).toBeLessThan(t.beats[0].at);
   });

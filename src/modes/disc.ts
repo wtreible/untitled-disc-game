@@ -60,7 +60,7 @@ import { freshRange, loadRange, mountRangePanel, saveRange, type RangeTool } fro
 import { BASICS, mountTutorial, type StepSetup, type Tutorial, type TutorialThrow } from './tutorial';
 import { CRAZY_TUTORIAL } from './crazyTutorial';
 import { puttingState, renderPutting, stationBasket } from './putting';
-import { FLICK, SNAP_LANE, ThrowControl, idleView, styleFor, usableStyle, type Release, type ThrowSetup, type ThrowView } from './throwStyles';
+import { FLICK, SNAP_LANE, ThrowControl, flickHalf, idleView, styleFor, swung, usableStyle, type Release, type ThrowSetup, type ThrowView } from './throwStyles';
 import { $, CHAIN_MID, DISC_COURSES, EVENT_TOASTS, FAST_FORWARD, JINGLES, LIE_LABELS, PUFF, PUTT_RANGE, SHOTS, SHOT_LABELS, TRACKS, VIEWS, closestAlong, cutByDistance, drawWind, esc, fmtPar, launchOffset, meterAt, playCue, pointAlong, releaseText, sampleAt, scoreWord } from './discKit';
 
 /** idle: between steps; watching: another player's turn (online). */
@@ -883,6 +883,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('hud').hidden = false;
     power = 0;
     ctl = null;
+    flickArmed = false;
     jumpPutt = false;
     fpOverride = null;
     perfectArmed = false;
@@ -1172,8 +1173,18 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const m = modsFor(game().current);
     return { style: usableStyle(prefs().throwStyle), meterSpeed: m.meterSpeed, putt: puttStyle(), discSpeed: disc.speed, special: !puttStyle() && shot !== 'standard', noOverpower: m.noOverpowerWobble, standstill: standstill(), timing: m.timing, mirror: forehand };
   }
-  /** Flick style: thrown by swinging the pointer on the course. */
-  const flickStyle = () => styleFor(throwSetup()) === 'flick';
+  /** Flick and X-step flick: thrown by swinging the pointer on the course. */
+  const swingStyle = () => swung(styleFor(throwSetup()));
+  /**
+   * Flick styles: the throw key was tapped, so a left-drag on the course is a swing (until then it
+   * aims, looks and pans as usual). Tapping it again puts it away; throwing or a new turn does too.
+   */
+  let flickArmed = false;
+  function armFlick(on: boolean): void {
+    if (flickArmed === on) return;
+    flickArmed = on;
+    updateHud(); // redraws the meter: the fan at the pointer, or put away
+  }
   /** The throw button went down: a new throw, or the next press of one in progress (a snap, a step). */
   function throwDown(): void {
     if (phase === 'charging' && ctl) settle(ctl.press(performance.now()));
@@ -1209,6 +1220,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   window.addEventListener('pointermove', (e) => {
     pointerAt = [e.clientX, e.clientY];
     if (phase === 'charging' && ctl) settle(ctl.move(e.clientX, e.clientY, performance.now()));
+    else if (flickArmed && phase === 'aim') drawMeter(null); // the fan follows the pointer, ready
   });
   /** The flick's swing as last drawn, for the readout when it's let go. */
   let lastFlick: NonNullable<ThrowView['flick']> | null = null;
@@ -1224,15 +1236,17 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     const style = mine(game().current) && !botOf(game().current) ? (ctl?.style ?? styleFor(s)) : 'classic';
     v ??= style === 'classic' ? { fill: 0, hint: '' } : idleView(s, tick);
     const lane = $('meter-lane'), needle = $('meter-needle'), win = $('meter-window'), track = $('meter-track');
-    $('meter').hidden = style === 'flick';
-    $('flick-pad').hidden = style !== 'flick';
-    if (style === 'flick') $('flick-pad').innerHTML = `Pull back, swipe up, let go · target <b>${Math.round(tick * 100)}%</b>`;
+    $('meter').hidden = swung(style);
+    $('flick-pad').hidden = !swung(style);
+    const how = style === 'hybrid' ? `Pull back and hold · <kbd>${keyFor('throw')}</kbd> on 1, 2 · flick on 3` : 'Pull back on the course, swipe up, let go';
+    if (swung(style)) $('flick-pad').innerHTML = `${flickArmed || ctl ? how : `Tap <kbd>${keyFor('throw')}</kbd> to get ready`} · target <b>${Math.round(tick * 100)}%</b>`;
+    $('flick-pad').classList.toggle('armed', flickArmed || !!ctl);
     lane.hidden = !v.window && !v.track;
     lane.dataset.kind = v.track ? 'steps' : 'snap';
     $('meter-hint').textContent = v.hint;
     // 2 stage: the lane is the stretch of the bar around the window, so the needle crosses it big.
     const inLane = (x: number) => ((x - SNAP_LANE[0]) / (SNAP_LANE[1] - SNAP_LANE[0])) * 100;
-    needle.hidden = v.needle === undefined || v.needle > SNAP_LANE[1];
+    needle.hidden = v.needle === undefined;
     win.hidden = !v.window;
     if (v.needle !== undefined) needle.style.left = `${Math.max(0, inLane(v.needle))}%`;
     if (v.window) { win.style.left = `${inLane(v.window[0])}%`; win.style.width = `${inLane(v.window[1]) - inLane(v.window[0])}%`; }
@@ -1240,12 +1254,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     track.hidden = !v.track;
     if (v.track) {
       const cls = (h: number | null) => (h === null ? '' : h >= 0.8 ? 'good' : h >= 0.4 ? 'ok' : 'miss');
-      track.innerHTML = v.track.beats.map((b, k) => `<div class="beat ${b.hold ? 'hold' : ''} ${cls(b.hit)}" style="left:${b.at * 100}%">${b.hold ? 'HOLD' : k + 1}</div>`).join('')
+      track.innerHTML = v.track.beats.map((b) => `<div class="beat ${b.label.length > 1 ? 'hold' : ''} ${cls(b.hit)}" style="left:${b.at * 100}%">${b.label}</div>`).join('')
         + `<div class="cursor" style="left:${v.track.cursor * 100}%"></div>`;
     }
     // Flick: the fan at the bottom of the backswing, the swing's trail through it.
     lastFlick = v.flick ?? null;
     if (v.flick) { clearTimeout(readoutTimer); readoutTimer = 0; drawFlick(v.flick); }
+    // The throw key's held: the fan waits at the pointer.
+    else if (swung(style) && flickArmed && phase === 'aim') { clearTimeout(readoutTimer); readoutTimer = 0; drawFlick({ at: pointerAt, half: flickHalf(s), R: FLICK.R, trail: [], started: false, angle: null }); }
     else if (!readoutTimer) $('flick-wedge').toggleAttribute('hidden', true);
     // Two-stage putts: the reticle breathing on the basket.
     const ret = $('putt-reticle');
@@ -1283,7 +1299,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     clearTimeout(readoutTimer);
     readoutTimer = window.setTimeout(() => { readoutTimer = 0; $('flick-wedge').toggleAttribute('hidden', true); }, 1400);
   }
-  window.addEventListener('blur', () => { chargeQueued = false; });
+  window.addEventListener('blur', () => { chargeQueued = false; armFlick(false); });
 
   /** Lower is better: holed, then distance to the basket, with penalties counting heavily. */
   const outcomeScore = (r: ThrowResult) => (r.holed ? -1 : dist(r.rest, myPin()) + r.penalty * 30);
@@ -1292,6 +1308,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** `as`: the whole throw, when a bot planned it (its putt is a putt whatever the view). */
   function release(r: Release, as?: ThrowInput): void {
     if (phase !== 'charging') return;
+    flickArmed = false;
     const flicked = lastFlick;
     drawMeter(null);
     lastFlick = flicked;
@@ -1874,15 +1891,15 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     $('view-toggle').textContent = VIEW_LABELS[scene.viewMode];
     $('fp-toggle').textContent = isFP() ? '1st person' : 'Top-down';
     $('swing').toggleAttribute('disabled', phase !== 'aim' && phase !== 'charging');
-    const flicking = phase === 'aim' && flickStyle();
-    $('swing').innerHTML = flicking ? `Swipe up to ${puttStyle() ? 'putt' : 'throw'}` : `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>${keyFor('throw')}</kbd>`;
+    const flicking = phase === 'aim' && swingStyle();
+    $('swing').innerHTML = flicking ? `Swipe up to ${puttStyle() ? 'putt' : 'throw'} <kbd>${keyFor('throw')}</kbd>` : `Hold to ${puttStyle() ? 'putt' : 'throw'} <kbd>${keyFor('throw')}</kbd>`;
     // Written from the current keys (Settings → Controls).
     const k = keyFor, two = (a: Parameters<typeof keyFor>[0], b: Parameters<typeof keyFor>[0]) => `${k(a)}/${k(b)}`;
     const common = `${two('target-farther', 'target-closer')} target distance · ${two('hyzer', 'anhyzer')} release angle · ${k('disc-prev')} / ${k('disc-next')} disc · ${k('forehand')} forehand · ${k('shot')} shot`;
     const view = vector ? '' : ` · ${k('view')} view`;
     // Flick style: a left-button drag on the course is the throw, so first person looks with the right.
-    $('help').textContent = (flicking ? 'Pull back and swipe up on the course to throw · ' : '') + (isFP()
-      ? `${flicking ? 'Right-drag' : 'Drag'} or ${two('aim-left', 'aim-right')} to aim (${two('look-up', 'look-down')} = launch) · ${common} · scroll zoom · click minimap to aim · ${k('first-person')} top-down${view}`
+    $('help').textContent = (flicking ? `${k('throw')} to get ready, then swing on the course · ` : '') + (isFP()
+      ? `Drag or ${two('aim-left', 'aim-right')} to aim (${two('look-up', 'look-down')} = launch) · ${common} · scroll zoom · click minimap to aim · ${k('first-person')} top-down${view}`
       : `Click to aim · ${two('aim-left', 'aim-right')} fine aim · ${common} · ${k('first-person')} 1st person · right-drag pan · scroll zoom${view} · ${k('reframe')} re-frame`);
     if (range) { rangeBoard(); return; }
     // One row a player, or a team in best shot (its members are always on the same spot and score).
@@ -1930,8 +1947,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   /** The scorecard is up while its key is held. */
   let heldCard = false;
   let drag: { x: number; y: number; mode: 'aim' | 'pan' | 'look' | 'orbit' } | null = null;
-  /** Flick style: a press on the course, which is a swing once it moves (a click still aims, top-down). */
-  let swingPress: { from: [number, number]; swinging: boolean } | null = null;
+  /** Flick style, throw key held: a press on the course, which is a swing once it moves. */
+  let swingPress: { from: [number, number]; swinging: boolean; id: number } | null = null;
 
   function setAimTarget(t: Vec2): void {
     aimTarget = t;
@@ -1952,7 +1969,9 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
       else drag = { x: e.clientX, y: e.clientY, mode: 'pan' };
       return;
     }
-    if (e.button === 0 && phase === 'aim' && !panel?.tool && flickStyle()) swingPress = { from: [e.clientX, e.clientY], swinging: false };
+    // X-step flick on a touch screen: another finger's tap is a step.
+    if (phase === 'charging' && ctl?.style === 'hybrid') { throwDown(); return; }
+    if (e.button === 0 && phase === 'aim' && !panel?.tool && flickArmed && swingStyle()) swingPress = { from: [e.clientX, e.clientY], swinging: false, id: e.pointerId };
     else if (isFP()) drag = { x: e.clientX, y: e.clientY, mode: 'look' };
     else if (e.button === 0 && phase === 'aim' && panel?.tool) rangeEdit(panel.tool, scene.screenToWorld(e.clientX, e.clientY));
     else if (e.button === 0 && phase === 'aim') { drag = { x: e.clientX, y: e.clientY, mode: 'aim' }; setAimTarget(scene.screenToWorld(e.clientX, e.clientY)); }
@@ -1982,10 +2001,10 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   });
   canvas.addEventListener('pointerup', (e) => {
     drag = null;
+    if (swingPress && e.pointerId !== swingPress.id) return; // a step's tap, not the swing's
     const press = swingPress;
     swingPress = null;
     if (press?.swinging) letGo();
-    else if (press && phase === 'aim' && !isFP()) setAimTarget(scene.screenToWorld(e.clientX, e.clientY));
   });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -2245,7 +2264,14 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
     // The hole flyover: Space or Enter skips it, other keys wait for it.
     if (intro) { if (isKey(e, 'throw') || e.key === 'Enter') { e.preventDefault(); endIntro(); } return; }
-    if (isKey(e, 'throw')) { e.preventDefault(); if (phase === 'replay') endReplay(); else if (!e.repeat) throwDown(); return; }
+    if (isKey(e, 'throw')) {
+      e.preventDefault();
+      if (phase === 'replay') endReplay();
+      else if (e.repeat) { /* held */ }
+      else if (phase === 'aim' && swingStyle()) armFlick(!flickArmed); // swung with the pointer: the key gets it ready (or puts it away)
+      else throwDown();
+      return;
+    }
     const fine = e.shiftKey; // Shift: finer aim, bigger target steps
     switch (keyAction(e)) {
       case 'disc-prev': cycleDisc(-1); break;
@@ -2272,7 +2298,8 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
     }
   });
   window.addEventListener('keyup', (e) => {
-    if (isKey(e, 'throw')) letGo();
+    // Flick styles let go on the mouse button, not the key.
+    if (isKey(e, 'throw') && !(ctl ? swung(ctl.style) : swingStyle())) letGo();
     if (isKey(e, 'scorecard') && heldCard) { heldCard = false; $('results').hidden = true; }
   });
   window.addEventListener('blur', () => { if (heldCard) { heldCard = false; $('results').hidden = true; } });
