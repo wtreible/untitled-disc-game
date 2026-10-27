@@ -12,10 +12,22 @@ export function guardLeave(on: () => boolean): void {
   inProgress = on;
 }
 
-/** Reload without asking (the player chose this, or the game needs it). */
-export function reloadPage(): void {
+const AGAIN = 'untitled-disc-game:again';
+
+/** Reload without asking (the player chose this, or the game needs it). `again`: Play again, so the menu keeps the round's format, holes and layout. */
+export function reloadPage(again = false): void {
   leaving = true;
+  try { if (again) sessionStorage.setItem(AGAIN, '1'); } catch { /* storage unavailable */ }
   location.reload();
+}
+
+/** The menu's here because of Play again (once: it's cleared as it's read). */
+export function cameForAgain(): boolean {
+  try {
+    const v = sessionStorage.getItem(AGAIN) === '1';
+    sessionStorage.removeItem(AGAIN);
+    return v;
+  } catch { return false; }
 }
 
 function ask(e: BeforeUnloadEvent): void {

@@ -1,10 +1,10 @@
 // Main menu: course, players, round (holes / Crazy mode) and settings, then hand off to the disc
 // golf mode. "Play again" / "Quit to main menu" reload, which brings the menu back with the last
-// choices filled in. (Golf still lives in src/modes/golf.ts but isn't on the menu: disc only for now.)
+// choices filled in (but the round's format, holes and layout only after Play again). (Golf still lives in src/modes/golf.ts but isn't on the menu: disc only for now.)
 import { COLOR_CHOICES, PLAYER_COLORS, playerColors } from './game/game';
 import { mountSettings } from './ui/settingsForm';
 import { isKey, keyFor, type KeyAction } from './keys';
-import { reloadPage } from './ui/leaveGuard';
+import { cameForAgain, reloadPage } from './ui/leaveGuard';
 import { defaultTeams, nextTeam, teamGroups, teamsLabel } from './game/teams';
 import { mountNetStatus } from './ui/netStatus';
 import { IMAGERY, data } from './assets';
@@ -144,6 +144,12 @@ const COURSES: { id: CourseId; group: Group; name: string; meta: string; holes: 
 ];
 
 const last = load<{ course?: CourseId; holes?: string; players?: number; crazy?: boolean; bag?: boolean; teamsOn?: boolean; teamPicks?: number[]; layout?: Layout; bots?: (BotLevel | null)[]; format?: Format; teamPlay?: TeamPlay }>('untitled-disc-game:menu', {});
+// Back at the menu any way but Play again: stroke play, the full round, long tees and A pins.
+if (!cameForAgain()) {
+  delete last.format;
+  delete last.holes;
+  delete last.layout;
+}
 /** How the round is won, and how teams play. */
 let format: Format = last.format ?? 'stroke';
 let teamPlay: TeamPlay = last.teamPlay ?? 'best';

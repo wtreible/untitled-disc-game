@@ -1803,7 +1803,7 @@ export async function startDisc(opts: DiscOptions): Promise<void> {
   }
   $('again').addEventListener('click', () => {
     if (net) { if (isHost) net.room.end(); return; } // the room's 'ended' brings everyone back, us too
-    reloadPage();
+    reloadPage(true);
   });
   $('leave').addEventListener('click', () => {
     net?.room.close();
