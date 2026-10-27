@@ -63,7 +63,7 @@ export function mountSettings(el: HTMLElement): void {
       }
       case 'shot': return `
         <div class="row"><span>How you throw</span></div>${shotTypeSeg()}
-        <small class="dim">${shotTypeText()} Also on the driving range and the putting card.</small>`;
+        <small class="dim">${shotTypeText()}</small>`;
     }
   };
 
