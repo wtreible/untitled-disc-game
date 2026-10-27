@@ -324,13 +324,40 @@ function openColors(i: number, anchor: HTMLElement): void {
     renderPlayers();
     if (room && i === 0) room.recolor(rowColors()[0]);
   }));
+  showPop(anchor, 'colors');
+}
+/** The designs under row i's design button, each drawn in the row's color. */
+function openDesigns(i: number, anchor: HTMLElement): void {
+  const col = rowColors()[i];
+  colorPop.innerHTML = DISC_DESIGNS.map(([v, name]) => `<button data-d="${v}" class="${v === rowDesign(i) ? 'on' : ''}" title="${name}"><img alt="${name}" src="${designCanvas(v, col, 56).toDataURL()}"><span>${name}</span></button>`).join('');
+  colorPop.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+    designPicks[i] = b.dataset.d!;
+    save('untitled-disc-game:designs', designPicks);
+    colorPop.hidden = true;
+    sfx('select');
+    renderPlayers();
+    if (room && i === 0) room.redesign(rowDesign(0)); // online, the room hears of it
+  }));
+  showPop(anchor, 'designs');
+}
+/** Which popup is up (e.g. 'designs:0'): its button closes it, another button swaps to its own. */
+let popFor = '';
+function togglePop(key: string, open: () => void): void {
+  if (!colorPop.hidden && popFor === key) { colorPop.hidden = true; return; }
+  popFor = key;
+  open();
+}
+/** The popup under `anchor`, laid out for colors or designs. */
+function showPop(anchor: HTMLElement, kind: 'colors' | 'designs'): void {
+  colorPop.classList.toggle('designs', kind === 'designs');
   const r = anchor.getBoundingClientRect();
   colorPop.style.left = `${r.left}px`;
   colorPop.style.top = `${r.bottom + 6}px`;
   colorPop.hidden = false;
 }
 document.addEventListener('pointerdown', (e) => {
-  if (!colorPop.hidden && !colorPop.contains(e.target as Node) && !(e.target as HTMLElement).classList.contains('swatch')) colorPop.hidden = true;
+  // Not on the buttons that open it: they toggle it themselves.
+  if (!colorPop.hidden && !colorPop.contains(e.target as Node) && !(e.target as HTMLElement).closest('.swatch, .design-btn')) colorPop.hidden = true;
 });
 
 // ---------- online room state (the room itself is further down) ----------
@@ -359,7 +386,7 @@ function renderPlayers(): void {
     row.className = 'pname';
     const lv = localBots[i] ?? null;
     const dname = DISC_DESIGNS.find(([v]) => v === rowDesign(i))![1];
-    row.innerHTML = `<button class="swatch" style="background:${cols[i]}" title="Pick a color"></button><button class="design-btn" title="Disc design: ${dname} (click for the next)"><img alt="${dname}" src="${designCanvas(rowDesign(i), cols[i], 56).toDataURL()}"></button><input value="" maxlength="16" /><button class="bot-btn chip-btn ${lv ? 'on' : ''}" title="A person, or a computer player (Easy, Medium, Pro)">${lv ? `Bot · ${BOT_LEVELS.find(([v]) => v === lv)![1]}` : 'Person'}</button>`;
+    row.innerHTML = `<button class="swatch" style="background:${cols[i]}" title="Pick a color"></button><button class="design-btn" title="Disc design: ${dname}"><img alt="${dname}" src="${designCanvas(rowDesign(i), cols[i], 56).toDataURL()}"></button><input value="" maxlength="16" /><button class="bot-btn chip-btn ${lv ? 'on' : ''}" title="A person, or a computer player (Easy, Medium, Pro)">${lv ? `Bot · ${BOT_LEVELS.find(([v]) => v === lv)![1]}` : 'Person'}</button>`;
     row.querySelector('input')!.value = current[i] ?? savedNames[i] ?? `Player ${i + 1}`;
     // Person → Easy → Medium → Pro → person. A bot row gets a bot's name until it's renamed.
     row.querySelector<HTMLButtonElement>('.bot-btn')!.addEventListener('click', () => {
@@ -372,17 +399,11 @@ function renderPlayers(): void {
       save('untitled-disc-game:menu', { ...load('untitled-disc-game:menu', {}), bots: localBots });
       renderPlayers();
     });
-    // The disc's design: the next one each click (online, the room hears of it).
-    row.querySelector<HTMLButtonElement>('.design-btn')!.addEventListener('click', () => {
-      const k = DISC_DESIGNS.findIndex(([v]) => v === rowDesign(i));
-      designPicks[i] = DISC_DESIGNS[(k + 1) % DISC_DESIGNS.length][0];
-      save('untitled-disc-game:designs', designPicks);
-      sfx('select');
-      renderPlayers();
-      if (room && i === 0) room.redesign(rowDesign(0));
-    });
+    // The disc's design and color: each opens its popup (a second click closes it).
+    const db = row.querySelector<HTMLButtonElement>('.design-btn')!;
+    db.addEventListener('click', () => togglePop(`designs:${i}`, () => openDesigns(i, db)));
     const sw = row.querySelector<HTMLButtonElement>('.swatch')!;
-    sw.addEventListener('click', () => (colorPop.hidden ? openColors(i, sw) : (colorPop.hidden = true)));
+    sw.addEventListener('click', () => togglePop(`colors:${i}`, () => openColors(i, sw)));
     box.appendChild(row);
   }
   $<HTMLSelectElement>('player-count').value = String(players);

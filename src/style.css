@@ -172,6 +172,12 @@ input[type='range'] { accent-color: var(--accent); width: 100%; }
 .color-pop button { width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2px solid #0008; }
 .color-pop button.on { box-shadow: 0 0 0 2px var(--accent); }
 .color-pop button:disabled { opacity: 0.25; cursor: not-allowed; }
+/* The same popup with the disc designs, each drawn in the player's color. */
+.color-pop.designs { grid-template-columns: repeat(4, 64px); }
+.color-pop.designs button { width: 64px; height: auto; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px; border-radius: 10px; border: 2px solid transparent; background: rgba(255, 255, 255, 0.04); color: var(--muted); font: 600 11px var(--body); }
+.color-pop.designs button:hover { background: rgba(255, 255, 255, 0.09); }
+.color-pop.designs button.on { box-shadow: none; border-color: var(--accent); color: var(--text); }
+.color-pop.designs img { width: 40px; height: 40px; border-radius: 50%; }
 .name-sheet { width: min(400px, calc(100vw - 32px)); }
 .name-sheet .sheet-head h2 { font-size: 30px; }
 .name-sheet p { margin: 0; font-size: 14px; }
